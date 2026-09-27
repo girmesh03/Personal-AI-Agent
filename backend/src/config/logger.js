@@ -69,6 +69,11 @@ export const sanitizePii = (data) => {
         sanitizedObj[key] = sanitizePii(value);
       }
     }
+    // Preserve internal Winston Symbol properties (e.g., Symbol.for('level'), Symbol.for('message'))
+    const symbols = Object.getOwnPropertySymbols(data);
+    for (const sym of symbols) {
+      sanitizedObj[sym] = data[sym];
+    }
     return sanitizedObj;
   }
 
@@ -94,8 +99,7 @@ export const logger = winston.createLogger({
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.errors({ stack: true }),
     winston.format.splat(),
-    piiSanitizerFormat(),
-    winston.format.json()
+    piiSanitizerFormat()
   ),
   defaultMeta: { service: 'report-builder-backend' },
   transports: [
@@ -108,6 +112,7 @@ export const logger = winston.createLogger({
       maxSize: '20m',
       maxFiles: '30d',
       level: 'info',
+      format: winston.format.json(),
     }),
     // Daily rotating error log
     new DailyRotateFile({
@@ -118,6 +123,7 @@ export const logger = winston.createLogger({
       maxSize: '20m',
       maxFiles: '30d',
       level: 'error',
+      format: winston.format.json(),
     }),
   ],
 });
