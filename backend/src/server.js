@@ -30,7 +30,7 @@ export const startServer = async () => {
       logger.info(`  Port:        ${env.PORT}`);
       logger.info(`  Environment: ${env.NODE_ENV}`);
       logger.info(`  Client URL:  ${env.CLIENT_ORIGIN}`);
-      logger.info(`  Health:      http://localhost:${env.PORT}/api/health`);
+      logger.info(`  Health:      http://localhost:${env.PORT}/api/v1/health`);
       logger.info(`==================================================`);
     });
 

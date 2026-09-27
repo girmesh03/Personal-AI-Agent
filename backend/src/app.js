@@ -44,8 +44,8 @@ if (env.NODE_ENV === 'development') {
   app.use(morgan('combined', { stream: logStream }));
 }
 
-// 7. System Health Check endpoint
-app.get('/api/health', (_req, res) => {
+// 7. System Health Check endpoints
+app.get(['/api/health', '/api/v1/health'], (_req, res) => {
   res.status(200).json({
     status: 'UP',
     timestamp: new Date().toISOString(),
