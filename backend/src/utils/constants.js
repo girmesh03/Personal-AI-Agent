@@ -38,6 +38,37 @@ export const HTTP_STATUS = Object.freeze({
 export const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
 /**
+ * Standard email validation regex format.
+ * @constant
+ * @type {RegExp}
+ */
+export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Name length boundaries for user profiles.
+ * @constant
+ * @type {Readonly<{ MIN: number, MAX: number }>}
+ */
+export const USER_NAME_LENGTH = Object.freeze({
+  MIN: 2,
+  MAX: 50,
+});
+
+/**
+ * Minimum password length requirement.
+ * @constant
+ * @type {number}
+ */
+export const PASSWORD_MIN_LENGTH = 8;
+
+/**
+ * Bcrypt salt rounds factor for password hashing.
+ * @constant
+ * @type {number}
+ */
+export const BCRYPT_SALT_ROUNDS = 12;
+
+/**
  * JWT token lifespan configuration referencing validated environment variables.
  * @constant
  * @type {Readonly<{ ACCESS: string, REFRESH: string }>}

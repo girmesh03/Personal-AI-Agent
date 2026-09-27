@@ -1,0 +1,106 @@
+/**
+ * @module utils/token
+ * @description Dual JWT token management engine and secure HTTP cookie utilities.
+ * Enforces uniform 7-day refresh token lifespan (strictly zero remember-me logic).
+ */
+
+import jwt from 'jsonwebtoken';
+import { env } from '../config/env.js';
+import { JWT_EXPIRY, COOKIE_MAX_AGE } from './constants.js';
+import { UnauthenticatedError } from '../errors/CustomError.js';
+
+/**
+ * Generates a signed short-lived JWT access token for user authentication.
+ * @function generateAccessToken
+ * @param {string|import('mongoose').Types.ObjectId} userId - Unique identifier of the authenticated user.
+ * @returns {string} Signed JWT access token.
+ */
+export const generateAccessToken = (userId) => {
+  return jwt.sign({ id: String(userId) }, env.JWT_ACCESS_SECRET, {
+    expiresIn: JWT_EXPIRY.ACCESS,
+  });
+};
+
+/**
+ * Generates a signed long-lived JWT refresh token with uniform 7-day lifespan.
+ * Strictly zero remember-me variation.
+ * @function generateRefreshToken
+ * @param {string|import('mongoose').Types.ObjectId} userId - Unique identifier of the authenticated user.
+ * @returns {string} Signed JWT refresh token.
+ */
+export const generateRefreshToken = (userId) => {
+  return jwt.sign({ id: String(userId) }, env.JWT_REFRESH_SECRET, {
+    expiresIn: JWT_EXPIRY.REFRESH,
+  });
+};
+
+/**
+ * Verifies and decodes a JWT access token.
+ * @function verifyAccessToken
+ * @param {string} token - Raw JWT access token string.
+ * @returns {import('jsonwebtoken').JwtPayload} Decoded token payload containing user id.
+ * @throws {UnauthenticatedError} If token is expired, corrupted, or signature is invalid.
+ */
+export const verifyAccessToken = (token) => {
+  try {
+    return jwt.verify(token, env.JWT_ACCESS_SECRET);
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      throw new UnauthenticatedError('Access token has expired', 'UNAUTHENTICATED');
+    }
+    throw new UnauthenticatedError('Invalid access token', 'UNAUTHENTICATED');
+  }
+};
+
+/**
+ * Verifies and decodes a JWT refresh token.
+ * @function verifyRefreshToken
+ * @param {string} token - Raw JWT refresh token string.
+ * @returns {import('jsonwebtoken').JwtPayload} Decoded token payload containing user id.
+ * @throws {UnauthenticatedError} If token is expired, corrupted, or signature is invalid.
+ */
+export const verifyRefreshToken = (token) => {
+  try {
+    return jwt.verify(token, env.JWT_REFRESH_SECRET);
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      throw new UnauthenticatedError('Refresh token has expired', 'UNAUTHENTICATED');
+    }
+    throw new UnauthenticatedError('Invalid refresh token', 'UNAUTHENTICATED');
+  }
+};
+
+/**
+ * Standard cookie configuration options for refresh token.
+ * @constant
+ * @type {Readonly<import('express').CookieOptions>}
+ */
+export const REFRESH_COOKIE_OPTIONS = Object.freeze({
+  httpOnly: true,
+  secure: env.NODE_ENV === 'production',
+  sameSite: env.NODE_ENV === 'production' ? 'strict' : 'lax',
+  maxAge: COOKIE_MAX_AGE.REFRESH,
+  path: '/',
+});
+
+/**
+ * Attaches the refresh token to the HTTP response as a secure, httpOnly cookie.
+ * @function setRefreshTokenCookie
+ * @param {import('express').Response} res - Express response object.
+ * @param {string} refreshToken - Signed JWT refresh token.
+ * @returns {void}
+ */
+export const setRefreshTokenCookie = (res, refreshToken) => {
+  res.cookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTIONS);
+};
+
+/**
+ * Clears the refresh token cookie from the client upon logout or invalidation.
+ * @function clearRefreshTokenCookie
+ * @param {import('express').Response} res - Express response object.
+ * @returns {void}
+ */
+export const clearRefreshTokenCookie = (res) => {
+  const { maxAge, ...clearOptions } = REFRESH_COOKIE_OPTIONS;
+  res.clearCookie('refreshToken', clearOptions);
+};

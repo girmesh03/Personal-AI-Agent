@@ -7,6 +7,13 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import { BASE_SCHEMA_OPTIONS } from '../config/schemaOptions.js';
+import {
+  DEFAULT_POSITION,
+  USER_NAME_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  EMAIL_REGEX,
+  BCRYPT_SALT_ROUNDS,
+} from '../utils/constants.js';
 
 /**
  * @typedef {Object} IUser
@@ -28,15 +35,15 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, 'First name is required.'],
       trim: true,
-      minlength: [2, 'First name must be at least 2 characters.'],
-      maxlength: [50, 'First name cannot exceed 50 characters.'],
+      minlength: [USER_NAME_LENGTH.MIN, `First name must be at least ${USER_NAME_LENGTH.MIN} characters.`],
+      maxlength: [USER_NAME_LENGTH.MAX, `First name cannot exceed ${USER_NAME_LENGTH.MAX} characters.`],
     },
     lastName: {
       type: String,
       required: [true, 'Last name is required.'],
       trim: true,
-      minlength: [2, 'Last name must be at least 2 characters.'],
-      maxlength: [50, 'Last name cannot exceed 50 characters.'],
+      minlength: [USER_NAME_LENGTH.MIN, `Last name must be at least ${USER_NAME_LENGTH.MIN} characters.`],
+      maxlength: [USER_NAME_LENGTH.MAX, `Last name cannot exceed ${USER_NAME_LENGTH.MAX} characters.`],
     },
     email: {
       type: String,
@@ -44,19 +51,19 @@ const userSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
       trim: true,
-      match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please provide a valid email address.'],
+      match: [EMAIL_REGEX, 'Please provide a valid email address.'],
     },
     password: {
       type: String,
       required: [true, 'Password is required.'],
-      minlength: [8, 'Password must be at least 8 characters long.'],
+      minlength: [PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters long.`],
       select: false,
     },
     position: {
       type: String,
       required: [true, 'Position is required.'],
       trim: true,
-      default: 'Area Supervisor',
+      default: DEFAULT_POSITION,
     },
     avatar: {
       type: String,
@@ -106,7 +113,7 @@ userSchema.pre('save', async function () {
     return;
   }
 
-  const salt = await bcrypt.genSalt(12);
+  const salt = await bcrypt.genSalt(BCRYPT_SALT_ROUNDS);
   this.password = await bcrypt.hash(this.password, salt);
 });
 
