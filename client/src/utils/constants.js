@@ -72,3 +72,93 @@ export const DEFAULT_POSITION = 'Area Supervisor';
  * @type {number}
  */
 export const DEFAULT_PAGE_LIMIT = 10;
+
+/**
+ * Application brand title.
+ * @constant
+ * @type {string}
+ */
+export const APP_NAME = 'Report Builder';
+
+/**
+ * Minimum height for application top bars in pixels.
+ * @constant
+ * @type {number}
+ */
+export const APPBAR_MIN_HEIGHT = 64;
+
+/**
+ * Spacing multiplier for appbar height calculations.
+ * @constant
+ * @type {number}
+ */
+export const APPBAR_MIN_HEIGHT_SPACING = 8;
+
+/**
+ * Expanded sidebar drawer width in pixels.
+ * @constant
+ * @type {number}
+ */
+export const SIDEBAR_FULL_WIDTH = 260;
+
+/**
+ * Collapsed mini-sidebar drawer width in pixels.
+ * @constant
+ * @type {number}
+ */
+export const SIDEBAR_MINI_WIDTH = 72;
+
+/**
+ * Public landing route path.
+ * @constant
+ * @type {string}
+ */
+export const LANDING_ROUTE = '/';
+
+/**
+ * User login route path.
+ * @constant
+ * @type {string}
+ */
+export const LOGIN_ROUTE = '/login';
+
+/**
+ * User registration route path.
+ * @constant
+ * @type {string}
+ */
+export const REGISTER_ROUTE = '/register';
+
+/**
+ * Supervisor dashboard route path.
+ * @constant
+ * @type {string}
+ */
+export const DASHBOARD_ROUTE = '/dashboard';
+
+/**
+ * Supervisor profile settings route path.
+ * @constant
+ * @type {string}
+ */
+export const PROFILE_ROUTE = '/profile';
+
+/**
+ * Default redirect destination route following successful authentication.
+ * @constant
+ * @type {string}
+ */
+export const LOGIN_REDIRECT_ROUTE = '/dashboard';
+
+/**
+ * Client authentication state machine statuses.
+ * @constant
+ * @type {Readonly<Record<string, string>>}
+ */
+export const AUTH_STATUSES = Object.freeze({
+  IDLE: 'IDLE',
+  LOADING: 'LOADING',
+  AUTHENTICATED: 'AUTHENTICATED',
+  UNAUTHENTICATED: 'UNAUTHENTICATED',
+});
+

@@ -6,6 +6,11 @@ import { createTheme, alpha } from "@mui/material/styles";
 
 const defaultTheme = createTheme();
 
+/**
+ * Brand primary palette shades.
+ * @constant
+ * @type {Record<number, string>}
+ */
 export const brand = {
   50: "#eff6ff",
   100: "#dbeafe",
@@ -19,6 +24,11 @@ export const brand = {
   900: "#1e3a8a",
 };
 
+/**
+ * Neutral gray palette shades.
+ * @constant
+ * @type {Record<number, string>}
+ */
 export const gray = {
   50: "#f6f6f8",
   100: "#f1f5f9",
@@ -32,6 +42,11 @@ export const gray = {
   900: "#101622",
 };
 
+/**
+ * Success green palette shades.
+ * @constant
+ * @type {Record<number, string>}
+ */
 export const green = {
   50: "#f0fdf4",
   100: "#dcfce7",
@@ -45,6 +60,11 @@ export const green = {
   900: "#14532d",
 };
 
+/**
+ * Warning orange palette shades.
+ * @constant
+ * @type {Record<number, string>}
+ */
 export const orange = {
   50: "#fffbeb",
   100: "#fef3c7",
@@ -58,6 +78,11 @@ export const orange = {
   900: "#78350f",
 };
 
+/**
+ * Error red palette shades.
+ * @constant
+ * @type {Record<number, string>}
+ */
 export const red = {
   50: "#fef2f2",
   100: "#fee2e2",
@@ -71,6 +96,11 @@ export const red = {
   900: "#7f1d1d",
 };
 
+/**
+ * Light and dark mode theme color schemes.
+ * @constant
+ * @type {object}
+ */
 export const colorSchemes = {
   light: {
     palette: {
@@ -181,6 +211,11 @@ export const colorSchemes = {
   },
 };
 
+/**
+ * Application typography variants and font family definitions.
+ * @constant
+ * @type {object}
+ */
 export const typography = {
   fontFamily: "'Inter', 'Noto Sans Ethiopic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
   h1: {
@@ -231,6 +266,11 @@ export const typography = {
   },
 };
 
+/**
+ * Global component border radius geometry.
+ * @constant
+ * @type {{ borderRadius: number }}
+ */
 export const shape = {
   borderRadius: 8,
 };
@@ -241,4 +281,9 @@ const defaultShadows = [
   ...defaultTheme.shadows.slice(2),
 ];
 
+/**
+ * Application elevation shadow definitions.
+ * @constant
+ * @type {Array<string>}
+ */
 export const shadows = defaultShadows;

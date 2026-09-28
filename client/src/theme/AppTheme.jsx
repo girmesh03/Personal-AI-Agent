@@ -24,9 +24,9 @@ import { colorSchemes, typography, shadows, shape } from './themePrimitives';
  * Top-level Material UI Theme Provider component.
  * Configures MUI v6 CSS variables, color schemes, typography, and component overrides.
  *
- * @component
+ * @component AppTheme
  * @param {object} props - Component properties.
- * @param {React.ReactNode} props.children - Child components to wrap.
+ * @param {import('react').ReactNode} props.children - Child components to wrap.
  * @returns {JSX.Element} The theme provider wrapping children with CssBaseline.
  */
 export const AppTheme = ({ children }) => {

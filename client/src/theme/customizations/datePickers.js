@@ -4,7 +4,7 @@
  */
 import { alpha } from '@mui/material/styles';
 import { menuItemClasses } from '@mui/material/MenuItem';
-import { pickersDayClasses } from '@mui/x-date-pickers/PickersDay';
+import { pickerDayClasses } from '@mui/x-date-pickers/PickerDay';
 import { gray, brand } from '../themePrimitives';
 
 /**
@@ -135,7 +135,7 @@ const datePickersCustomizations = {
       }),
     },
   },
-  MuiPickersDay: {
+  MuiPickerDay: {
     styleOverrides: {
       root: ({ theme }) => ({
         fontSize: theme.typography.body1.fontSize,
@@ -145,7 +145,7 @@ const datePickersCustomizations = {
         '&:hover': {
           backgroundColor: (theme.vars || theme).palette.action.hover,
         },
-        [`&.${pickersDayClasses.selected}`]: {
+        [`&.${pickerDayClasses.selected}`]: {
           backgroundColor: gray[700],
           fontWeight: theme.typography.fontWeightMedium,
         },
@@ -153,14 +153,14 @@ const datePickersCustomizations = {
           outline: `3px solid ${alpha(brand[500], 0.5)}`,
           outlineOffset: '2px',
           backgroundColor: 'transparent',
-          [`&.${pickersDayClasses.selected}`]: { backgroundColor: gray[700] },
+          [`&.${pickerDayClasses.selected}`]: { backgroundColor: gray[700] },
         },
         ...theme.applyStyles('dark', {
           color: (theme.vars || theme).palette.grey[300],
           '&:hover': {
             backgroundColor: (theme.vars || theme).palette.action.hover,
           },
-          [`&.${pickersDayClasses.selected}`]: {
+          [`&.${pickerDayClasses.selected}`]: {
             color: (theme.vars || theme).palette.common.black,
             fontWeight: theme.typography.fontWeightMedium,
             backgroundColor: gray[300],
@@ -169,7 +169,7 @@ const datePickersCustomizations = {
             outline: `3px solid ${alpha(brand[500], 0.5)}`,
             outlineOffset: '2px',
             backgroundColor: 'transparent',
-            [`&.${pickersDayClasses.selected}`]: { backgroundColor: gray[300] },
+            [`&.${pickerDayClasses.selected}`]: { backgroundColor: gray[300] },
           },
         }),
       }),
