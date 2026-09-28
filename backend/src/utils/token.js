@@ -71,6 +71,19 @@ export const verifyRefreshToken = (token) => {
 };
 
 /**
+ * Standard cookie configuration options for access token.
+ * @constant
+ * @type {Readonly<import('express').CookieOptions>}
+ */
+export const ACCESS_COOKIE_OPTIONS = Object.freeze({
+  httpOnly: true,
+  secure: env.NODE_ENV === 'production',
+  sameSite: env.NODE_ENV === 'production' ? 'strict' : 'lax',
+  maxAge: COOKIE_MAX_AGE.ACCESS,
+  path: '/',
+});
+
+/**
  * Standard cookie configuration options for refresh token.
  * @constant
  * @type {Readonly<import('express').CookieOptions>}
@@ -82,6 +95,28 @@ export const REFRESH_COOKIE_OPTIONS = Object.freeze({
   maxAge: COOKIE_MAX_AGE.REFRESH,
   path: '/',
 });
+
+/**
+ * Attaches the access token to the HTTP response as a secure, httpOnly cookie.
+ * @function setAccessTokenCookie
+ * @param {import('express').Response} res - Express response object.
+ * @param {string} accessToken - Signed JWT access token.
+ * @returns {void}
+ */
+export const setAccessTokenCookie = (res, accessToken) => {
+  res.cookie('accessToken', accessToken, ACCESS_COOKIE_OPTIONS);
+};
+
+/**
+ * Clears the access token cookie from the client.
+ * @function clearAccessTokenCookie
+ * @param {import('express').Response} res - Express response object.
+ * @returns {void}
+ */
+export const clearAccessTokenCookie = (res) => {
+  const { maxAge, ...clearOptions } = ACCESS_COOKIE_OPTIONS;
+  res.clearCookie('accessToken', clearOptions);
+};
 
 /**
  * Attaches the refresh token to the HTTP response as a secure, httpOnly cookie.
@@ -103,4 +138,28 @@ export const setRefreshTokenCookie = (res, refreshToken) => {
 export const clearRefreshTokenCookie = (res) => {
   const { maxAge, ...clearOptions } = REFRESH_COOKIE_OPTIONS;
   res.clearCookie('refreshToken', clearOptions);
+};
+
+/**
+ * Attaches both access and refresh tokens to the HTTP response as secure cookies.
+ * @function setAuthCookies
+ * @param {import('express').Response} res - Express response object.
+ * @param {string} accessToken - Signed JWT access token.
+ * @param {string} refreshToken - Signed JWT refresh token.
+ * @returns {void}
+ */
+export const setAuthCookies = (res, accessToken, refreshToken) => {
+  setAccessTokenCookie(res, accessToken);
+  setRefreshTokenCookie(res, refreshToken);
+};
+
+/**
+ * Clears both access and refresh token cookies from the client.
+ * @function clearAuthCookies
+ * @param {import('express').Response} res - Express response object.
+ * @returns {void}
+ */
+export const clearAuthCookies = (res) => {
+  clearAccessTokenCookie(res);
+  clearRefreshTokenCookie(res);
 };

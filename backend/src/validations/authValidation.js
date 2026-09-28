@@ -18,16 +18,14 @@ import {
  */
 export const registerValidation = [
   body('firstName')
+    .optional()
     .trim()
-    .notEmpty()
-    .withMessage('First name is required.')
     .isLength({ min: USER_NAME_LENGTH.MIN, max: USER_NAME_LENGTH.MAX })
     .withMessage(`First name must be between ${USER_NAME_LENGTH.MIN} and ${USER_NAME_LENGTH.MAX} characters.`),
 
   body('lastName')
+    .optional()
     .trim()
-    .notEmpty()
-    .withMessage('Last name is required.')
     .isLength({ min: USER_NAME_LENGTH.MIN, max: USER_NAME_LENGTH.MAX })
     .withMessage(`Last name must be between ${USER_NAME_LENGTH.MIN} and ${USER_NAME_LENGTH.MAX} characters.`),
 
@@ -46,6 +44,15 @@ export const registerValidation = [
     .withMessage(`Password must be at least ${PASSWORD_MIN_LENGTH} characters long.`)
     .matches(PASSWORD_REGEX)
     .withMessage('Password must contain at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character.'),
+
+  body('confirmPassword')
+    .optional()
+    .custom((value, { req }) => {
+      if (req.body.password && value !== req.body.password) {
+        throw new Error('Passwords do not match.');
+      }
+      return true;
+    }),
 
   body('position')
     .optional()

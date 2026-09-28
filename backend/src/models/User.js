@@ -48,7 +48,6 @@ const userSchema = new mongoose.Schema(
     email: {
       type: String,
       required: [true, 'Email address is required.'],
-      unique: true,
       lowercase: true,
       trim: true,
       match: [EMAIL_REGEX, 'Please provide a valid email address.'],
@@ -125,6 +124,17 @@ userSchema.pre('save', async function () {
  * @returns {Promise<boolean>} True if password matches hash, false otherwise.
  */
 userSchema.methods.matchPassword = async function (enteredPassword) {
+  return bcrypt.compare(enteredPassword, this.password);
+};
+
+/**
+ * Compares an incoming plain-text password with the stored bcrypt hash (alias for matchPassword).
+ * @function comparePassword
+ * @memberof userSchema.methods
+ * @param {string} enteredPassword - Candidate plain-text password.
+ * @returns {Promise<boolean>} True if password matches hash, false otherwise.
+ */
+userSchema.methods.comparePassword = async function (enteredPassword) {
   return bcrypt.compare(enteredPassword, this.password);
 };
 

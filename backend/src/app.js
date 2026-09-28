@@ -9,9 +9,10 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
 import { env } from './config/env.js';
-import { logger, logStream } from './config/logger.js';
+import { logStream } from './config/logger.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import apiV1Routes from './routes/index.js';
 
 const app = express();
 
@@ -54,9 +55,8 @@ app.get(['/api/health', '/api/v1/health'], (_req, res) => {
   });
 });
 
-// 8. API v1 Router Mount (domain route modules attach here)
-const apiV1Router = express.Router();
-app.use('/api/v1', apiV1Router);
+// 8. API v1 Router Mount (consolidated domain route tree)
+app.use('/api/v1', apiV1Routes);
 
 // 9. Unmatched Route Handler (404)
 app.use(notFoundHandler);
