@@ -20,9 +20,22 @@ const app = express();
 app.use(helmet());
 
 // 2. CORS configuration with credentials support
+const allowedOrigins = [
+  env.CLIENT_ORIGIN,
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:5173',
+];
+
 app.use(
   cors({
-    origin: env.CLIENT_ORIGIN,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS blocked for origin: ${origin}`));
+      }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

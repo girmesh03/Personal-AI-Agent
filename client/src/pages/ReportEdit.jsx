@@ -4,8 +4,8 @@
  */
 
 import { Link } from 'react-router';
-import Button from '@mui/material/Button';
 import EditNoteIcon from '@mui/icons-material/EditNote';
+import MuiButton from '../components/reusable/MuiButton.jsx';
 import MuiEmptyState from '../components/reusable/MuiEmptyState.jsx';
 
 /**
@@ -17,13 +17,13 @@ import MuiEmptyState from '../components/reusable/MuiEmptyState.jsx';
 export const ReportEdit = () => {
   return (
     <MuiEmptyState
-      icon={<EditNoteIcon sx={{ fontSize: 64 }} />}
+      icon={<EditNoteIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />}
       title="Supervised Report Editor"
       subtitle="Supervised correction interface allowing supervisors to amend timings, tasks, or issues before final persistence will be mounted here in Milestone 7."
       action={
-        <Button variant="outlined" component={Link} to="/reports">
+        <MuiButton variant="outlined" size="small" component={Link} to="/reports">
           Back to Reports
-        </Button>
+        </MuiButton>
       }
     />
   );

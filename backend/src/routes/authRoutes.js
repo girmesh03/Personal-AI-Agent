@@ -9,6 +9,7 @@ import {
   login,
   refreshToken,
   logout,
+  googleAuthStub,
 } from '../controllers/authController.js';
 import {
   registerValidation,
@@ -45,5 +46,14 @@ router.post('/refresh', refreshToken);
  * @access Public
  */
 router.post('/logout', logout);
+
+/**
+ * @route GET /api/v1/auth/google
+ * @route POST /api/v1/auth/google
+ * @desc Google authentication placeholder stub.
+ * @access Public
+ */
+router.get('/google', googleAuthStub);
+router.post('/google', googleAuthStub);
 
 export default router;

@@ -1,9 +1,11 @@
 /**
  * @module redux/features/authSlice
- * @description Redux Toolkit slice managing supervisor session authentication state.
+ * @description Redux Toolkit slice and injected RTK Query endpoints managing
+ * supervisor session authentication state and auth lifecycle operations.
  */
 
 import { createSlice } from '@reduxjs/toolkit';
+import { apiSlice } from '../app/apiSlice.js';
 
 /**
  * Initial authentication state.
@@ -13,7 +15,7 @@ import { createSlice } from '@reduxjs/toolkit';
 const initialState = {
   user: null,
   isAuthenticated: false,
-  isLoading: true,
+  isLoading: false,
 };
 
 /**
@@ -40,20 +42,24 @@ export const authSlice = createSlice({
     },
     updateUserProfile: (state, action) => {
       const updatedFields = action.payload?.user || action.payload;
-      if (state.user && updatedFields) {
-        state.user = {
-          ...state.user,
-          ...updatedFields,
-        };
+      if (updatedFields) {
+        state.user = state.user
+          ? { ...state.user, ...updatedFields }
+          : updatedFields;
       }
     },
   },
 });
 
 /**
- * Authentication action creators.
+ * Authentication synchronous action creators.
  */
-export const { setCredentials, logout, setLoading, updateUserProfile } = authSlice.actions;
+export const {
+  setCredentials,
+  logout,
+  setLoading,
+  updateUserProfile,
+} = authSlice.actions;
 
 /**
  * Selects the authenticated user profile object from Redux state.
@@ -102,5 +108,82 @@ export const selectAuthStatus = (state) => {
   if (state.auth.isLoading) return 'LOADING';
   return state.auth.isAuthenticated ? 'AUTHENTICATED' : 'UNAUTHENTICATED';
 };
+
+/**
+ * Authentication API endpoints injected into the core RTK Query slice.
+ * @constant
+ */
+export const authApiSlice = apiSlice.injectEndpoints({
+  endpoints: (builder) => ({
+    register: builder.mutation({
+      query: (credentials) => ({
+        url: '/auth/register',
+        method: 'POST',
+        body: credentials,
+      }),
+    }),
+    login: builder.mutation({
+      query: (credentials) => ({
+        url: '/auth/login',
+        method: 'POST',
+        body: credentials,
+      }),
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          // Normalized by apiSlice: data.user is directly accessible
+          const user = data?.user || data?.data?.user;
+          if (user) {
+            dispatch(setCredentials({ user }));
+          }
+        } catch {
+          // Handled by caller UI
+        }
+      },
+    }),
+    logout: builder.mutation({
+      query: () => ({
+        url: '/auth/logout',
+        method: 'POST',
+      }),
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+        } finally {
+          dispatch(logout());
+          dispatch(apiSlice.util.resetApiState());
+        }
+      },
+    }),
+    refreshToken: builder.mutation({
+      query: () => ({
+        url: '/auth/refresh',
+        method: 'POST',
+      }),
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          const user = data?.user || data?.data?.user;
+          if (user) {
+            dispatch(setCredentials({ user }));
+          }
+        } catch {
+          dispatch(logout());
+        }
+      },
+    }),
+  }),
+  overrideExisting: false,
+});
+
+/**
+ * RTK Query mutation hooks for supervisor authentication lifecycle.
+ */
+export const {
+  useRegisterMutation,
+  useLoginMutation,
+  useLogoutMutation,
+  useRefreshTokenMutation,
+} = authApiSlice;
 
 export default authSlice.reducer;

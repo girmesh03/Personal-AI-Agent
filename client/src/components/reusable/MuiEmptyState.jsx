@@ -40,7 +40,6 @@ export const MuiEmptyState = ({ icon, title, description, subtitle, action, sx =
         borderRadius: 2,
         border: '1px dashed',
         borderColor: 'divider',
-        bgcolor: (theme) => alpha(theme.palette.background.paper, 0.6),
         ...sx,
       }}
     >

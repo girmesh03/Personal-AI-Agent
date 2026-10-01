@@ -5,7 +5,7 @@
 import { Component } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import Button from '@mui/material/Button';
+import MuiButton from './MuiButton.jsx';
 import Paper from '@mui/material/Paper';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 
@@ -24,8 +24,10 @@ export class ErrorBoundary extends Component {
     return { hasError: true, error };
   }
 
-  componentDidCatch(_error, _errorInfo) {
-    // Unhandled UI Exception captured by ErrorBoundary
+  componentDidCatch(error, errorInfo) {
+    if (import.meta.env.DEV) {
+      console.error('[ErrorBoundary caught error]:', error, errorInfo);
+    }
   }
 
   handleReload = () => {
@@ -71,12 +73,12 @@ export class ErrorBoundary extends Component {
               An unexpected error occurred in the application. Please try reloading the page.
             </Typography>
             <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
-              <Button variant="contained" color="primary" onClick={this.handleReload}>
+              <MuiButton size="small" variant="contained" color="primary" onClick={this.handleReload}>
                 Reload Page
-              </Button>
-              <Button variant="outlined" color="inherit" onClick={this.handleReset}>
+              </MuiButton>
+              <MuiButton size="small" variant="outlined" color="inherit" onClick={this.handleReset}>
                 Try Again
-              </Button>
+              </MuiButton>
             </Box>
           </Paper>
         </Box>

@@ -6,9 +6,8 @@
 import { useCallback } from 'react';
 import { useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router';
-import { useLogoutApiMutation } from '../redux/features/authApiSlice.js';
-import { logout } from '../redux/features/authSlice.js';
-import { LOGIN_ROUTE } from '../utils/constants.js';
+import { useLogoutMutation, logout } from '../redux/features/authSlice.js';
+import { ROUTES } from '../utils/constants.js';
 
 /**
  * Custom React hook providing a memoized supervisor logout action handler.
@@ -21,18 +20,18 @@ import { LOGIN_ROUTE } from '../utils/constants.js';
 export const useLogout = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const [logoutApi] = useLogoutApiMutation();
+  const [logoutMutation] = useLogoutMutation();
 
   return useCallback(async () => {
     try {
-      await logoutApi().unwrap();
+      await logoutMutation().unwrap();
     } catch {
       // Ignore network errors during logout
     } finally {
       dispatch(logout());
-      navigate(LOGIN_ROUTE || '/login', { replace: true });
+      navigate(ROUTES.LOGIN, { replace: true });
     }
-  }, [dispatch, navigate, logoutApi]);
+  }, [dispatch, navigate, logoutMutation]);
 };
 
 export default useLogout;

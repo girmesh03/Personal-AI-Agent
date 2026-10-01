@@ -74,11 +74,14 @@ export const DEFAULT_POSITION = 'Area Supervisor';
 export const DEFAULT_PAGE_LIMIT = 10;
 
 /**
- * Application brand title.
+ * Application brand title loaded dynamically from client environment configuration.
  * @constant
  * @type {string}
  */
-export const APP_NAME = 'Report Builder';
+export const APP_NAME =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_APP_TITLE) ||
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_APP_NAME) ||
+  'Operon';
 
 /**
  * Minimum height for application top bars in pixels.
@@ -109,46 +112,52 @@ export const SIDEBAR_FULL_WIDTH = 260;
 export const SIDEBAR_MINI_WIDTH = 72;
 
 /**
- * Public landing route path.
+ * Application client route paths.
+ * Centralized route registry managing all navigation destinations from one single place.
  * @constant
- * @type {string}
+ * @type {Readonly<{
+ *   LANDING: string,
+ *   LOGIN: string,
+ *   REGISTER: string,
+ *   DASHBOARD: string,
+ *   PROFILE: string,
+ *   LOGIN_REDIRECT: string,
+ *   CHAT: string,
+ *   REPORTS: string,
+ *   REPORT_DETAIL: string,
+ *   REPORT_EDIT: string,
+ *   BRANCHES: string,
+ *   BRANCH_DETAIL: string,
+ * }>}
  */
-export const LANDING_ROUTE = '/';
+export const ROUTES = Object.freeze({
+  LANDING: '/',
+  LOGIN: '/login',
+  REGISTER: '/register',
+  DASHBOARD: '/dashboard',
+  PROFILE: '/profile',
+  LOGIN_REDIRECT: '/dashboard',
+  CHAT: '/chat',
+  REPORTS: '/reports',
+  REPORT_DETAIL: '/reports/:reportId/details',
+  REPORT_EDIT: '/reports/:reportId/edit',
+  BRANCHES: '/branches',
+  BRANCH_DETAIL: '/branches/:branchId/details',
+});
 
-/**
- * User login route path.
- * @constant
- * @type {string}
- */
-export const LOGIN_ROUTE = '/login';
-
-/**
- * User registration route path.
- * @constant
- * @type {string}
- */
-export const REGISTER_ROUTE = '/register';
-
-/**
- * Supervisor dashboard route path.
- * @constant
- * @type {string}
- */
-export const DASHBOARD_ROUTE = '/dashboard';
-
-/**
- * Supervisor profile settings route path.
- * @constant
- * @type {string}
- */
-export const PROFILE_ROUTE = '/profile';
-
-/**
- * Default redirect destination route following successful authentication.
- * @constant
- * @type {string}
- */
-export const LOGIN_REDIRECT_ROUTE = '/dashboard';
+/** Backward-compatible route aliases referencing the canonical ROUTES registry */
+export const LANDING_ROUTE = ROUTES.LANDING;
+export const LOGIN_ROUTE = ROUTES.LOGIN;
+export const REGISTER_ROUTE = ROUTES.REGISTER;
+export const DASHBOARD_ROUTE = ROUTES.DASHBOARD;
+export const PROFILE_ROUTE = ROUTES.PROFILE;
+export const LOGIN_REDIRECT_ROUTE = ROUTES.LOGIN_REDIRECT;
+export const CHAT_ROUTE = ROUTES.CHAT;
+export const REPORTS_ROUTE = ROUTES.REPORTS;
+export const REPORT_DETAIL_ROUTE = ROUTES.REPORT_DETAIL;
+export const REPORT_EDIT_ROUTE = ROUTES.REPORT_EDIT;
+export const BRANCHES_ROUTE = ROUTES.BRANCHES;
+export const BRANCH_DETAIL_ROUTE = ROUTES.BRANCH_DETAIL;
 
 /**
  * Client authentication state machine statuses.
@@ -161,4 +170,41 @@ export const AUTH_STATUSES = Object.freeze({
   AUTHENTICATED: 'AUTHENTICATED',
   UNAUTHENTICATED: 'UNAUTHENTICATED',
 });
+
+/**
+ * User feedback message displayed when attempting report creation before Milestone 7.
+ * @constant
+ * @type {string}
+ */
+export const REPORT_CREATION_TBD_MESSAGE =
+  'Report creation workflow is TBD (scheduled for Milestone 7).';
+
+/**
+ * Tentative operational feature highlights presented on the public landing page.
+ * High-level supervisor capabilities subject to subsequent milestone refinements.
+ * @constant
+ * @type {ReadonlyArray<{ id: string, title: string, description: string }>}
+ */
+export const LANDING_FEATURES = Object.freeze([
+  {
+    id: 'inspections',
+    title: 'Branch Inspections',
+    description:
+      'Coordinate routine site visits, monitor operational standards, and log real-time branch findings.',
+  },
+  {
+    id: 'reporting',
+    title: 'Operational Reporting',
+    description:
+      'Synthesize daily operational updates and structured summaries for area management review.',
+  },
+  {
+    id: 'oversight',
+    title: 'Field Oversight',
+    description:
+      'Centralize supervisor workflow, track branch performance trends, and manage operational communications.',
+  },
+]);
+
+
 

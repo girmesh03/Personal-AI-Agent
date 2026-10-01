@@ -4,8 +4,8 @@
  */
 
 import { Link } from 'react-router';
-import Button from '@mui/material/Button';
 import StorefrontIcon from '@mui/icons-material/Storefront';
+import MuiButton from '../components/reusable/MuiButton.jsx';
 import MuiEmptyState from '../components/reusable/MuiEmptyState.jsx';
 
 /**
@@ -17,13 +17,13 @@ import MuiEmptyState from '../components/reusable/MuiEmptyState.jsx';
 export const Branches = () => {
   return (
     <MuiEmptyState
-      icon={<StorefrontIcon sx={{ fontSize: 64 }} />}
+      icon={<StorefrontIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />}
       title="Branch Network Directory"
       subtitle="Directory of 14 Enjoy Burger branches, manager profiles, and physical locations will be mounted here in Milestone 2."
       action={
-        <Button variant="outlined" component={Link} to="/dashboard">
+        <MuiButton variant="outlined" size="small" component={Link} to="/dashboard">
           Back to Dashboard
-        </Button>
+        </MuiButton>
       }
     />
   );

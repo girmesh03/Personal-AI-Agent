@@ -41,13 +41,14 @@ export const MuiAppbar = ({ variant = 'public', leading, actions, sx }) => {
 
   return (
     <AppBar
-      position={isPublic ? 'fixed' : 'static'}
+      position="static"
       elevation={0}
       sx={{
         bgcolor: 'background.paper',
         color: 'text.primary',
         borderBottom: 1,
         borderColor: 'divider',
+        flexShrink: 0,
         ...sx,
       }}
     >

@@ -12,17 +12,8 @@ import PublicLayout from './layouts/PublicLayout.jsx';
 import ProtectedRoute from './routes/ProtectedRoute.jsx';
 import PublicRoute from './routes/PublicRoute.jsx';
 import NotFound from './pages/NotFound.jsx';
-import LoadingSpinner from './components/reusable/LoadingSpinner.jsx';
-
-/**
- * Global fallback UI displayed during root route hydration.
- *
- * @component RootHydrateFallback
- * @returns {JSX.Element} Full-screen loading indicator.
- */
-const RootHydrateFallback = () => (
-  <LoadingSpinner message="Initializing application..." height="100vh" size="large" />
-);
+import GlobalErrorFallback from './components/common/GlobalErrorFallback.jsx';
+import RootHydrateFallback from './components/common/RootHydrateFallback.jsx';
 
 /**
  * Application browser router configuration with nested layouts, guards, and lazy-loaded routes.
@@ -36,7 +27,7 @@ export const router = createBrowserRouter([
     path: '/',
     Component: App,
     HydrateFallback: RootHydrateFallback,
-    ErrorBoundary: NotFound,
+    ErrorBoundary: GlobalErrorFallback,
     children: [
       // 1. PUBLIC ROUTES (Guarded by PublicRoute)
       {

@@ -7,7 +7,7 @@ import { Link as RouterLink } from 'react-router';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import PropTypes from 'prop-types';
-import { APP_NAME, DASHBOARD_ROUTE } from '../utils/constants.js';
+import { APP_NAME, ROUTES } from '../utils/constants.js';
 
 /**
  * Standard product mark and title header motif linking to dashboard or home.
@@ -15,11 +15,11 @@ import { APP_NAME, DASHBOARD_ROUTE } from '../utils/constants.js';
  * @component Logo
  * @param {object} props - Component properties.
  * @param {boolean} [props.showName=true] - Render the application title beside the mark.
- * @param {string} [props.to=DASHBOARD_ROUTE] - Router destination path.
+ * @param {string} [props.to=ROUTES.DASHBOARD] - Router destination path.
  * @param {object} [props.sx] - Material-UI sx style overrides.
  * @returns {JSX.Element} Rendered branding link element.
  */
-export const Logo = ({ showName = true, to = DASHBOARD_ROUTE, sx }) => (
+export const Logo = ({ showName = true, to = ROUTES.DASHBOARD, sx }) => (
   <Box
     component={RouterLink}
     to={to}

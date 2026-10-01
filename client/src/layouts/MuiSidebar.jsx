@@ -24,6 +24,7 @@ import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import DashboardIcon from "@mui/icons-material/Dashboard";
+import SmartToyIcon from "@mui/icons-material/SmartToy";
 import DescriptionIcon from "@mui/icons-material/Description";
 import StorefrontIcon from "@mui/icons-material/Storefront";
 import PersonIcon from "@mui/icons-material/Person";
@@ -34,8 +35,7 @@ import { selectAuthUser } from "../redux/features/authSlice.js";
 import Logo from "./Logo.jsx";
 import {
   APPBAR_MIN_HEIGHT,
-  DASHBOARD_ROUTE,
-  PROFILE_ROUTE,
+  ROUTES,
   SIDEBAR_FULL_WIDTH,
   SIDEBAR_MINI_WIDTH,
 } from "../utils/constants.js";
@@ -47,14 +47,15 @@ import {
  */
 const NAV_ITEMS = Object.freeze([
   {
-    path: DASHBOARD_ROUTE,
+    path: ROUTES.DASHBOARD,
     icon: DashboardIcon,
     label: "Dashboard",
     exact: true,
   },
-  { path: "/reports", icon: DescriptionIcon, label: "Reports", exact: true },
-  { path: "/branches", icon: StorefrontIcon, label: "Branches", exact: true },
-  { path: PROFILE_ROUTE, icon: PersonIcon, label: "Profile", exact: true },
+  { path: ROUTES.CHAT, icon: SmartToyIcon, label: "Chat", exact: false },
+  { path: ROUTES.REPORTS, icon: DescriptionIcon, label: "Reports", exact: false },
+  { path: ROUTES.BRANCHES, icon: StorefrontIcon, label: "Branches", exact: false },
+  { path: ROUTES.PROFILE, icon: PersonIcon, label: "Profile", exact: true },
 ]);
 
 /**
@@ -103,7 +104,7 @@ const MuiSidebar = ({ mode, onToggleMode, mobileOpen, onMobileClose }) => {
 
   const handleProfileClick = () => {
     handleMenuClose();
-    navigate(PROFILE_ROUTE);
+    navigate(ROUTES.PROFILE);
   };
 
   const handleLogoutClick = () => {
@@ -124,7 +125,7 @@ const MuiSidebar = ({ mode, onToggleMode, mobileOpen, onMobileClose }) => {
   ) : (
     /* Full (or overlay): Logo left, mode/close toggle right. */
     <>
-      <Logo to={DASHBOARD_ROUTE} sx={{ minWidth: 0 }} />
+      <Logo to={ROUTES.DASHBOARD} sx={{ minWidth: 0 }} />
       <Box sx={{ flexGrow: 1 }} />
       <IconButton
         size="small"

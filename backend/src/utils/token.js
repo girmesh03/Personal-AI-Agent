@@ -46,9 +46,9 @@ export const verifyAccessToken = (token) => {
     return jwt.verify(token, env.JWT_ACCESS_SECRET);
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
-      throw new UnauthenticatedError('Access token has expired', 'UNAUTHENTICATED');
+      throw new UnauthenticatedError('Session has expired. Please log in again.', 'UNAUTHENTICATED');
     }
-    throw new UnauthenticatedError('Invalid access token', 'UNAUTHENTICATED');
+    throw new UnauthenticatedError('Please log in again.', 'UNAUTHENTICATED');
   }
 };
 
@@ -64,9 +64,9 @@ export const verifyRefreshToken = (token) => {
     return jwt.verify(token, env.JWT_REFRESH_SECRET);
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
-      throw new UnauthenticatedError('Refresh token has expired', 'UNAUTHENTICATED');
+      throw new UnauthenticatedError('Session has expired. Please log in again.', 'UNAUTHENTICATED');
     }
-    throw new UnauthenticatedError('Invalid refresh token', 'UNAUTHENTICATED');
+    throw new UnauthenticatedError('Please log in again.', 'UNAUTHENTICATED');
   }
 };
 
@@ -115,7 +115,9 @@ export const setAccessTokenCookie = (res, accessToken) => {
  */
 export const clearAccessTokenCookie = (res) => {
   const { maxAge, ...clearOptions } = ACCESS_COOKIE_OPTIONS;
-  res.clearCookie('accessToken', clearOptions);
+  res.clearCookie('accessToken', { ...clearOptions, path: '/' });
+  res.clearCookie('accessToken', { ...clearOptions, path: '/api/v1' });
+  res.clearCookie('accessToken', { ...clearOptions, path: '/api/v1/auth' });
 };
 
 /**
@@ -131,13 +133,17 @@ export const setRefreshTokenCookie = (res, refreshToken) => {
 
 /**
  * Clears the refresh token cookie from the client upon logout or invalidation.
+ * Defensively clears both root path and common auth subpaths to eliminate any legacy/orphaned cookies.
  * @function clearRefreshTokenCookie
  * @param {import('express').Response} res - Express response object.
  * @returns {void}
  */
 export const clearRefreshTokenCookie = (res) => {
   const { maxAge, ...clearOptions } = REFRESH_COOKIE_OPTIONS;
-  res.clearCookie('refreshToken', clearOptions);
+  res.clearCookie('refreshToken', { ...clearOptions, path: '/' });
+  res.clearCookie('refreshToken', { ...clearOptions, path: '/api/v1' });
+  res.clearCookie('refreshToken', { ...clearOptions, path: '/api/v1/auth' });
+  res.clearCookie('refreshToken', { ...clearOptions, path: '/api/v1/auth/refresh' });
 };
 
 /**

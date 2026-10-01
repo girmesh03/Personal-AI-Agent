@@ -35,7 +35,7 @@ export const protect = asyncHandler(async (req, _res, next) => {
   }
 
   if (!token) {
-    throw new UnauthenticatedError('Authentication token required', 'UNAUTHENTICATED');
+    throw new UnauthenticatedError('Please log in to continue.', 'UNAUTHENTICATED');
   }
 
   // verifyAccessToken throws UnauthenticatedError on expired or invalid token
@@ -43,7 +43,7 @@ export const protect = asyncHandler(async (req, _res, next) => {
 
   const user = await User.findById(decoded.id).select('-password');
   if (!user) {
-    throw new UnauthenticatedError('User belonging to this token no longer exists', 'UNAUTHENTICATED');
+    throw new UnauthenticatedError('Account not found. Please log in again.', 'UNAUTHENTICATED');
   }
 
   req.user = user;

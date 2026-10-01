@@ -4,8 +4,8 @@
  */
 
 import { Link } from 'react-router';
-import Button from '@mui/material/Button';
 import PersonIcon from '@mui/icons-material/Person';
+import MuiButton from '../components/reusable/MuiButton.jsx';
 import MuiEmptyState from '../components/reusable/MuiEmptyState.jsx';
 
 /**
@@ -17,13 +17,13 @@ import MuiEmptyState from '../components/reusable/MuiEmptyState.jsx';
 export const Profile = () => {
   return (
     <MuiEmptyState
-      icon={<PersonIcon sx={{ fontSize: 64 }} />}
+      icon={<PersonIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />}
       title="Supervisor Profile & Account Settings"
       subtitle="Supervisor name customization, virtual fullName preview, dedicated avatar updates, and password security controls will be mounted here in Milestone 7."
       action={
-        <Button variant="outlined" component={Link} to="/dashboard">
+        <MuiButton variant="outlined" size="small" component={Link} to="/dashboard">
           Back to Dashboard
-        </Button>
+        </MuiButton>
       }
     />
   );

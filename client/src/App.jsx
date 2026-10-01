@@ -1,29 +1,31 @@
 /**
  * @module App
- * @description Root application component mounted at path '/' by the router, handling session hydration.
+ * @description Root application layout component mounted at path '/' by the router.
+ * Silently validates the persisted supervisor session in the background on cold mount.
  */
 
-import { useEffect } from 'react';
 import { Outlet } from 'react-router';
-import { useDispatch } from 'react-redux';
-import { useGetProfileQuery } from './redux/features/userApiSlice.js';
-import { setLoading } from './redux/features/authSlice.js';
+import { useSelector } from 'react-redux';
+import { useGetProfileQuery } from './redux/features/userSlice.js';
+import { selectIsAuthenticated } from './redux/features/authSlice.js';
 
 /**
- * Root application component handling session initialization and rendering active route outlet.
+ * Root application component rendering active route outlet and managing silent session validation.
+ * Uses redux-persist for instant synchronous rehydration from localStorage while silently revalidating
+ * with the server once on cold boot mount. Skips query for unauthenticated visitors to prevent 401 errors.
  *
  * @component App
  * @returns {JSX.Element} React Router Outlet wrapper.
  */
 export const App = () => {
-  const dispatch = useDispatch();
-  const { isLoading } = useGetProfileQuery();
+  const isAuthenticated = useSelector(selectIsAuthenticated);
 
-  useEffect(() => {
-    if (!isLoading) {
-      dispatch(setLoading(false));
-    }
-  }, [isLoading, dispatch]);
+  // Silently revalidate active session with server once on mount (stale-while-revalidate).
+  // Skips entirely for public visitors to prevent unauthenticated 401 errors and re-fetch loops.
+  useGetProfileQuery(undefined, {
+    skip: !isAuthenticated,
+    refetchOnMountOrArgChange: false,
+  });
 
   return <Outlet />;
 };

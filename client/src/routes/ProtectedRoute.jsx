@@ -7,6 +7,7 @@ import { Navigate, Outlet, useLocation } from 'react-router';
 import { useSelector } from 'react-redux';
 import { selectIsAuthenticated, selectAuthLoading } from '../redux/features/authSlice.js';
 import LoadingSpinner from '../components/reusable/LoadingSpinner.jsx';
+import { ROUTES } from '../utils/constants.js';
 
 /**
  * Route guard component restricting child route access to authenticated supervisors.
@@ -25,7 +26,7 @@ export const ProtectedRoute = () => {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
+    return <Navigate to={ROUTES.LOGIN} replace state={{ from: location }} />;
   }
 
   return <Outlet />;

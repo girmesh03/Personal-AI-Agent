@@ -52,7 +52,7 @@ export const errorHandler = (err, req, res, _next) => {
 
   // 4. JWT Authentication errors
   else if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
-    const message = err.name === 'TokenExpiredError' ? 'Session token has expired' : 'Invalid session token';
+    const message = err.name === 'TokenExpiredError' ? 'Your session has expired. Please log in again.' : 'Please log in again.';
     error = new UnauthenticatedError(message, 'UNAUTHENTICATED');
   }
 
@@ -79,7 +79,7 @@ export const errorHandler = (err, req, res, _next) => {
 
   return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
     success: false,
-    message: env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
+    message: env.NODE_ENV === 'production' ? 'Something went wrong on our end. Please try again later.' : err.message,
     data: null,
     errorCode: 'INTERNAL_SERVER_ERROR',
     details: null,

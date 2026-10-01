@@ -93,7 +93,7 @@ export const store = configureStore({
         ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER],
       },
     }).concat(apiSlice.middleware),
-  devTools: process.env.NODE_ENV !== 'production',
+  devTools: Boolean(typeof import.meta !== 'undefined' && import.meta.env?.DEV),
 });
 
 /**

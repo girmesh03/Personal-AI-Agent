@@ -4,8 +4,8 @@
  */
 
 import { Link } from 'react-router';
-import Button from '@mui/material/Button';
 import DashboardIcon from '@mui/icons-material/Dashboard';
+import MuiButton from '../components/reusable/MuiButton.jsx';
 import MuiEmptyState from '../components/reusable/MuiEmptyState.jsx';
 
 /**
@@ -17,13 +17,13 @@ import MuiEmptyState from '../components/reusable/MuiEmptyState.jsx';
 export const Dashboard = () => {
   return (
     <MuiEmptyState
-      icon={<DashboardIcon sx={{ fontSize: 64 }} />}
+      icon={<DashboardIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />}
       title="Operational Dashboard"
       subtitle="Operational KPI cards, branch breakdown charts (@mui/x-charts), and recent shift reports will be mounted here in Milestone 7."
       action={
-        <Button variant="contained" component={Link} to="/chat">
+        <MuiButton variant="contained" size="small" component={Link} to="/chat">
           Start Shift Inspection
-        </Button>
+        </MuiButton>
       }
     />
   );

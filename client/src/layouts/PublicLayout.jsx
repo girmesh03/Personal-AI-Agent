@@ -6,7 +6,6 @@
 import { Link as RouterLink, Outlet, useNavigation } from 'react-router';
 import { useSelector } from 'react-redux';
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import LoginIcon from '@mui/icons-material/Login';
@@ -22,9 +21,7 @@ import { selectAuthStatus } from '../redux/features/authSlice.js';
 import useLogout from '../hooks/useLogout.js';
 import {
   AUTH_STATUSES,
-  LOGIN_ROUTE,
-  LOGIN_REDIRECT_ROUTE,
-  LANDING_ROUTE,
+  ROUTES,
 } from '../utils/constants.js';
 
 /**
@@ -58,18 +55,18 @@ export const PublicLayout = ({ children }) => {
         </Tooltip>
       ) : (
         <>
-          <Button
+          <MuiButton
             component={RouterLink}
-            to={LOGIN_ROUTE}
+            to={ROUTES.LOGIN}
             size="small"
             startIcon={<LoginIcon fontSize="small" />}
             sx={{ display: { xs: 'none', sm: 'inline-flex' }, flexShrink: 0 }}
           >
             Log in
-          </Button>
+          </MuiButton>
           <IconButton
             component={RouterLink}
-            to={LOGIN_ROUTE}
+            to={ROUTES.LOGIN}
             size="small"
             aria-label="Log in"
             sx={{ display: { xs: 'inline-flex', sm: 'none' } }}
@@ -78,8 +75,9 @@ export const PublicLayout = ({ children }) => {
           </IconButton>
           <MuiButton
             component={RouterLink}
-            to="/register"
+            to={ROUTES.REGISTER}
             variant="contained"
+            size="small"
             startIcon={<PersonAddIcon fontSize="small" />}
             sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
           >
@@ -87,7 +85,7 @@ export const PublicLayout = ({ children }) => {
           </MuiButton>
           <IconButton
             component={RouterLink}
-            to="/register"
+            to={ROUTES.REGISTER}
             size="small"
             aria-label="Sign up"
             sx={{ display: { xs: 'inline-flex', sm: 'none' } }}
@@ -100,22 +98,35 @@ export const PublicLayout = ({ children }) => {
   );
 
   return (
-    <Box sx={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+    <Box
+      sx={{
+        height: '100vh',
+        width: '100vw',
+        maxWidth: '100%',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
       <MuiAppbar
         variant="public"
         leading={
           <Logo
             showName
-            to={isAuthenticated ? LOGIN_REDIRECT_ROUTE : LANDING_ROUTE}
+            to={isAuthenticated ? ROUTES.LOGIN_REDIRECT : ROUTES.LANDING}
           />
         }
         actions={actions}
       />
       <Box
         component="main"
+        id="public-outlet-container"
         sx={{
           flexGrow: 1,
+          minHeight: 0,
+          height: '100%',
           overflowY: 'auto',
+          overflowX: 'hidden',
         }}
       >
         {navigation.state === 'loading' ? (

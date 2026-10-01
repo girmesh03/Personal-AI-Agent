@@ -127,7 +127,7 @@ export const refreshToken = asyncHandler(async (req, res) => {
   }
 
   if (!token) {
-    throw new UnauthenticatedError('Refresh token required', 'NO_REFRESH_TOKEN');
+    throw new UnauthenticatedError('Please log in again to continue.', 'NO_REFRESH_TOKEN');
   }
 
   // verifyRefreshToken throws UnauthenticatedError on invalid or expired token
@@ -135,7 +135,7 @@ export const refreshToken = asyncHandler(async (req, res) => {
 
   const user = await User.findById(decoded.id);
   if (!user) {
-    throw new UnauthenticatedError('User account not found', 'USER_NOT_FOUND');
+    throw new UnauthenticatedError('User account could not be found. Please log in again.', 'USER_NOT_FOUND');
   }
 
   // Rotate tokens: issue new access token and fresh refresh token
@@ -174,9 +174,30 @@ export const logout = asyncHandler(async (_req, res) => {
   });
 });
 
+/**
+ * Google OAuth authentication placeholder stub.
+ *
+ * @function googleAuthStub
+ * @param {import('express').Request} _req - Express request object (unused).
+ * @param {import('express').Response} res - Express response object.
+ * @returns {Promise<void>}
+ */
+export const googleAuthStub = asyncHandler(async (_req, res) => {
+  res.status(HTTP_STATUS.OK).json({
+    success: true,
+    message: 'Google authentication service is currently in development. Please use your corporate email credentials.',
+    data: {
+      provider: 'google',
+      status: 'stub',
+      available: false,
+    },
+  });
+});
+
 export default {
   register,
   login,
   refreshToken,
   logout,
+  googleAuthStub,
 };

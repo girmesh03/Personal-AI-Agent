@@ -42,6 +42,29 @@ export const AppTheme = ({ children }) => {
         shadows,
         shape,
         components: {
+          MuiCssBaseline: {
+            styleOverrides: {
+              html: {
+                height: '100%',
+                width: '100%',
+                overflow: 'hidden',
+                margin: 0,
+                padding: 0,
+              },
+              body: {
+                height: '100%',
+                width: '100%',
+                overflow: 'hidden',
+                margin: 0,
+                padding: 0,
+              },
+              '#root': {
+                height: '100%',
+                width: '100%',
+                overflow: 'hidden',
+              },
+            },
+          },
           ...inputsCustomizations,
           ...dataDisplayCustomizations,
           ...feedbackCustomizations,

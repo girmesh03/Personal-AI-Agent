@@ -1,16 +1,17 @@
 /**
- * @module redux/features/userApiSlice
+ * @module redux/features/userSlice
  * @description Injected RTK Query endpoints for supervisor profile, dedicated avatar routes, and password changes.
+ * Adheres to standard slice naming convention (<name>Slice.js).
  */
 
 import { apiSlice } from '../app/apiSlice.js';
-import { updateUserProfile } from './authSlice.js';
+import { setCredentials, logout, updateUserProfile } from './authSlice.js';
 
 /**
  * User and profile API endpoints injected into the core RTK Query slice.
  * @constant
  */
-export const userApiSlice = apiSlice.injectEndpoints({
+export const userSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     getProfile: builder.query({
       query: () => '/users/profile',
@@ -18,11 +19,14 @@ export const userApiSlice = apiSlice.injectEndpoints({
       async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
         try {
           const { data } = await queryFulfilled;
-          if (data?.data?.user) {
-            dispatch(updateUserProfile({ user: data.data.user }));
+          // Normalized by apiSlice: data.user is directly accessible
+          const user = data?.user || data?.data?.user;
+          if (user) {
+            dispatch(setCredentials({ user }));
           }
         } catch {
-          // Handled by base query / caller
+          // If session profile retrieval fails (e.g. 401 expired cookie), purge state cleanly
+          dispatch(logout());
         }
       },
     }),
@@ -36,11 +40,12 @@ export const userApiSlice = apiSlice.injectEndpoints({
       async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
         try {
           const { data } = await queryFulfilled;
-          if (data?.data?.user) {
-            dispatch(updateUserProfile({ user: data.data.user }));
+          const user = data?.user || data?.data?.user;
+          if (user) {
+            dispatch(updateUserProfile({ user }));
           }
         } catch {
-          // Handled by caller
+          // Handled by caller UI
         }
       },
     }),
@@ -54,11 +59,12 @@ export const userApiSlice = apiSlice.injectEndpoints({
       async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
         try {
           const { data } = await queryFulfilled;
-          if (data?.data?.user) {
-            dispatch(updateUserProfile({ user: data.data.user }));
+          const user = data?.user || data?.data?.user;
+          if (user) {
+            dispatch(updateUserProfile({ user }));
           }
         } catch {
-          // Handled by caller
+          // Handled by caller UI
         }
       },
     }),
@@ -71,11 +77,12 @@ export const userApiSlice = apiSlice.injectEndpoints({
       async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
         try {
           const { data } = await queryFulfilled;
-          if (data?.data?.user) {
-            dispatch(updateUserProfile({ user: data.data.user }));
+          const user = data?.user || data?.data?.user;
+          if (user) {
+            dispatch(updateUserProfile({ user }));
           }
         } catch {
-          // Handled by caller
+          // Handled by caller UI
         }
       },
     }),
@@ -99,6 +106,6 @@ export const {
   useUpdateAvatarMutation,
   useRemoveAvatarMutation,
   useUpdatePasswordMutation,
-} = userApiSlice;
+} = userSlice;
 
-export default userApiSlice;
+export default userSlice;

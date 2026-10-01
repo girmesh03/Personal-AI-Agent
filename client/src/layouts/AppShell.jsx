@@ -32,7 +32,7 @@ export const AppShell = () => {
   const closeMobile = useCallback(() => setMobileOpen(false), []);
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+    <Box sx={{ display: 'flex', height: '100vh', width: '100vw', maxWidth: '100%', overflow: 'hidden' }}>
       <MuiSidebar
         mode={mode}
         onToggleMode={toggleMode}
@@ -40,12 +40,13 @@ export const AppShell = () => {
         onMobileClose={closeMobile}
       />
       <Box
-        component="main"
         sx={{
           flexGrow: 1,
           minWidth: 0,
+          height: '100%',
           display: 'flex',
           flexDirection: 'column',
+          overflow: 'hidden',
         }}
       >
         <MuiAppbar
@@ -71,9 +72,14 @@ export const AppShell = () => {
           }
         />
         <Box
+          component="main"
+          id="protected-outlet-container"
           sx={{
             flexGrow: 1,
+            minHeight: 0,
+            height: '100%',
             overflowY: 'auto',
+            overflowX: 'hidden',
           }}
         >
           {navigation.state === 'loading' ? (

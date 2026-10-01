@@ -4,8 +4,8 @@
  */
 
 import { Link } from 'react-router';
-import Button from '@mui/material/Button';
 import ArticleIcon from '@mui/icons-material/Article';
+import MuiButton from '../components/reusable/MuiButton.jsx';
 import MuiEmptyState from '../components/reusable/MuiEmptyState.jsx';
 
 /**
@@ -17,13 +17,13 @@ import MuiEmptyState from '../components/reusable/MuiEmptyState.jsx';
 export const ReportDetail = () => {
   return (
     <MuiEmptyState
-      icon={<ArticleIcon sx={{ fontSize: 64 }} />}
+      icon={<ArticleIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />}
       title="Report Detail View"
       subtitle="Full immutable report view with audit timestamps, branch shift breakdown, and 4 manual delivery triggers will be displayed here in Milestone 7."
       action={
-        <Button variant="outlined" component={Link} to="/reports">
+        <MuiButton variant="outlined" size="small" component={Link} to="/reports">
           Back to Reports
-        </Button>
+        </MuiButton>
       }
     />
   );

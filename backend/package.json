@@ -5,8 +5,11 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
-    "verify": "node scripts/verifyCodebase.js"
+    "dev": "node scripts/killPort.js 4000 && nodemon src/server.js",
+    "verify": "node scripts/verifyCodebase.js",
+    "test:auth": "node scripts/testAuth.js",
+    "test:users": "node scripts/testUsers.js",
+    "test": "node scripts/testAuth.js && node scripts/testUsers.js"
   },
   "keywords": [],
   "author": "",

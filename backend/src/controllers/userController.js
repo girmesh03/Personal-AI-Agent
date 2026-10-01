@@ -145,13 +145,13 @@ export const updatePassword = asyncHandler(async (req, res) => {
   // Load user with password hash
   const user = await User.findById(req.user._id).select('+password');
   if (!user) {
-    throw new UnauthenticatedError('User account not found', 'USER_NOT_FOUND');
+    throw new UnauthenticatedError('Please log in again to continue.', 'USER_NOT_FOUND');
   }
 
   // Verify current password
   const isMatch = await user.matchPassword(currentPassword);
   if (!isMatch) {
-    throw new UnauthenticatedError('Current password is incorrect', 'INVALID_CREDENTIALS');
+    throw new UnauthenticatedError('The current password you entered is incorrect. Please try again.', 'INVALID_CREDENTIALS');
   }
 
   // Assign new password (pre-save hook handles bcrypt hashing)
