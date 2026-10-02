@@ -169,3 +169,18 @@ export const clearAuthCookies = (res) => {
   clearAccessTokenCookie(res);
   clearRefreshTokenCookie(res);
 };
+
+export default {
+  generateAccessToken,
+  generateRefreshToken,
+  verifyAccessToken,
+  verifyRefreshToken,
+  ACCESS_COOKIE_OPTIONS,
+  REFRESH_COOKIE_OPTIONS,
+  setAccessTokenCookie,
+  clearAccessTokenCookie,
+  setRefreshTokenCookie,
+  clearRefreshTokenCookie,
+  setAuthCookies,
+  clearAuthCookies,
+};

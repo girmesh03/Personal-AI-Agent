@@ -13,6 +13,8 @@ import { NotFoundError } from '../errors/CustomError.js';
  * @param {import('express').NextFunction} next - Express next middleware function.
  * @returns {void}
  */
-export const notFoundHandler = (req, _res, next) => {
-  next(new NotFoundError(`Cannot ${req.method} ${req.originalUrl}`));
+export const notFoundHandler = (_req, _res, next) => {
+  next(new NotFoundError('The requested endpoint or resource was not found.'));
 };
+
+export default notFoundHandler;

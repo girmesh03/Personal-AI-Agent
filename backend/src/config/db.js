@@ -33,7 +33,7 @@ const BACKOFF_CONFIG = Object.freeze({
  */
 const MONGO_OPTIONS = Object.freeze({
   maxPoolSize: 10,
-  serverSelectionTimeoutMS: 5000,
+  serverSelectionTimeoutMS: 30000,
   socketTimeoutMS: 45000,
 });
 
@@ -64,6 +64,10 @@ const calculateBackoffDelay = (attempt) => {
 export const connectDB = async () => {
   if (isShuttingDown) {
     logger.warn('Skipping connectDB: application is shutting down');
+    return mongoose.connection;
+  }
+
+  if (mongoose.connection.readyState === 1) {
     return mongoose.connection;
   }
 
@@ -127,3 +131,8 @@ mongoose.connection.on('disconnected', async () => {
     logger.error(`Automatic reconnection failed: ${err.message}`);
   }
 });
+
+export default {
+  connectDB,
+  disconnectDB,
+};

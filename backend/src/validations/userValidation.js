@@ -65,6 +65,33 @@ export const updateProfileValidation = [
       }
       return true;
     }),
+
+  // Invariant: strictly zero archivedAt field allowed on User
+  body('archivedAt')
+    .custom((value) => {
+      if (value !== undefined) {
+        throw new Error('archivedAt field is prohibited on User.');
+      }
+      return true;
+    }),
+
+  // Invariant: strictly zero _id modification allowed on User
+  body('_id')
+    .custom((value) => {
+      if (value !== undefined) {
+        throw new Error('User identifier cannot be changed.');
+      }
+      return true;
+    }),
+
+  // Invariant: password modification must use dedicated /password endpoint
+  body('password')
+    .custom((value) => {
+      if (value !== undefined) {
+        throw new Error('Password must be updated via the dedicated password endpoint.');
+      }
+      return true;
+    }),
 ];
 
 /**

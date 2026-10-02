@@ -39,11 +39,11 @@ export class CustomError extends Error {
  */
 export class BadRequestError extends CustomError {
   /**
-   * @param {string} [message='Bad Request'] - Error message.
+   * @param {string} [message='Invalid request data. Please check your inputs.'] - Error message.
    * @param {string} [errorCode='BAD_REQUEST'] - Machine-readable error code.
    * @param {Array<Object>|null} [details=null] - Optional error details.
    */
-  constructor(message = 'Bad Request', errorCode = 'BAD_REQUEST', details = null) {
+  constructor(message = 'Invalid request data. Please check your inputs.', errorCode = 'BAD_REQUEST', details = null) {
     super(message, HTTP_STATUS.BAD_REQUEST, errorCode, details);
   }
 }
@@ -57,11 +57,11 @@ export class BadRequestError extends CustomError {
  */
 export class UnauthenticatedError extends CustomError {
   /**
-   * @param {string} [message='Authentication required'] - Error message.
+   * @param {string} [message='Please log in again to continue.'] - Error message.
    * @param {string} [errorCode='UNAUTHENTICATED'] - Machine-readable error code.
    * @param {Array<Object>|null} [details=null] - Optional error details.
    */
-  constructor(message = 'Authentication required', errorCode = 'UNAUTHENTICATED', details = null) {
+  constructor(message = 'Please log in again to continue.', errorCode = 'UNAUTHENTICATED', details = null) {
     super(message, HTTP_STATUS.UNAUTHENTICATED, errorCode, details);
   }
 }
@@ -74,11 +74,11 @@ export class UnauthenticatedError extends CustomError {
  */
 export class ForbiddenError extends CustomError {
   /**
-   * @param {string} [message='Access forbidden'] - Error message.
+   * @param {string} [message='You do not have permission to access this resource.'] - Error message.
    * @param {string} [errorCode='FORBIDDEN'] - Machine-readable error code.
    * @param {Array<Object>|null} [details=null] - Optional error details.
    */
-  constructor(message = 'Access forbidden', errorCode = 'FORBIDDEN', details = null) {
+  constructor(message = 'You do not have permission to access this resource.', errorCode = 'FORBIDDEN', details = null) {
     super(message, HTTP_STATUS.FORBIDDEN, errorCode, details);
   }
 }
@@ -91,11 +91,11 @@ export class ForbiddenError extends CustomError {
  */
 export class NotFoundError extends CustomError {
   /**
-   * @param {string} [message='Resource not found'] - Error message.
+   * @param {string} [message='The requested resource was not found.'] - Error message.
    * @param {string} [errorCode='NOT_FOUND'] - Machine-readable error code.
    * @param {Array<Object>|null} [details=null] - Optional error details.
    */
-  constructor(message = 'Resource not found', errorCode = 'NOT_FOUND', details = null) {
+  constructor(message = 'The requested resource was not found.', errorCode = 'NOT_FOUND', details = null) {
     super(message, HTTP_STATUS.NOT_FOUND, errorCode, details);
   }
 }
@@ -108,11 +108,11 @@ export class NotFoundError extends CustomError {
  */
 export class ConflictError extends CustomError {
   /**
-   * @param {string} [message='Resource conflict'] - Error message.
+   * @param {string} [message='A resource with this information already exists.'] - Error message.
    * @param {string} [errorCode='CONFLICT'] - Machine-readable error code.
    * @param {Array<Object>|null} [details=null] - Optional error details.
    */
-  constructor(message = 'Resource conflict', errorCode = 'CONFLICT', details = null) {
+  constructor(message = 'A resource with this information already exists.', errorCode = 'CONFLICT', details = null) {
     super(message, HTTP_STATUS.CONFLICT, errorCode, details);
   }
 }
@@ -125,11 +125,11 @@ export class ConflictError extends CustomError {
  */
 export class ValidationError extends CustomError {
   /**
-   * @param {string} [message='Validation failed'] - Error message.
+   * @param {string} [message='Please check the entered information and correct any validation issues.'] - Error message.
    * @param {Array<Object>|null} [details=null] - Field-specific validation error objects.
    * @param {string} [errorCode='VALIDATION_ERROR'] - Machine-readable error code.
    */
-  constructor(message = 'Validation failed', details = null, errorCode = 'VALIDATION_ERROR') {
+  constructor(message = 'Please check the entered information and correct any validation issues.', details = null, errorCode = 'VALIDATION_ERROR') {
     super(message, HTTP_STATUS.UNPROCESSABLE_ENTITY, errorCode, details);
   }
 }
@@ -142,11 +142,11 @@ export class ValidationError extends CustomError {
  */
 export class TooManyRequestsError extends CustomError {
   /**
-   * @param {string} [message='Too many requests, please try again later'] - Error message.
+   * @param {string} [message='Too many requests. Please wait a moment and try again.'] - Error message.
    * @param {string} [errorCode='TOO_MANY_REQUESTS'] - Machine-readable error code.
    * @param {Array<Object>|null} [details=null] - Optional error details.
    */
-  constructor(message = 'Too many requests, please try again later', errorCode = 'TOO_MANY_REQUESTS', details = null) {
+  constructor(message = 'Too many requests. Please wait a moment and try again.', errorCode = 'TOO_MANY_REQUESTS', details = null) {
     super(message, HTTP_STATUS.TOO_MANY_REQUESTS, errorCode, details);
   }
 }
@@ -159,11 +159,11 @@ export class TooManyRequestsError extends CustomError {
  */
 export class InternalServerError extends CustomError {
   /**
-   * @param {string} [message='Internal server error'] - Error message.
+   * @param {string} [message='Something went wrong on our end. Please try again later.'] - Error message.
    * @param {string} [errorCode='INTERNAL_SERVER_ERROR'] - Machine-readable error code.
    * @param {Array<Object>|null} [details=null] - Optional error details.
    */
-  constructor(message = 'Internal server error', errorCode = 'INTERNAL_SERVER_ERROR', details = null) {
+  constructor(message = 'Something went wrong on our end. Please try again later.', errorCode = 'INTERNAL_SERVER_ERROR', details = null) {
     super(message, HTTP_STATUS.INTERNAL_SERVER_ERROR, errorCode, details);
   }
 }
@@ -176,11 +176,11 @@ export class InternalServerError extends CustomError {
  */
 export class BadGatewayError extends CustomError {
   /**
-   * @param {string} [message='Bad gateway'] - Error message.
+   * @param {string} [message='The service is temporarily unavailable. Please try again later.'] - Error message.
    * @param {string} [errorCode='BAD_GATEWAY'] - Machine-readable error code.
    * @param {Array<Object>|null} [details=null] - Optional error details.
    */
-  constructor(message = 'Bad gateway', errorCode = 'BAD_GATEWAY', details = null) {
+  constructor(message = 'The service is temporarily unavailable. Please try again later.', errorCode = 'BAD_GATEWAY', details = null) {
     super(message, HTTP_STATUS.BAD_GATEWAY, errorCode, details);
   }
 }
@@ -193,11 +193,11 @@ export class BadGatewayError extends CustomError {
  */
 export class ServiceUnavailableError extends CustomError {
   /**
-   * @param {string} [message='Service unavailable'] - Error message.
+   * @param {string} [message='The service is temporarily unavailable. Please try again later.'] - Error message.
    * @param {string} [errorCode='SERVICE_UNAVAILABLE'] - Machine-readable error code.
    * @param {Array<Object>|null} [details=null] - Optional error details.
    */
-  constructor(message = 'Service unavailable', errorCode = 'SERVICE_UNAVAILABLE', details = null) {
+  constructor(message = 'The service is temporarily unavailable. Please try again later.', errorCode = 'SERVICE_UNAVAILABLE', details = null) {
     super(message, HTTP_STATUS.SERVICE_UNAVAILABLE, errorCode, details);
   }
 }
@@ -210,11 +210,26 @@ export class ServiceUnavailableError extends CustomError {
  */
 export class GatewayTimeoutError extends CustomError {
   /**
-   * @param {string} [message='Gateway timeout'] - Error message.
+   * @param {string} [message='The request timed out. Please try again later.'] - Error message.
    * @param {string} [errorCode='GATEWAY_TIMEOUT'] - Machine-readable error code.
    * @param {Array<Object>|null} [details=null] - Optional error details.
    */
-  constructor(message = 'Gateway timeout', errorCode = 'GATEWAY_TIMEOUT', details = null) {
+  constructor(message = 'The request timed out. Please try again later.', errorCode = 'GATEWAY_TIMEOUT', details = null) {
     super(message, HTTP_STATUS.GATEWAY_TIMEOUT, errorCode, details);
   }
 }
+
+export default Object.assign(CustomError, {
+  CustomError,
+  BadRequestError,
+  UnauthenticatedError,
+  ForbiddenError,
+  NotFoundError,
+  ConflictError,
+  ValidationError,
+  TooManyRequestsError,
+  InternalServerError,
+  BadGatewayError,
+  ServiceUnavailableError,
+  GatewayTimeoutError,
+});

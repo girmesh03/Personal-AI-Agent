@@ -4,6 +4,7 @@
  * Enforces single-user operational security (strictly zero role-based logic).
  */
 
+import mongoose from 'mongoose';
 import asyncHandler from 'express-async-handler';
 import { User } from '../models/User.js';
 import {
@@ -26,6 +27,7 @@ import {
 /**
  * Registers a new user account (Area Supervisor).
  * Auto-derives firstName and lastName from email if not provided (Invariant 6).
+ * Executes within a Mongoose transaction session.
  *
  * @function register
  * @param {import('express').Request} req - Express request object.
@@ -36,37 +38,51 @@ export const register = asyncHandler(async (req, res) => {
   const validatedBody = req.validated?.body || req.body || {};
   const { email, password, firstName, lastName, position, avatar } = validatedBody;
 
-  // Check if a user with this email already exists
-  const existingUser = await User.findOne({ email });
-  if (existingUser) {
-    throw new ConflictError('A user with this email address already exists.');
+  const session = await mongoose.startSession();
+  try {
+    let userObj;
+
+    await session.withTransaction(async () => {
+      // Check if a user with this email already exists
+      const existingUser = await User.findOne({ email }).session(session);
+      if (existingUser) {
+        throw new ConflictError('A user with this email address already exists.');
+      }
+
+      // Name Auto-Derivation Invariant (Invariant 6)
+      const localPart = email.split('@')[0];
+      const derivedName = localPart.length >= USER_NAME_LENGTH.MIN ? localPart : `${localPart}__`;
+      const resolvedFirstName = (firstName && firstName.trim()) || derivedName;
+      const resolvedLastName = (lastName && lastName.trim()) || derivedName;
+
+      // Create new User document inside the active transaction
+      const [user] = await User.create(
+        [
+          {
+            firstName: resolvedFirstName,
+            lastName: resolvedLastName,
+            email,
+            password,
+            position: position || DEFAULT_POSITION,
+            avatar: avatar || null,
+          },
+        ],
+        { session }
+      );
+
+      userObj = user.toJSON();
+    });
+
+    res.status(HTTP_STATUS.CREATED).json({
+      success: true,
+      message: 'User registered successfully. Please log in.',
+      data: {
+        user: userObj,
+      },
+    });
+  } finally {
+    await session.endSession();
   }
-
-  // Name Auto-Derivation Invariant (Invariant 6)
-  const localPart = email.split('@')[0];
-  const derivedName = localPart.length >= USER_NAME_LENGTH.MIN ? localPart : `${localPart}__`;
-  const resolvedFirstName = (firstName && firstName.trim()) || derivedName;
-  const resolvedLastName = (lastName && lastName.trim()) || derivedName;
-
-  // Create new User document
-  const user = await User.create({
-    firstName: resolvedFirstName,
-    lastName: resolvedLastName,
-    email,
-    password,
-    position: position || DEFAULT_POSITION,
-    avatar: avatar || null,
-  });
-
-  const userObj = user.toJSON();
-
-  res.status(HTTP_STATUS.CREATED).json({
-    success: true,
-    message: 'User registered successfully. Please log in.',
-    data: {
-      user: userObj,
-    },
-  });
 });
 
 /**

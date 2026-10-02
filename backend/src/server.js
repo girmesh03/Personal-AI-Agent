@@ -8,6 +8,7 @@ import app from './app.js';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { connectDB, disconnectDB } from './config/db.js';
+import { startSweeper, stopSweeper } from './jobs/sweeper.js';
 
 let server;
 
@@ -32,6 +33,9 @@ export const startServer = async () => {
       logger.info(`  Client URL:  ${env.CLIENT_ORIGIN}`);
       logger.info(`  Health:      http://localhost:${env.PORT}/api/v1/health`);
       logger.info(`==================================================`);
+
+      // 3. Start background two-pass sweeper after server is listening
+      startSweeper();
     });
 
     return server;
@@ -49,6 +53,9 @@ export const startServer = async () => {
  */
 export const gracefulShutdown = async (signal) => {
   logger.info(`Received ${signal}. Starting graceful shutdown...`);
+
+  // Stop background sweeper timer
+  stopSweeper();
 
   if (server) {
     server.close(async () => {

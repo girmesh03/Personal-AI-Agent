@@ -104,8 +104,77 @@ export const DEFAULT_POSITION = 'Area Supervisor';
 export const SWEEPER_RETENTION_DAYS = 30;
 
 /**
+ * Sweeper archive TTL in seconds (equivalent to 30 days).
+ * @constant
+ * @type {number}
+ */
+export const ARCHIVED_TTL_SECONDS = SWEEPER_RETENTION_DAYS * 24 * 60 * 60;
+
+/**
+ * Sweeper background interval in milliseconds (default: 24 hours).
+ * @constant
+ * @type {number}
+ */
+export const SWEEPER_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+/**
  * Default pagination limit per page.
  * @constant
  * @type {number}
  */
 export const DEFAULT_PAGE_LIMIT = 10;
+
+/**
+ * Branch validation and operational boundaries.
+ * @constant
+ * @type {Readonly<{
+ *   NAME_MIN_LENGTH: number,
+ *   NAME_MAX_LENGTH: number,
+ *   CODE_MIN_LENGTH: number,
+ *   CODE_MAX_LENGTH: number,
+ *   CITY_MAX_LENGTH: number,
+ *   SUBCITY_MAX_LENGTH: number,
+ *   ADDRESS_MAX_LENGTH: number,
+ *   MANAGER_NAME_MAX_LENGTH: number,
+ *   CONTACT_PHONE_MAX_LENGTH: number,
+ *   DEFAULT_CITY: string,
+ *   SEARCH_MAX_LENGTH: number,
+ *   PAGE_LIMIT_MIN: number,
+ *   PAGE_LIMIT_MAX: number,
+ *   ARCHIVE_RETENTION_DAYS: number,
+ * }>}
+ */
+export const BRANCH_CONSTANTS = Object.freeze({
+  NAME_MIN_LENGTH: 1,
+  NAME_MAX_LENGTH: 100,
+  CODE_MIN_LENGTH: 2,
+  CODE_MAX_LENGTH: 20,
+  CITY_MAX_LENGTH: 100,
+  SUBCITY_MAX_LENGTH: 100,
+  ADDRESS_MAX_LENGTH: 255,
+  MANAGER_NAME_MAX_LENGTH: 100,
+  CONTACT_PHONE_MAX_LENGTH: 30,
+  DEFAULT_CITY: 'Addis Ababa',
+  SEARCH_MAX_LENGTH: 100,
+  PAGE_LIMIT_MIN: 1,
+  PAGE_LIMIT_MAX: 100,
+  ARCHIVE_RETENTION_DAYS: 30,
+});
+
+export default {
+  HTTP_STATUS,
+  PASSWORD_REGEX,
+  EMAIL_REGEX,
+  USER_NAME_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  BCRYPT_SALT_ROUNDS,
+  JWT_EXPIRY,
+  COOKIE_MAX_AGE,
+  DEFAULT_POSITION,
+  SWEEPER_RETENTION_DAYS,
+  ARCHIVED_TTL_SECONDS,
+  SWEEPER_INTERVAL_MS,
+  DEFAULT_PAGE_LIMIT,
+  BRANCH_CONSTANTS,
+};
+

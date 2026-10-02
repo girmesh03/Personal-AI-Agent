@@ -16,6 +16,7 @@
     "verify": "npm run verify --workspace=backend && npm run verify --workspace=client",
     "test:auth": "npm run test:auth --workspace=backend",
     "test:users": "npm run test:users --workspace=backend",
-    "test": "npm run test:auth --workspace=backend && npm run test:users --workspace=backend"
+    "test:branches": "npm run test:branches --workspace=backend",
+    "test": "npm run test:auth --workspace=backend && npm run test:users --workspace=backend && npm run test:branches --workspace=backend"
   }
 }

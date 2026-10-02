@@ -32,8 +32,7 @@ export const errorHandler = (err, req, res, _next) => {
   // 1. Mongoose duplicate key error (code 11000)
   if (err.code === 11000) {
     const field = err.keyValue ? Object.keys(err.keyValue)[0] : 'field';
-    const value = err.keyValue ? err.keyValue[field] : '';
-    error = new ConflictError(`Duplicate value for '${field}': '${value}' already exists.`);
+    error = new ConflictError(`A record with this ${field} already exists. Please provide a different value.`);
   }
 
   // 2. Mongoose validation error
@@ -42,12 +41,12 @@ export const errorHandler = (err, req, res, _next) => {
       field: e.path,
       message: e.message,
     }));
-    error = new ValidationError('Mongoose validation failed', details);
+    error = new ValidationError('Please check the entered information and correct any validation issues.', details);
   }
 
   // 3. Mongoose CastError (e.g. invalid ObjectId format)
   else if (err.name === 'CastError') {
-    error = new BadRequestError(`Invalid format for '${err.path}': ${err.value}`);
+    error = new BadRequestError('The provided identifier format is invalid.');
   }
 
   // 4. JWT Authentication errors
@@ -85,3 +84,5 @@ export const errorHandler = (err, req, res, _next) => {
     details: null,
   });
 };
+
+export default errorHandler;

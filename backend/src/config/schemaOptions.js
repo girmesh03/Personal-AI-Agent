@@ -41,3 +41,5 @@ export const BASE_SCHEMA_OPTIONS = Object.freeze({
     },
   },
 });
+
+export default BASE_SCHEMA_OPTIONS;

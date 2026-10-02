@@ -155,3 +155,5 @@ export const logStream = Object.freeze({
     logger.info(message.trim());
   },
 });
+
+export default logger;

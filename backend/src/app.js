@@ -12,6 +12,7 @@ import { env } from './config/env.js';
 import { logStream } from './config/logger.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { HTTP_STATUS } from './utils/constants.js';
 import apiV1Routes from './routes/index.js';
 
 const app = express();
@@ -60,7 +61,7 @@ if (env.NODE_ENV === 'development') {
 
 // 7. System Health Check endpoints
 app.get(['/api/health', '/api/v1/health'], (_req, res) => {
-  res.status(200).json({
+  res.status(HTTP_STATUS.OK).json({
     status: 'UP',
     timestamp: new Date().toISOString(),
     uptime: Math.round(process.uptime()),

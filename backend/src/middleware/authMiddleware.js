@@ -50,4 +50,6 @@ export const protect = asyncHandler(async (req, _res, next) => {
   next();
 });
 
+export const verifyToken = protect;
+
 export default protect;

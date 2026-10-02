@@ -82,6 +82,24 @@ export const registerValidation = [
       }
       return true;
     }),
+
+  // Invariant: strictly zero archivedAt field allowed on User
+  body('archivedAt')
+    .custom((value) => {
+      if (value !== undefined) {
+        throw new Error('archivedAt field is prohibited on User.');
+      }
+      return true;
+    }),
+
+  // Invariant: strictly zero manual _id allowed on User
+  body('_id')
+    .custom((value) => {
+      if (value !== undefined) {
+        throw new Error('User identifier cannot be manually specified.');
+      }
+      return true;
+    }),
 ];
 
 /**
@@ -119,3 +137,8 @@ export const loginValidation = [
       return true;
     }),
 ];
+
+export default {
+  registerValidation,
+  loginValidation,
+};
