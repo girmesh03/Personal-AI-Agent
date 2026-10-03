@@ -7,6 +7,7 @@ import express from 'express';
 import authRoutes from './authRoutes.js';
 import userRoutes from './userRoutes.js';
 import branchRoutes from './branchRoutes.js';
+import reportRoutes from './reportRoutes.js';
 
 const router = express.Router();
 
@@ -18,5 +19,8 @@ router.use('/users', userRoutes);
 
 // Mount branch domain routes (/api/v1/branches)
 router.use('/branches', branchRoutes);
+
+// Mount report domain routes (/api/v1/reports)
+router.use('/reports', reportRoutes);
 
 export default router;

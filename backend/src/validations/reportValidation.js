@@ -7,6 +7,7 @@
 import { body, param, query } from 'express-validator';
 import mongoose from 'mongoose';
 import { REPORT_CONSTANTS } from '../utils/constants.js';
+import { ValidationError } from '../errors/CustomError.js';
 
 /**
  * Validates whether an incoming value is a valid 24-character hexadecimal MongoDB ObjectId.
@@ -15,7 +16,7 @@ import { REPORT_CONSTANTS } from '../utils/constants.js';
  * @param {string} value - Candidate identifier string.
  * @returns {boolean} True if strictly valid MongoDB ObjectId.
  */
-const isValidObjectId = (value) =>
+export const isValidObjectId = (value) =>
   typeof value === 'string' &&
   mongoose.Types.ObjectId.isValid(value) &&
   String(new mongoose.Types.ObjectId(value)) === value;
@@ -324,6 +325,287 @@ export const updateReportValidation = [
 ];
 
 /**
+ * Pure domain validator validating a structured operational report payload.
+ * Completely independent of Express req/res; directly validates in-memory JavaScript objects.
+ * Used by the in-process AI Agent Tool execution pipeline (Task 7.5) and programmatic creators.
+ *
+ * @function validateReportPayload
+ * @param {Object} payload - Raw operational report payload.
+ * @returns {Object} Sanitized, validated operational report payload.
+ * @throws {ValidationError} If semantic domain rules, schema boundaries, or security invariants are violated.
+ */
+export const validateReportPayload = (payload) => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new ValidationError('Report payload must be an object.', [
+      { field: 'body', message: 'Payload must be a non-null object.' },
+    ]);
+  }
+
+  const errors = [];
+
+  // Security Invariants: Prohibited / immutable field rejections
+  const forbiddenFields = [
+    'status',
+    'templateType',
+    'isArchived',
+    'archivedAt',
+    'user',
+    '_id',
+    'role',
+  ];
+  for (const field of forbiddenFields) {
+    if (payload[field] !== undefined) {
+      errors.push({ field, message: `Field '${field}' is strictly prohibited.` });
+    }
+  }
+
+  // 1. Inspection Date
+  if (!payload.date) {
+    errors.push({ field: 'date', message: 'Inspection date is required.' });
+  } else {
+    const d = new Date(payload.date);
+    if (isNaN(d.getTime())) {
+      errors.push({ field: 'date', message: 'Date must be a valid ISO 8601 date string.' });
+    } else {
+      const now = new Date();
+      // Allow up to 24-hour buffer to accommodate global supervisor timezones (up to UTC+14)
+      const maxAllowed = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      if (d > maxAllowed) {
+        errors.push({ field: 'date', message: 'Inspection date cannot be in the future.' });
+      }
+    }
+  }
+
+  // 2. Work Clock-In
+  if (!payload.clockIn || typeof payload.clockIn !== 'string' || !payload.clockIn.trim()) {
+    errors.push({ field: 'clockIn', message: 'Clock-in time is required.' });
+  } else if (!REPORT_CONSTANTS.TIME_REGEX.test(payload.clockIn.trim())) {
+    errors.push({
+      field: 'clockIn',
+      message: 'Clock-in time must be in HH:mm format (00:00 to 23:59).',
+    });
+  }
+
+  // 3. Work Clock-Out
+  if (!payload.clockOut || typeof payload.clockOut !== 'string' || !payload.clockOut.trim()) {
+    errors.push({ field: 'clockOut', message: 'Clock-out time is required.' });
+  } else if (!REPORT_CONSTANTS.TIME_REGEX.test(payload.clockOut.trim())) {
+    errors.push({
+      field: 'clockOut',
+      message: 'Clock-out time must be in HH:mm format (00:00 to 23:59).',
+    });
+  }
+
+  // 4. Branch Visits
+  if (!Array.isArray(payload.visits) || payload.visits.length === 0) {
+    errors.push({ field: 'visits', message: 'Report must contain at least one branch visit.' });
+  } else {
+    payload.visits.forEach((v, idx) => {
+      if (!v || typeof v !== 'object') {
+        errors.push({ field: `visits[${idx}]`, message: 'Visit must be an object.' });
+        return;
+      }
+      if (!v.branch || !isValidObjectId(String(v.branch))) {
+        errors.push({
+          field: `visits[${idx}].branch`,
+          message: 'Each visit branch must be a valid branch ID.',
+        });
+      }
+      if (
+        !v.clockIn ||
+        typeof v.clockIn !== 'string' ||
+        !REPORT_CONSTANTS.TIME_REGEX.test(v.clockIn.trim())
+      ) {
+        errors.push({
+          field: `visits[${idx}].clockIn`,
+          message: 'Visit clock-in must be in HH:mm format.',
+        });
+      }
+      if (
+        !v.clockOut ||
+        typeof v.clockOut !== 'string' ||
+        !REPORT_CONSTANTS.TIME_REGEX.test(v.clockOut.trim())
+      ) {
+        errors.push({
+          field: `visits[${idx}].clockOut`,
+          message: 'Visit clock-out must be in HH:mm format.',
+        });
+      }
+    });
+  }
+
+  // 5. Activities
+  if (!Array.isArray(payload.activities) || payload.activities.length === 0) {
+    errors.push({
+      field: 'activities',
+      message: 'Report must contain at least one operational activity.',
+    });
+  } else {
+    payload.activities.forEach((a, idx) => {
+      if (!a || typeof a !== 'object') {
+        errors.push({ field: `activities[${idx}]`, message: 'Activity must be an object.' });
+        return;
+      }
+      if (!a.text || typeof a.text !== 'string' || !a.text.trim()) {
+        errors.push({
+          field: `activities[${idx}].text`,
+          message: 'Activity description text is required.',
+        });
+      } else if (a.text.trim().length > REPORT_CONSTANTS.ACTIVITY_TEXT_MAX_LENGTH) {
+        errors.push({
+          field: `activities[${idx}].text`,
+          message: `Activity text cannot exceed ${REPORT_CONSTANTS.ACTIVITY_TEXT_MAX_LENGTH} characters.`,
+        });
+      }
+      if (a.status !== undefined && !REPORT_CONSTANTS.ACTIVITY_STATUSES.includes(a.status)) {
+        errors.push({
+          field: `activities[${idx}].status`,
+          message: `Activity status must be one of: ${REPORT_CONSTANTS.ACTIVITY_STATUSES.join(', ')}.`,
+        });
+      }
+    });
+  }
+
+  // 6. Issues (Optional)
+  if (payload.issues !== undefined) {
+    if (!Array.isArray(payload.issues)) {
+      errors.push({ field: 'issues', message: 'Issues must be an array.' });
+    } else {
+      payload.issues.forEach((issue, idx) => {
+        if (!issue || typeof issue !== 'object') {
+          errors.push({ field: `issues[${idx}]`, message: 'Issue must be an object.' });
+          return;
+        }
+        if (issue.category !== undefined) {
+          errors.push({ field: `issues[${idx}].category`, message: 'Issue category is prohibited.' });
+        }
+        if (issue.severity !== undefined) {
+          errors.push({ field: `issues[${idx}].severity`, message: 'Issue severity is prohibited.' });
+        }
+        if (!issue.text || typeof issue.text !== 'string' || !issue.text.trim()) {
+          errors.push({
+            field: `issues[${idx}].text`,
+            message: 'Issue description text is required.',
+          });
+        } else if (issue.text.trim().length > REPORT_CONSTANTS.ISSUE_TEXT_MAX_LENGTH) {
+          errors.push({
+            field: `issues[${idx}].text`,
+            message: `Issue text cannot exceed ${REPORT_CONSTANTS.ISSUE_TEXT_MAX_LENGTH} characters.`,
+          });
+        }
+        if (
+          issue.status !== undefined &&
+          !REPORT_CONSTANTS.ISSUE_STATUSES.includes(issue.status)
+        ) {
+          errors.push({
+            field: `issues[${idx}].status`,
+            message: `Issue status must be one of: ${REPORT_CONSTANTS.ISSUE_STATUSES.join(', ')}.`,
+          });
+        }
+      });
+    }
+  }
+
+  // 7. Comments (Optional)
+  if (payload.comments !== undefined) {
+    if (!Array.isArray(payload.comments)) {
+      errors.push({ field: 'comments', message: 'Comments must be an array.' });
+    } else {
+      payload.comments.forEach((c, idx) => {
+        if (!c || typeof c !== 'object') {
+          errors.push({ field: `comments[${idx}]`, message: 'Comment must be an object.' });
+          return;
+        }
+        if (c.status !== undefined) {
+          errors.push({
+            field: `comments[${idx}].status`,
+            message: 'Comments do not declare a status field.',
+          });
+        }
+        if (!c.text || typeof c.text !== 'string' || !c.text.trim()) {
+          errors.push({
+            field: `comments[${idx}].text`,
+            message: 'Comment text is required.',
+          });
+        } else if (c.text.trim().length > REPORT_CONSTANTS.COMMENT_TEXT_MAX_LENGTH) {
+          errors.push({
+            field: `comments[${idx}].text`,
+            message: `Comment text cannot exceed ${REPORT_CONSTANTS.COMMENT_TEXT_MAX_LENGTH} characters.`,
+          });
+        }
+      });
+    }
+  }
+
+  // 8. Speech Transcription
+  if (
+    !payload.transcription ||
+    typeof payload.transcription !== 'string' ||
+    !payload.transcription.trim()
+  ) {
+    errors.push({
+      field: 'transcription',
+      message: 'Speech transcription or narrative text is required.',
+    });
+  } else if (payload.transcription.trim().length > REPORT_CONSTANTS.TRANSCRIPTION_MAX_LENGTH) {
+    errors.push({
+      field: 'transcription',
+      message: `Transcription text cannot exceed ${REPORT_CONSTANTS.TRANSCRIPTION_MAX_LENGTH} characters.`,
+    });
+  }
+
+  // 9. Audios (Optional)
+  if (payload.audios !== undefined) {
+    if (!Array.isArray(payload.audios)) {
+      errors.push({ field: 'audios', message: 'Audios must be an array.' });
+    } else if (payload.audios.length > REPORT_CONSTANTS.MAX_AUDIO_FILES) {
+      errors.push({
+        field: 'audios',
+        message: `Report cannot exceed ${REPORT_CONSTANTS.MAX_AUDIO_FILES} audio files.`,
+      });
+    } else {
+      payload.audios.forEach((audioId, idx) => {
+        if (!isValidObjectId(String(audioId))) {
+          errors.push({
+            field: `audios[${idx}]`,
+            message: 'Each audio reference must be a valid audio ID.',
+          });
+        }
+      });
+    }
+  }
+
+  if (errors.length > 0) {
+    throw new ValidationError('Report payload validation failed.', errors);
+  }
+
+  return {
+    date: new Date(payload.date),
+    clockIn: payload.clockIn.trim(),
+    clockOut: payload.clockOut.trim(),
+    visits: payload.visits.map((v) => ({
+      branch: v.branch,
+      clockIn: v.clockIn.trim(),
+      clockOut: v.clockOut.trim(),
+    })),
+    activities: payload.activities.map((a) => ({
+      text: a.text.trim(),
+      status: a.status || REPORT_CONSTANTS.DEFAULT_ACTIVITY_STATUS,
+    })),
+    issues: (payload.issues || []).map((i) => ({
+      text: i.text.trim(),
+      status: i.status || REPORT_CONSTANTS.DEFAULT_ISSUE_STATUS,
+    })),
+    comments: (payload.comments || []).map((c) => ({
+      text: c.text.trim(),
+      status: null,
+    })),
+    transcription: payload.transcription.trim(),
+    audios: payload.audios || [],
+  };
+};
+
+/**
  * Validation rules for structured operational report creation payloads.
  * Used by backend creation tools and automated domain test suites.
  * @constant
@@ -546,6 +828,8 @@ export const createReportValidation = [
 ];
 
 export default {
+  isValidObjectId,
+  validateReportPayload,
   reportIdValidation,
   getReportsValidation,
   updateReportValidation,

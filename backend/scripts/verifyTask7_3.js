@@ -26,6 +26,7 @@ import {
   getReportsValidation,
   updateReportValidation,
   createReportValidation,
+  validateReportPayload,
 } from '../src/validations/reportValidation.js';
 import { Report } from '../src/models/Report.js';
 import { validate } from '../src/middleware/validate.js';
@@ -470,6 +471,65 @@ async function testReportValidations() {
     const maliciousPayload = { ...validReportPayload, [field]: 'injected_override' };
     res = await runValidations(createReportValidation, { body: maliciousPayload });
     assert(!res.isEmpty() && res.array().some((e) => (e.path || e.param) === field), `createReportValidation rejects injected field '${field}'`);
+  }
+
+  // --- 7b. validateReportPayload (Pure Domain Function for AI Agent Tool Pipeline) ---
+  console.log('\n7b. Testing validateReportPayload (Pure In-Memory Object Validator for AI Agent)...');
+
+  // Accepts valid in-memory payload and normalizes fields
+  const normalized = validateReportPayload(validReportPayload);
+  assert(normalized.date instanceof Date, 'validateReportPayload normalizes date to Date instance');
+  assert(normalized.clockIn === '08:00', 'validateReportPayload preserves valid clockIn');
+  assert(normalized.clockOut === '17:00', 'validateReportPayload preserves valid clockOut');
+  assert(Array.isArray(normalized.visits) && normalized.visits.length === 1, 'validateReportPayload preserves visits');
+  assert(Array.isArray(normalized.activities) && normalized.activities.length === 1, 'validateReportPayload preserves activities');
+  assert(normalized.transcription === validReportPayload.transcription, 'validateReportPayload preserves transcription');
+
+  // Rejects future date
+  try {
+    validateReportPayload({ ...validReportPayload, date: futureDate });
+    assert(false, 'Expected ValidationError on future date');
+  } catch (err) {
+    assert(err instanceof ValidationError && err.details.some((d) => d.field === 'date'), 'validateReportPayload rejects future date');
+  }
+
+  // Rejects missing required fields
+  for (const field of requiredFields) {
+    const payload = { ...validReportPayload };
+    delete payload[field];
+    try {
+      validateReportPayload(payload);
+      assert(false, `Expected ValidationError on missing ${field}`);
+    } catch (err) {
+      assert(err instanceof ValidationError && err.details.some((d) => d.field === field), `validateReportPayload rejects missing required field '${field}'`);
+    }
+  }
+
+  // Rejects empty visits
+  try {
+    validateReportPayload({ ...validReportPayload, visits: [] });
+    assert(false, 'Expected ValidationError on empty visits');
+  } catch (err) {
+    assert(err instanceof ValidationError && err.details.some((d) => d.field === 'visits'), 'validateReportPayload rejects empty visits array');
+  }
+
+  // Rejects empty activities
+  try {
+    validateReportPayload({ ...validReportPayload, activities: [] });
+    assert(false, 'Expected ValidationError on empty activities');
+  } catch (err) {
+    assert(err instanceof ValidationError && err.details.some((d) => d.field === 'activities'), 'validateReportPayload rejects empty activities array');
+  }
+
+  // Rejects prohibited fields
+  for (const field of forbiddenCreateFields) {
+    const maliciousPayload = { ...validReportPayload, [field]: 'injected_override' };
+    try {
+      validateReportPayload(maliciousPayload);
+      assert(false, `Expected ValidationError on prohibited field ${field}`);
+    } catch (err) {
+      assert(err instanceof ValidationError && err.details.some((d) => d.field === field), `validateReportPayload rejects injected prohibited field '${field}'`);
+    }
   }
 }
 

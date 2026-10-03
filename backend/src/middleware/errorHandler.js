@@ -55,6 +55,19 @@ export const errorHandler = (err, req, res, _next) => {
     error = new UnauthenticatedError(message, 'UNAUTHENTICATED');
   }
 
+  // 5. Multer file upload errors
+  else if (err.name === 'MulterError') {
+    let message = 'File upload failed. Please verify your file requirements.';
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      message = 'Uploaded file exceeds the maximum allowed file size.';
+    } else if (err.code === 'LIMIT_FILE_COUNT') {
+      message = 'Too many files uploaded in a single request.';
+    } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      message = `Unexpected upload field "${err.field}".`;
+    }
+    error = new BadRequestError(message, 'UPLOAD_LIMIT_EXCEEDED');
+  }
+
   // Handle known operational CustomError subclasses
   if (error instanceof CustomError) {
     // Log 4xx warnings, 5xx errors

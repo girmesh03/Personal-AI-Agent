@@ -69,10 +69,13 @@ app.get(['/api/health', '/api/v1/health'], (_req, res) => {
   });
 });
 
-// 8. API v1 Router Mount (consolidated domain route tree)
+// 8. Static file serving for uploaded audio and attachments
+app.use('/uploads', express.static('uploads'));
+
+// 9. API v1 Router Mount (consolidated domain route tree)
 app.use('/api/v1', apiV1Routes);
 
-// 9. Unmatched Route Handler (404)
+// 10. Unmatched Route Handler (404)
 app.use(notFoundHandler);
 
 // 10. Global Error Handler
