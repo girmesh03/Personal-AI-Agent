@@ -161,6 +161,228 @@ export const BRANCH_CONSTANTS = Object.freeze({
   ARCHIVE_RETENTION_DAYS: 30,
 });
 
+/**
+ * Audio domain constants, MIME whitelist, and file bounds.
+ * @constant
+ * @type {Readonly<{
+ *   PURPOSES: string[],
+ *   DEFAULT_PURPOSE: string,
+ *   STATUSES: string[],
+ *   DEFAULT_STATUS: string,
+ *   MAX_FILE_SIZE_BYTES: number,
+ *   MAX_BATCH_SIZE_BYTES: number,
+ *   MAX_FILES_COUNT: number,
+ *   MIN_DURATION_SECONDS: number,
+ *   MAX_DURATION_SECONDS: number,
+ *   ALLOWED_EXTENSIONS: string[],
+ *   ALLOWED_MIME_TYPES: string[],
+ * }>}
+ */
+export const AUDIO_CONSTANTS = Object.freeze({
+  PURPOSES: ['report_narration', 'chat_voice_input', 'general_memo'],
+  DEFAULT_PURPOSE: 'report_narration',
+  STATUSES: ['uploaded', 'transcribing', 'transcribed', 'failed'],
+  DEFAULT_STATUS: 'uploaded',
+  MAX_FILE_SIZE_BYTES: 25 * 1024 * 1024, // 25MB single file limit
+  MAX_BATCH_SIZE_BYTES: 50 * 1024 * 1024, // 50MB batch upload limit
+  MAX_FILES_COUNT: 5,
+  MIN_DURATION_SECONDS: 1,
+  MAX_DURATION_SECONDS: 600, // 10 minutes maximum duration
+  ALLOWED_EXTENSIONS: ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.webm', '.mp4'],
+  ALLOWED_MIME_TYPES: [
+    'audio/mpeg',
+    'audio/mp3',
+    'audio/wav',
+    'audio/x-wav',
+    'audio/m4a',
+    'audio/x-m4a',
+    'audio/mp4',
+    'audio/aac',
+    'audio/x-aac',
+    'audio/webm',
+    'audio/ogg',
+  ],
+});
+
+/**
+ * Chat attachment and document upload constants, MIME whitelist, and file bounds.
+ * Supports multi-modal image inspection, operational documents, and audit spreadsheets.
+ * @constant
+ * @type {Readonly<{
+ *   MAX_FILE_SIZE_BYTES: number,
+ *   MAX_BATCH_SIZE_BYTES: number,
+ *   MAX_FILES_COUNT: number,
+ *   ALLOWED_IMAGE_EXTENSIONS: string[],
+ *   ALLOWED_IMAGE_MIME_TYPES: string[],
+ *   ALLOWED_DOCUMENT_EXTENSIONS: string[],
+ *   ALLOWED_DOCUMENT_MIME_TYPES: string[],
+ *   ALLOWED_EXTENSIONS: string[],
+ *   ALLOWED_MIME_TYPES: string[],
+ * }>}
+ */
+export const ATTACHMENT_CONSTANTS = Object.freeze({
+  MAX_FILE_SIZE_BYTES: 25 * 1024 * 1024, // 25MB single file limit
+  MAX_BATCH_SIZE_BYTES: 50 * 1024 * 1024, // 50MB batch upload limit
+  MAX_FILES_COUNT: 5,
+  ALLOWED_IMAGE_EXTENSIONS: ['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif'],
+  ALLOWED_IMAGE_MIME_TYPES: [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/heic',
+    'image/heif',
+  ],
+  ALLOWED_DOCUMENT_EXTENSIONS: [
+    '.pdf',
+    '.txt',
+    '.csv',
+    '.md',
+    '.xlsx',
+    '.xls',
+    '.docx',
+    '.doc',
+  ],
+  ALLOWED_DOCUMENT_MIME_TYPES: [
+    'application/pdf',
+    'text/plain',
+    'text/csv',
+    'text/markdown',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/msword',
+  ],
+  ALLOWED_EXTENSIONS: [
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.webp',
+    '.heic',
+    '.heif',
+    '.pdf',
+    '.txt',
+    '.csv',
+    '.md',
+    '.xlsx',
+    '.xls',
+    '.docx',
+    '.doc',
+  ],
+  ALLOWED_MIME_TYPES: [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/heic',
+    'image/heif',
+    'application/pdf',
+    'text/plain',
+    'text/csv',
+    'text/markdown',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/msword',
+  ],
+});
+
+/**
+ * Supervisor avatar image constants and MIME whitelist.
+ * @constant
+ * @type {Readonly<{
+ *   MAX_FILE_SIZE_BYTES: number,
+ *   ALLOWED_EXTENSIONS: string[],
+ *   ALLOWED_MIME_TYPES: string[],
+ * }>}
+ */
+export const AVATAR_CONSTANTS = Object.freeze({
+  MAX_FILE_SIZE_BYTES: 5 * 1024 * 1024, // 5MB avatar limit
+  ALLOWED_EXTENSIONS: ['.jpg', '.jpeg', '.png', '.webp'],
+  ALLOWED_MIME_TYPES: ['image/jpeg', 'image/png', 'image/webp'],
+});
+
+/**
+ * Report domain constants, validation rules, and file bounds.
+ * Note: Category and severity are permanently purged (issues have text and status only).
+ * @constant
+ * @type {Readonly<{
+ *   TIME_REGEX: RegExp,
+ *   ACTIVITY_STATUSES: string[],
+ *   DEFAULT_ACTIVITY_STATUS: string,
+ *   ISSUE_STATUSES: string[],
+ *   DEFAULT_ISSUE_STATUS: string,
+ *   MAX_AUDIO_FILES: number,
+ *   MAX_AUDIO_FILE_SIZE_BYTES: number,
+ *   MAX_AUDIO_BATCH_SIZE_BYTES: number,
+ *   MAX_DOCUMENT_FILES: number,
+ *   MAX_DOCUMENT_FILE_SIZE_BYTES: number,
+ *   MAX_DOCUMENT_BATCH_SIZE_BYTES: number,
+ *   ARCHIVE_RETENTION_DAYS: number,
+ *   PAGE_LIMIT_DEFAULT: number,
+ *   PAGE_LIMIT_MIN: number,
+ *   PAGE_LIMIT_MAX: number,
+ * }>}
+ */
+export const REPORT_CONSTANTS = Object.freeze({
+  TIME_REGEX: /^([01]\d|2[0-3]):([0-5]\d)$/, // HH:mm format
+  ACTIVITY_STATUSES: ['in_progress', 'completed'],
+  DEFAULT_ACTIVITY_STATUS: 'completed',
+  ISSUE_STATUSES: ['reported', 'completed', 'in_progress', 'no_issue'],
+  DEFAULT_ISSUE_STATUS: 'reported',
+  MAX_AUDIO_FILES: AUDIO_CONSTANTS.MAX_FILES_COUNT,
+  MAX_AUDIO_FILE_SIZE_BYTES: AUDIO_CONSTANTS.MAX_FILE_SIZE_BYTES,
+  MAX_AUDIO_BATCH_SIZE_BYTES: AUDIO_CONSTANTS.MAX_BATCH_SIZE_BYTES,
+  MAX_DOCUMENT_FILES: ATTACHMENT_CONSTANTS.MAX_FILES_COUNT,
+  MAX_DOCUMENT_FILE_SIZE_BYTES: ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES,
+  MAX_DOCUMENT_BATCH_SIZE_BYTES: ATTACHMENT_CONSTANTS.MAX_BATCH_SIZE_BYTES,
+  ARCHIVE_RETENTION_DAYS: 30,
+  PAGE_LIMIT_DEFAULT: 10,
+  PAGE_LIMIT_MIN: 1,
+  PAGE_LIMIT_MAX: 100,
+});
+
+/**
+ * Chat session and AI agent engine constants.
+ * @constant
+ * @type {Readonly<{
+ *   DEFAULT_MODEL: string,
+ *   SUPPORTED_MODELS: string[],
+ *   DEFAULT_THINKING_BUDGET: number,
+ *   MIN_THINKING_BUDGET: number,
+ *   MAX_THINKING_BUDGET: number,
+ *   DEFAULT_LANGUAGE: string,
+ *   SUPPORTED_LANGUAGES: string[],
+ *   DEFAULT_TEMPERATURE: number,
+ *   STT_ENGINES: string[],
+ *   DEFAULT_STT_ENGINE: string,
+ *   TITLE_MAX_LENGTH: number,
+ *   MAX_MESSAGE_LENGTH: number,
+ *   ATTACHMENTS: typeof ATTACHMENT_CONSTANTS,
+ *   AUDIO: typeof AUDIO_CONSTANTS,
+ *   PAGE_LIMIT_DEFAULT: number,
+ *   PAGE_LIMIT_MIN: number,
+ *   PAGE_LIMIT_MAX: number,
+ * }>}
+ */
+export const CHAT_CONSTANTS = Object.freeze({
+  DEFAULT_MODEL: 'gemini-2.5-flash',
+  SUPPORTED_MODELS: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'],
+  DEFAULT_THINKING_BUDGET: 2048,
+  MIN_THINKING_BUDGET: 0,
+  MAX_THINKING_BUDGET: 8192,
+  DEFAULT_LANGUAGE: 'am',
+  SUPPORTED_LANGUAGES: ['am', 'en', 'auto'],
+  DEFAULT_TEMPERATURE: 0.2,
+  STT_ENGINES: ['addis_ai', 'gemini-2.5-flash'],
+  DEFAULT_STT_ENGINE: 'addis_ai',
+  TITLE_MAX_LENGTH: 100,
+  MAX_MESSAGE_LENGTH: 10000,
+  ATTACHMENTS: ATTACHMENT_CONSTANTS,
+  AUDIO: AUDIO_CONSTANTS,
+  PAGE_LIMIT_DEFAULT: 20,
+  PAGE_LIMIT_MIN: 1,
+  PAGE_LIMIT_MAX: 100,
+});
+
 export default {
   HTTP_STATUS,
   PASSWORD_REGEX,
@@ -176,5 +398,11 @@ export default {
   SWEEPER_INTERVAL_MS,
   DEFAULT_PAGE_LIMIT,
   BRANCH_CONSTANTS,
+  REPORT_CONSTANTS,
+  CHAT_CONSTANTS,
+  AUDIO_CONSTANTS,
+  ATTACHMENT_CONSTANTS,
+  AVATAR_CONSTANTS,
 };
+
 

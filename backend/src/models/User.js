@@ -13,7 +13,30 @@ import {
   PASSWORD_MIN_LENGTH,
   EMAIL_REGEX,
   BCRYPT_SALT_ROUNDS,
+  CHAT_CONSTANTS,
 } from '../utils/constants.js';
+
+/**
+ * @typedef {Object} IUserSettingsDirectives
+ * @property {string[]} negativeVocabulary - Forbidden words strictly excluded from all outputs.
+ * @property {Map<string, string>} phraseMappings - Shorthand-to-corporate wording and jargon mappings.
+ * @property {string[]} customInstructions - Discrete persistent rules and preferences created on the fly.
+ */
+
+/**
+ * @typedef {Object} IUserSettingsAgentConfig
+ * @property {string} persona - Configurable operational persona description.
+ * @property {string} defaultModel - Default Gemini model identifier.
+ * @property {number} defaultThinkingBudget - Default reasoning token budget.
+ * @property {string} defaultLanguage - Default interaction language ('am' | 'en' | 'auto').
+ */
+
+/**
+ * @typedef {Object} IUserSettings
+ * @property {string} sttEngine - Default Speech-to-Text engine ('addis_ai' | 'gemini-2.5-flash').
+ * @property {IUserSettingsAgentConfig} agentConfig - Agent persona and default reasoning configuration.
+ * @property {IUserSettingsDirectives} directives - Supervisor vocabulary rules, constraints, and instructions.
+ */
 
 /**
  * @typedef {Object} IUser
@@ -24,6 +47,7 @@ import {
  * @property {string} password - Bcrypt hashed password (hidden by default).
  * @property {string} position - Job position (defaults to 'Area Supervisor').
  * @property {string|null} avatar - Profile avatar image URL or path.
+ * @property {IUserSettings} settings - User operational settings, STT engine, and directives.
  * @property {string} fullName - Virtual property combining first and last name.
  * @property {Date} createdAt - Timestamp of user creation.
  * @property {Date} updatedAt - Timestamp of last user update.
@@ -67,6 +91,40 @@ const userSchema = new mongoose.Schema(
     avatar: {
       type: String,
       default: null,
+    },
+    settings: {
+      sttEngine: {
+        type: String,
+        enum: CHAT_CONSTANTS.STT_ENGINES,
+        default: CHAT_CONSTANTS.DEFAULT_STT_ENGINE,
+      },
+      agentConfig: {
+        persona: {
+          type: String,
+          default: 'Area Supervisor Operations Assistant for multi-branch restaurant operations in Ethiopia',
+        },
+        defaultModel: {
+          type: String,
+          enum: CHAT_CONSTANTS.SUPPORTED_MODELS,
+          default: CHAT_CONSTANTS.DEFAULT_MODEL,
+        },
+        defaultThinkingBudget: {
+          type: Number,
+          default: CHAT_CONSTANTS.DEFAULT_THINKING_BUDGET,
+          min: CHAT_CONSTANTS.MIN_THINKING_BUDGET,
+          max: CHAT_CONSTANTS.MAX_THINKING_BUDGET,
+        },
+        defaultLanguage: {
+          type: String,
+          enum: CHAT_CONSTANTS.SUPPORTED_LANGUAGES,
+          default: CHAT_CONSTANTS.DEFAULT_LANGUAGE,
+        },
+      },
+      directives: {
+        negativeVocabulary: [{ type: String, trim: true }],
+        phraseMappings: { type: Map, of: String, default: () => new Map() },
+        customInstructions: [{ type: String, trim: true }],
+      },
     },
   },
   {
