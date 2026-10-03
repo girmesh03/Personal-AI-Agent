@@ -100,6 +100,10 @@ const activitySchema = new mongoose.Schema(
       type: String,
       required: [true, 'Activity description is required.'],
       trim: true,
+      maxlength: [
+        REPORT_CONSTANTS.ACTIVITY_TEXT_MAX_LENGTH,
+        `Activity text cannot exceed ${REPORT_CONSTANTS.ACTIVITY_TEXT_MAX_LENGTH} characters.`,
+      ],
     },
     status: {
       type: String,
@@ -120,6 +124,10 @@ const issueSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Issue description is required.'],
       trim: true,
+      maxlength: [
+        REPORT_CONSTANTS.ISSUE_TEXT_MAX_LENGTH,
+        `Issue text cannot exceed ${REPORT_CONSTANTS.ISSUE_TEXT_MAX_LENGTH} characters.`,
+      ],
     },
     status: {
       type: String,
@@ -140,6 +148,10 @@ const commentSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Comment text is required.'],
       trim: true,
+      maxlength: [
+        REPORT_CONSTANTS.COMMENT_TEXT_MAX_LENGTH,
+        `Comment text cannot exceed ${REPORT_CONSTANTS.COMMENT_TEXT_MAX_LENGTH} characters.`,
+      ],
     },
     status: {
       type: String,
@@ -186,6 +198,10 @@ const reportSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Report transcription is required.'],
       trim: true,
+      maxlength: [
+        REPORT_CONSTANTS.TRANSCRIPTION_MAX_LENGTH,
+        `Transcription text cannot exceed ${REPORT_CONSTANTS.TRANSCRIPTION_MAX_LENGTH} characters.`,
+      ],
     },
     audios: {
       type: [
