@@ -9,7 +9,7 @@ import MuiButton from '../components/reusable/MuiButton.jsx';
 import MuiEmptyState from '../components/reusable/MuiEmptyState.jsx';
 
 /**
- * Report detail view placeholder displaying immutable shift synthesis.
+ * Report detail view placeholder displaying immutable operational report synthesis.
  *
  * @component ReportDetail
  * @returns {JSX.Element} Rendered report detail page view.
@@ -19,7 +19,7 @@ export const ReportDetail = () => {
     <MuiEmptyState
       icon={<ArticleIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />}
       title="Report Detail View"
-      subtitle="Full immutable report view with audit timestamps, branch shift breakdown, and 4 manual delivery triggers will be displayed here in Milestone 7."
+      subtitle="Full immutable report view with audit timestamps, branch inspection breakdown, and 4 manual delivery triggers will be displayed here in Milestone 7."
       action={
         <MuiButton variant="outlined" size="small" component={Link} to="/reports">
           Back to Reports

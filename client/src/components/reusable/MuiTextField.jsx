@@ -13,7 +13,7 @@ import Clear from '@mui/icons-material/Clear';
 import PropTypes from 'prop-types';
 
 /**
- * Standard text field wrapper reserving helperText space to prevent form layout shifts.
+ * Standard text field wrapper reserving helperText space to prevent form layout jitter.
  * Includes built-in password visibility toggle and forwardRef integration for react-hook-form.
  * Wrapped with memo and optimized inputRef to ensure zero typing latency.
  *

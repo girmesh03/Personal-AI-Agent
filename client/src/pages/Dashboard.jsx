@@ -19,10 +19,10 @@ export const Dashboard = () => {
     <MuiEmptyState
       icon={<DashboardIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />}
       title="Operational Dashboard"
-      subtitle="Operational KPI cards, branch breakdown charts (@mui/x-charts), and recent shift reports will be mounted here in Milestone 7."
+      subtitle="Operational KPI cards, branch breakdown charts (@mui/x-charts), and recent operational reports will be mounted here in Milestone 7."
       action={
         <MuiButton variant="contained" size="small" component={Link} to="/chat">
-          Start Shift Inspection
+          Start Branch Inspection
         </MuiButton>
       }
     />

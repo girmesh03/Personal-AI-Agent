@@ -102,7 +102,7 @@ export const Login = () => {
           Sign In
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Access your supervisor dashboard and operational shift reports.
+          Access your supervisor dashboard and operational inspection reports.
         </Typography>
 
         {serverError && (

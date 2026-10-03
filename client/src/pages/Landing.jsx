@@ -51,7 +51,7 @@ export const Landing = () => {
           Enjoy Burger Field Supervisor Assistant
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 640, mx: 'auto', mb: 4, fontSize: '1.1rem' }}>
-          Autonomous, single-user operational web platform designed for Area Supervisors to conduct branch inspections, narrate shift updates, and synthesize official corporate reports.
+          Autonomous, single-user operational web platform designed for Area Supervisors to conduct branch inspections, narrate field updates, and synthesize official corporate reports.
         </Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ justifyContent: 'center' }}>
           <MuiButton component={Link} to={ROUTES.REGISTER} variant="contained" size="small" sx={{ px: 4, py: 1.5 }}>
