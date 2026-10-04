@@ -179,6 +179,18 @@ export const getReports = asyncHandler(async (req, res) => {
     filter.date = { $gte: startOfDay, $lte: endOfDay };
   }
 
+  // Bilingual full-text search filter across transcription, activities, issues, and comments
+  if (query.search && typeof query.search === 'string' && query.search.trim()) {
+    const escapeRegex = (s) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const searchRegex = new RegExp(escapeRegex(query.search.trim()), 'i');
+    filter.$or = [
+      { transcription: searchRegex },
+      { 'activities.text': searchRegex },
+      { 'issues.text': searchRegex },
+      { 'comments.text': searchRegex },
+    ];
+  }
+
   const options = {
     page,
     limit,
@@ -304,6 +316,25 @@ export const updateReport = asyncHandler(async (req, res) => {
       if (updates.activities !== undefined) report.activities = updates.activities;
       if (updates.issues !== undefined) report.issues = updates.issues;
       if (updates.comments !== undefined) report.comments = updates.comments;
+      if (updates.transcription !== undefined) report.transcription = updates.transcription;
+      if (updates.audios !== undefined) {
+        if (Array.isArray(updates.audios) && updates.audios.length > 0) {
+          const foundAudios = await Audio.find({
+            _id: { $in: updates.audios },
+            user: req.user._id,
+            isArchived: false,
+          })
+            .session(session)
+            .lean();
+
+          if (foundAudios.length !== updates.audios.length) {
+            throw new NotFoundError(
+              'One or more referenced audio recordings could not be found or have been archived.'
+            );
+          }
+        }
+        report.audios = updates.audios;
+      }
 
       await report.save({ session });
       updatedReport = report;

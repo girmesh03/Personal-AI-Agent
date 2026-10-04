@@ -245,6 +245,38 @@ export const updateReportValidation = [
       `Comment text cannot exceed ${REPORT_CONSTANTS.COMMENT_TEXT_MAX_LENGTH} characters.`
     ),
 
+  body('transcription')
+    .optional()
+    .trim()
+    .notEmpty()
+    .withMessage('Transcription cannot be empty if provided.')
+    .isLength({ max: REPORT_CONSTANTS.TRANSCRIPTION_MAX_LENGTH })
+    .withMessage(
+      `Transcription text cannot exceed ${REPORT_CONSTANTS.TRANSCRIPTION_MAX_LENGTH} characters.`
+    ),
+
+  body('audios')
+    .optional()
+    .isArray()
+    .withMessage('Audios must be an array of audio IDs.')
+    .custom((val) => {
+      if (val.length > REPORT_CONSTANTS.MAX_AUDIO_FILES) {
+        throw new Error(
+          `Report audio recordings cannot exceed ${REPORT_CONSTANTS.MAX_AUDIO_FILES}.`
+        );
+      }
+      return true;
+    }),
+
+  body('audios.*')
+    .optional()
+    .custom((val) => {
+      if (!isValidObjectId(val)) {
+        throw new Error('Valid audio ID is required.');
+      }
+      return true;
+    }),
+
   // Security Invariants: strictly reject immutable and prohibited field modifications
   body('user').custom((value) => {
     if (value !== undefined) {
@@ -256,20 +288,6 @@ export const updateReportValidation = [
   body('_id').custom((value) => {
     if (value !== undefined) {
       throw new Error('Report identifier cannot be specified.');
-    }
-    return true;
-  }),
-
-  body('transcription').custom((value) => {
-    if (value !== undefined) {
-      throw new Error('Original speech transcription is immutable.');
-    }
-    return true;
-  }),
-
-  body('audios').custom((value) => {
-    if (value !== undefined) {
-      throw new Error('Report audio recordings cannot be modified via update.');
     }
     return true;
   }),
