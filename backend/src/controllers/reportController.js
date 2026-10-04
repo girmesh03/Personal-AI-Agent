@@ -539,6 +539,12 @@ export const deleteReportPermanently = asyncHandler(async (req, res) => {
         throw new NotFoundError('Report not found.');
       }
 
+      if (!report.isArchived) {
+        throw new BadRequestError(
+          'Only archived reports can be permanently deleted. Please archive the report first.'
+        );
+      }
+
       // Collect audio filepaths to unlink after commit
       if (report.audios && report.audios.length > 0) {
         const audioDocs = await Audio.find({

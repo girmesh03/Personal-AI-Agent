@@ -243,6 +243,39 @@ export const BRANCH_CONSTANTS = Object.freeze({
   ARCHIVE_RETENTION_DAYS: 30,
 });
 
+/**
+ * Report domain constants and template length limits.
+ * @constant
+ * @type {Readonly<{
+ *   TEMPLATE_MAX_LENGTH: number,
+ *   PAGE_LIMIT_DEFAULT: number,
+ *   PAGE_LIMIT_MIN: number,
+ *   PAGE_LIMIT_MAX: number,
+ * }>}
+ */
+export const REPORT_CONSTANTS = Object.freeze({
+  TEMPLATE_MAX_LENGTH: 4000,
+  PAGE_LIMIT_DEFAULT: 10,
+  PAGE_LIMIT_MIN: 1,
+  PAGE_LIMIT_MAX: 100,
+});
+
+/**
+ * Chat session and AI agent engine constants.
+ * @constant
+ * @type {Readonly<{
+ *   DEFAULT_PERSONA: string,
+ *   DEFAULT_MODEL: string,
+ *   DEFAULT_LANGUAGE: string,
+ * }>}
+ */
+export const CHAT_CONSTANTS = Object.freeze({
+  DEFAULT_PERSONA:
+    'Personal AI Agent and Executive Operations Partner for multi-branch restaurant operations, professional leadership, and personal productivity in Ethiopia',
+  DEFAULT_MODEL: 'gemini-2.5-flash',
+  DEFAULT_LANGUAGE: 'am',
+});
+
 export default {
   HTTP_STATUS,
   PASSWORD_REGEX,
@@ -273,4 +306,6 @@ export default {
   REPORT_CREATION_TBD_MESSAGE,
   LANDING_FEATURES,
   BRANCH_CONSTANTS,
+  REPORT_CONSTANTS,
+  CHAT_CONSTANTS,
 };

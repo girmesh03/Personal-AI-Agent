@@ -617,6 +617,7 @@ await asyncTest('deleteReportPermanently executes database deletion and unlinks 
   const mockReportDoc = {
     _id: mockReportId,
     user: mockUserId,
+    isArchived: true,
     audios: [mockAudioId],
   };
 
@@ -674,6 +675,55 @@ await asyncTest('deleteReportPermanently executes database deletion and unlinks 
     await deleteReportPermanently(reqDelete, res, () => {});
     assert.strictEqual(reportDeleted, true, 'Report must be deleted from DB');
     assert.strictEqual(audioDeleted, true, 'Associated Audio records must be deleted from DB');
+  } finally {
+    mongoose.startSession = originalStartSession;
+  }
+});
+
+await asyncTest('deleteReportPermanently rejects deleting active report with HTTP 400', async () => {
+  const mockUserId = new mongoose.Types.ObjectId();
+  const mockReportId = new mongoose.Types.ObjectId();
+
+  const activeReportDoc = {
+    _id: mockReportId,
+    user: mockUserId,
+    isArchived: false,
+    audios: [],
+  };
+
+  const originalStartSession = mongoose.startSession;
+  mongoose.startSession = async () => ({
+    withTransaction: async (fn) => {
+      const originalReportFindOne = Report.findOne;
+      Report.findOne = () => ({
+        session: async () => activeReportDoc,
+      });
+      try {
+        await fn();
+      } finally {
+        Report.findOne = originalReportFindOne;
+      }
+    },
+    endSession: async () => {},
+  });
+
+  let caughtError = null;
+  const res = {
+    status: () => res,
+    json: () => res,
+  };
+  const next = (err) => {
+    caughtError = err;
+  };
+
+  try {
+    const reqDelete = {
+      validated: { params: { reportId: String(mockReportId) } },
+      user: { _id: mockUserId },
+    };
+    await deleteReportPermanently(reqDelete, res, next);
+    assert.ok(caughtError instanceof BadRequestError, 'Expected BadRequestError when permanently deleting active report');
+    assert.match(caughtError.message, /Only archived reports can be permanently deleted/);
   } finally {
     mongoose.startSession = originalStartSession;
   }

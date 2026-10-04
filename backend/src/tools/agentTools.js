@@ -1,0 +1,1985 @@
+/**
+ * @module tools/agentTools
+ * @description Comprehensive autonomous agent tool suite and execution engine for Google GenAI (Gemini).
+ * Defines native @google/genai FunctionDeclaration schemas for the complete 17-Tool Enterprise Operational Matrix
+ * and in-process ACID execution handlers.
+ */
+
+import mongoose from 'mongoose';
+import path from 'path';
+import fs from 'fs';
+import { Type } from '@google/genai';
+import { Branch } from '../models/Branch.js';
+import { Report } from '../models/Report.js';
+import { User } from '../models/User.js';
+import { Audio } from '../models/Audio.js';
+import { REPORT_CONSTANTS, BRANCH_CONSTANTS } from '../utils/constants.js';
+import { toEthiopianDateString } from '../utils/ethiopianCalendar.js';
+import { isValidObjectId, validateReportPayload } from '../validations/reportValidation.js';
+import { createReportRecord } from '../controllers/reportController.js';
+import {
+  generateBranchCode,
+  resolveBranchAliases,
+  getBilingualSearchTerms,
+} from '../utils/transliterate.js';
+import { cascadeDeleteBranch } from '../jobs/sweeper.js';
+import {
+  ValidationError,
+  NotFoundError,
+  ConflictError,
+  BadRequestError,
+} from '../errors/CustomError.js';
+import logger from '../config/logger.js';
+
+/**
+ * Escapes characters with special meaning in regular expressions.
+ *
+ * @private
+ * @param {string} str - String to escape.
+ * @returns {string} Escaped string safe for RegExp construction.
+ */
+function escapeRegex(str) {
+  return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Builds the MongoDB query filter for a branch identifier that may be either an ObjectId or an operational code.
+ *
+ * @private
+ * @param {string} identifier - 24-hex Mongo ObjectId or operational branch code (e.g. 'BOLE-01').
+ * @param {string|import('mongoose').Types.ObjectId} userId - Supervisor identifier.
+ * @returns {object} Mongo query object.
+ */
+function buildBranchIdentifierQuery(identifier, userId) {
+  const cleanId = String(identifier || '').trim();
+  const isMongoId =
+    mongoose.Types.ObjectId.isValid(cleanId) &&
+    String(new mongoose.Types.ObjectId(cleanId)) === cleanId;
+
+  if (isMongoId) {
+    return {
+      user: userId,
+      _id: cleanId,
+    };
+  }
+
+  return {
+    user: userId,
+    code: cleanId.toUpperCase(),
+  };
+}
+
+/**
+ * Resolves an array of branch identifiers (ObjectIds or codes) to an array of valid MongoDB ObjectIds.
+ *
+ * @private
+ * @param {Array<string>} identifiers - Array of branch IDs or codes.
+ * @param {string|import('mongoose').Types.ObjectId} userId - Supervisor identifier.
+ * @param {import('mongoose').ClientSession} [session=null] - Optional Mongoose session.
+ * @returns {Promise<Array<import('mongoose').Types.ObjectId>>} Resolved ObjectIds.
+ */
+async function resolveBranchObjectIds(identifiers, userId, session = null) {
+  if (!identifiers || !Array.isArray(identifiers) || identifiers.length === 0) return [];
+  const resolvedIds = [];
+  const pendingCodes = [];
+
+  for (const item of identifiers) {
+    const clean = String(item || '').trim();
+    if (mongoose.Types.ObjectId.isValid(clean) && String(new mongoose.Types.ObjectId(clean)) === clean) {
+      resolvedIds.push(new mongoose.Types.ObjectId(clean));
+    } else if (clean) {
+      pendingCodes.push(clean.toUpperCase());
+    }
+  }
+
+  if (pendingCodes.length > 0) {
+    const found = await Branch.find({ user: userId, code: { $in: pendingCodes } })
+      .select('_id')
+      .session(session || null)
+      .lean();
+    for (const b of found) {
+      resolvedIds.push(b._id);
+    }
+  }
+
+  return resolvedIds;
+}
+
+/**
+ * Executes a callback within a Mongoose transaction session.
+ * Reuses existing session if provided, otherwise creates and commits a new transaction.
+ *
+ * @private
+ * @template T
+ * @param {import('mongoose').ClientSession|null} existingSession - Existing session if any.
+ * @param {(session: import('mongoose').ClientSession) => Promise<T>} callback - Async logic to execute.
+ * @returns {Promise<T>} Result of callback.
+ */
+async function runInTransaction(existingSession, callback) {
+  if (existingSession) {
+    return await callback(existingSession);
+  }
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    await session.withTransaction(async () => {
+      result = await callback(session);
+    });
+    return result;
+  } finally {
+    await session.endSession();
+  }
+}
+
+/**
+ * ==============================================================================
+ * 1. Native @google/genai Function Declarations (The Complete 17-Tool Matrix)
+ * ==============================================================================
+ */
+export const agentToolDeclarations = [
+  // ==========================================
+  // CATEGORY 1: BRANCH SCOPE (6 TOOLS)
+  // ==========================================
+  {
+    name: 'lookup_user_branches',
+    description:
+      'Retrieve restaurant branches registered to the authenticated supervisor. Supports filtering by active, archived, or all status, plus keyword search.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        status: {
+          type: Type.STRING,
+          description: "Status filter: 'active' (default), 'archived', or 'all'.",
+        },
+        search: {
+          type: Type.STRING,
+          description: 'Optional keyword to search branch name, code, address, or manager.',
+        },
+      },
+    },
+  },
+  {
+    name: 'create_branch',
+    description:
+      'Register a new restaurant branch for the supervisor inside an ACID transaction. Automatically generates unique branch code (e.g. BOLE-01) and Amharic transliteration.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        name: {
+          type: Type.STRING,
+          description: 'Official name of the branch (e.g., ቦሌ መድኃኒዓለም or Bole Medhanialem).',
+        },
+        address: {
+          type: Type.STRING,
+          description: 'Physical location or street address in Addis Ababa.',
+        },
+        phone: {
+          type: Type.STRING,
+          description: 'Contact phone number (e.g., 0911223344).',
+        },
+        managerName: {
+          type: Type.STRING,
+          description: 'Full name of the designated branch manager.',
+        },
+      },
+      required: ['name', 'address', 'phone', 'managerName'],
+    },
+  },
+  {
+    name: 'update_branch',
+    description:
+      'Update profile details of an existing branch (manager name, contact phone, location address, or name) inside an ACID session.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        branchId: {
+          type: Type.STRING,
+          description: 'MongoDB ObjectId or unique branch code (e.g., BOLE-01).',
+        },
+        name: {
+          type: Type.STRING,
+          description: 'Updated branch name.',
+        },
+        address: {
+          type: Type.STRING,
+          description: 'Updated physical address.',
+        },
+        phone: {
+          type: Type.STRING,
+          description: 'Updated contact phone number.',
+        },
+        managerName: {
+          type: Type.STRING,
+          description: 'Updated manager name.',
+        },
+      },
+      required: ['branchId'],
+    },
+  },
+  {
+    name: 'archive_branch',
+    description:
+      'Soft-archive an active branch (e.g. during remodeling, kitchen repairs, or temporary closure). Prevents branch from appearing in daily operational audits.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        branchId: {
+          type: Type.STRING,
+          description: 'MongoDB ObjectId or branch code of the branch to archive.',
+        },
+      },
+      required: ['branchId'],
+    },
+  },
+  {
+    name: 'restore_branch',
+    description:
+      'Restore a previously archived branch back to active status. Enforces unique active name and code collision guards.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        branchId: {
+          type: Type.STRING,
+          description: 'MongoDB ObjectId or branch code of the archived branch to restore.',
+        },
+      },
+      required: ['branchId'],
+    },
+  },
+  {
+    name: 'delete_branch_permanently',
+    description:
+      'Permanently hard-delete an archived branch. Must be archived first. Cascades cleanup inside an ACID session.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        branchId: {
+          type: Type.STRING,
+          description: 'MongoDB ObjectId or branch code of the archived branch to permanently delete.',
+        },
+      },
+      required: ['branchId'],
+    },
+  },
+
+  // ==========================================
+  // CATEGORY 2: REPORT SCOPE (6 TOOLS)
+  // ==========================================
+  {
+    name: 'create_report',
+    description:
+      'Autonomously formats and persists an authoritative operational report adhering to the Single-Branch or Multi-Branch corporate template, embedding visits, activities, issues, and comments directly in MongoDB via validateReportPayload and createReportRecord. Zero user tool approval required.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        date: {
+          type: Type.STRING,
+          description: 'ISO date string of the inspection date (YYYY-MM-DD or full ISO).',
+        },
+        clockIn: {
+          type: Type.STRING,
+          description: 'Work shift start time formatted strictly as HH:mm (ስራ የገባሁበት ሰዓት).',
+        },
+        clockOut: {
+          type: Type.STRING,
+          description: 'Work shift end time formatted strictly as HH:mm (ከስራ የወጣሁበት ሰዓት).',
+        },
+        visits: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              branch: {
+                type: Type.STRING,
+                description: '24-character hexadecimal MongoDB ObjectId of the visited branch.',
+              },
+              clockIn: {
+                type: Type.STRING,
+                description: 'Branch arrival time formatted strictly as HH:mm.',
+              },
+              clockOut: {
+                type: Type.STRING,
+                description: 'Branch departure time formatted strictly as HH:mm.',
+              },
+            },
+            required: ['branch', 'clockIn', 'clockOut'],
+          },
+          description:
+            'Chronological list of physical branch visits. Exactly 1 for Single-Branch, 2 or more for Multi-Branch.',
+        },
+        transcription: {
+          type: Type.STRING,
+          description:
+            'Complete formatted Amharic corporate text matching the Single-Branch or Multi-Branch template.',
+        },
+        audios: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description:
+            'Optional array of 24-character hexadecimal MongoDB ObjectIds of standalone Audio documents.',
+        },
+        activities: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              text: {
+                type: Type.STRING,
+                description: 'Operational task or activity conducted (- [ስራ]).',
+              },
+              status: {
+                type: Type.STRING,
+                description: "Activity status: 'in_progress' or 'completed' (default: 'completed').",
+              },
+            },
+            required: ['text'],
+          },
+          description: 'Extracted operational activities (የተሰሩ ስራዎች).',
+        },
+        issues: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              text: {
+                type: Type.STRING,
+                description: 'Operational issue description (- [ችግር]).',
+              },
+              status: {
+                type: Type.STRING,
+                description:
+                  "Issue status: 'reported', 'completed', 'in_progress', or 'no_issue' (default: 'reported').",
+              },
+            },
+            required: ['text'],
+          },
+          description: 'Extracted operational issues or malfunctions (መፍትሄ የሚፈልጉ ጉዳዮች).',
+        },
+        comments: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              text: {
+                type: Type.STRING,
+                description: 'General comment or observational remark (- [አስተያየት]). Comments have NO status.',
+              },
+            },
+            required: ['text'],
+          },
+          description: 'Extracted operational comments (አጠቃላይ አስተያየት).',
+        },
+      },
+      required: ['date', 'clockIn', 'clockOut', 'visits', 'transcription', 'activities', 'issues', 'comments'],
+    },
+  },
+  {
+    name: 'update_report',
+    description:
+      'Amend an existing operational report (work hours, new activities, new issues, comments, or transcription) inside an ACID session.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        reportId: {
+          type: Type.STRING,
+          description: '24-character hexadecimal MongoDB ObjectId of the report to amend.',
+        },
+        date: {
+          type: Type.STRING,
+          description: 'Optional updated inspection date (ISO date string YYYY-MM-DD).',
+        },
+        clockIn: {
+          type: Type.STRING,
+          description: 'Updated shift clock-in time (HH:mm).',
+        },
+        clockOut: {
+          type: Type.STRING,
+          description: 'Updated shift clock-out time (HH:mm).',
+        },
+        visits: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              branch: {
+                type: Type.STRING,
+                description: '24-character hexadecimal MongoDB ObjectId of the visited branch.',
+              },
+              clockIn: {
+                type: Type.STRING,
+                description: 'Branch arrival time formatted strictly as HH:mm.',
+              },
+              clockOut: {
+                type: Type.STRING,
+                description: 'Branch departure time formatted strictly as HH:mm.',
+              },
+            },
+            required: ['branch', 'clockIn', 'clockOut'],
+          },
+          description: 'Updated chronological list of physical branch visits.',
+        },
+        newActivities: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              text: { type: Type.STRING, description: 'Activity description.' },
+              status: { type: Type.STRING, description: "Activity status: 'in_progress' or 'completed'." },
+            },
+            required: ['text'],
+          },
+          description: 'New activities to append to the report.',
+        },
+        newIssues: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              text: { type: Type.STRING, description: 'Issue description.' },
+              status: {
+                type: Type.STRING,
+                description: "Issue status: 'reported', 'completed', 'in_progress', or 'no_issue'.",
+              },
+            },
+            required: ['text'],
+          },
+          description: 'New issues to append to the report.',
+        },
+        newComments: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              text: { type: Type.STRING, description: 'Comment text.' },
+            },
+            required: ['text'],
+          },
+          description: 'New comments to append to the report.',
+        },
+        transcription: {
+          type: Type.STRING,
+          description: 'Updated formatted Amharic corporate transcription text.',
+        },
+      },
+      required: ['reportId'],
+    },
+  },
+  {
+    name: 'update_branch_record_status',
+    description:
+      'Update the status or resolution notes of a specific branch issue or activity subdocument directly from chat.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        reportId: {
+          type: Type.STRING,
+          description: '24-hex ObjectId of the report containing the record.',
+        },
+        recordId: {
+          type: Type.STRING,
+          description: '24-hex ObjectId of the specific subdocument (issue or activity).',
+        },
+        recordType: {
+          type: Type.STRING,
+          description: "Subdocument type: 'issue' or 'activity'.",
+        },
+        newStatus: {
+          type: Type.STRING,
+          description: "New status value: 'reported', 'completed', 'in_progress', or 'no_issue'.",
+        },
+        resolutionNotes: {
+          type: Type.STRING,
+          description: 'Optional corrective notes describing how the item was addressed.',
+        },
+      },
+      required: ['reportId', 'recordId', 'recordType', 'newStatus'],
+    },
+  },
+  {
+    name: 'archive_report',
+    description:
+      'Soft-archive an operational report (sets isArchived: true, archivedAt: new Date()), entering the 30-day sweeper retention window.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        reportId: {
+          type: Type.STRING,
+          description: '24-hex ObjectId of the report to archive.',
+        },
+      },
+      required: ['reportId'],
+    },
+  },
+  {
+    name: 'restore_report',
+    description:
+      'Restore a previously archived report back to active status prior to 30-day sweeper purge.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        reportId: {
+          type: Type.STRING,
+          description: '24-hex ObjectId of the archived report to restore.',
+        },
+      },
+      required: ['reportId'],
+    },
+  },
+  {
+    name: 'delete_report_permanently',
+    description:
+      'Permanently hard-delete an archived report from MongoDB and unlink associated Audio binary files strictly post-commit.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        reportId: {
+          type: Type.STRING,
+          description: '24-hex ObjectId of the archived report to permanently delete.',
+        },
+      },
+      required: ['reportId'],
+    },
+  },
+
+  // ==========================================
+  // CATEGORY 3: ENTERPRISE INTELLIGENCE & CROSS-BRANCH QUERIES (2 TOOLS)
+  // ==========================================
+  {
+    name: 'query_historical_reports',
+    description:
+      'Search and retrieve previously generated operational reports across one, several, or all branches and date ranges from MongoDB. Supports status filtering (active, archived, or all) and keyword search.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        branchIds: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description:
+            'Optional array of branch ObjectIds or codes (e.g. ["BOLE-01", "PIAS-01"]). If omitted, queries across all branches.',
+        },
+        branchId: {
+          type: Type.STRING,
+          description: 'Optional single branch ObjectId or code (for backwards compatibility).',
+        },
+        date: {
+          type: Type.STRING,
+          description: 'Optional single ISO date string (YYYY-MM-DD).',
+        },
+        startDate: {
+          type: Type.STRING,
+          description: 'Optional ISO date string for historical start range (YYYY-MM-DD).',
+        },
+        endDate: {
+          type: Type.STRING,
+          description: 'Optional ISO date string for historical end range (YYYY-MM-DD).',
+        },
+        status: {
+          type: Type.STRING,
+          description: "Status filter: 'active' (default), 'archived', or 'all'.",
+        },
+        keyword: {
+          type: Type.STRING,
+          description: 'Optional text keyword to search within report transcription.',
+        },
+        limit: {
+          type: Type.INTEGER,
+          description: 'Maximum number of historical reports to return (1 to 20, default: 5).',
+        },
+      },
+    },
+  },
+  {
+    name: 'query_branch_records',
+    description:
+      'Granular subdocument query across historical operational reports for issues, activities, visits, or comments across one, several, or all branches, filtered by status, dates, and keywords.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        branchIds: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description:
+            'Optional array of branch ObjectIds or codes (e.g. ["BOLE-01", "PIAS-01"]). If omitted, queries across all branches.',
+        },
+        branchId: {
+          type: Type.STRING,
+          description: 'Optional single branch ObjectId or code (for backwards compatibility).',
+        },
+        date: {
+          type: Type.STRING,
+          description: 'Optional single ISO date string (YYYY-MM-DD).',
+        },
+        startDate: {
+          type: Type.STRING,
+          description: 'Optional ISO start date (YYYY-MM-DD).',
+        },
+        endDate: {
+          type: Type.STRING,
+          description: 'Optional ISO end date (YYYY-MM-DD).',
+        },
+        recordType: {
+          type: Type.STRING,
+          description: "Type of records: 'all', 'issues', 'activities', 'visits', or 'comments' (default: 'all').",
+        },
+        status: {
+          type: Type.STRING,
+          description:
+            "Filter status: 'all', 'reported', 'completed', 'in_progress', or 'no_issue' (default: 'all').",
+        },
+        keyword: {
+          type: Type.STRING,
+          description: 'Optional keyword to search within record texts.',
+        },
+        limit: {
+          type: Type.INTEGER,
+          description: 'Maximum matching items to return (1 to 50, default: 15).',
+        },
+      },
+    },
+  },
+
+  // ==========================================
+  // CATEGORY 4: EXTERNAL EXPORT, BROADCAST & DIRECTIVES SSOT (3 TOOLS)
+  // ==========================================
+  {
+    name: 'export_report',
+    description:
+      'Generate an export payload of operational report or audit log formatted for Plain Text, Markdown, JSON, Tabular CSV/Spreadsheet, or Google Docs / Google Sheets. Includes functional stubbing for Google Drive OAuth dispatch.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        reportId: {
+          type: Type.STRING,
+          description: 'Optional 24-character hexadecimal MongoDB ObjectId of a specific report.',
+        },
+        format: {
+          type: Type.STRING,
+          description: "Format: 'markdown', 'txt', 'json', 'csv', 'spreadsheet', 'gdoc', or 'gsheet'.",
+        },
+        destination: {
+          type: Type.STRING,
+          description: "Destination: 'download', 'clipboard', or 'google_drive'.",
+        },
+        branchIds: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description:
+            'Optional array of branch IDs or codes when exporting tabular cross-branch audit logs (CSV/Spreadsheet).',
+        },
+      },
+      required: ['format'],
+    },
+  },
+  {
+    name: 'share_to_telegram',
+    description:
+      'Format and dispatch an operational report, executive summary, or urgent incident briefing to designated Telegram channels or groups (management, maintenance, general). Operates with high-fidelity formatting and functional stubbing.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        reportId: {
+          type: Type.STRING,
+          description: 'Optional 24-character hexadecimal MongoDB ObjectId of the report to broadcast.',
+        },
+        messageText: {
+          type: Type.STRING,
+          description: 'Optional custom text, briefing summary, or urgent incident note to broadcast.',
+        },
+        targetChannel: {
+          type: Type.STRING,
+          description: "Target channel: 'management' (default), 'maintenance', or 'general'.",
+        },
+        customNote: {
+          type: Type.STRING,
+          description: 'Optional supervisor header remark or delivery note.',
+        },
+      },
+    },
+  },
+  {
+    name: 'save_supervisor_directive',
+    description:
+      'Persist vocabulary rules, forbidden words, phrase replacements, or custom instructions to User.settings.directives (Single Source of Truth) in MongoDB inside an ACID transaction.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        negativeVocabularyToAdd: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Words or terms to strictly ban and exclude from generated reports.',
+        },
+        negativeVocabularyToRemove: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Forbidden words to unban and remove from negative vocabulary.',
+        },
+        phraseMappingsToAdd: {
+          type: Type.OBJECT,
+          description: 'Key-value dictionary mapping colloquial terms to corporate replacements.',
+        },
+        phraseMappingsToRemove: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Keys of phrase mappings to remove.',
+        },
+        customInstructionsToAdd: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Discrete operational directives or rules to add to the supervisor profile.',
+        },
+        customInstructionsToRemove: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Discrete operational directives or rules to remove.',
+        },
+        singleBranchTemplate: {
+          type: Type.STRING,
+          description:
+            'Optional custom Amharic corporate template text for Single-Branch reports (persisted to User.settings.reportTemplates.singleBranch; pass empty string or null to reset to default).',
+        },
+        multiBranchTemplate: {
+          type: Type.STRING,
+          description:
+            'Optional custom Amharic corporate template text for Multi-Branch reports (persisted to User.settings.reportTemplates.multiBranch; pass empty string or null to reset to default).',
+        },
+      },
+    },
+  },
+];
+
+/**
+ * ==============================================================================
+ * 2. In-Process Tool Execution Handlers (17 In-Memory ACID Handlers)
+ * ==============================================================================
+ */
+export const toolHandlers = {
+  // ----------------------------------------------------------------------------
+  // Category 1: Branch Scope Handlers
+  // ----------------------------------------------------------------------------
+
+  /**
+   * 1. lookup_user_branches
+   */
+  lookup_user_branches: async ({ args = {}, userId }) => {
+    const status = args.status || 'active';
+    const query = { user: userId };
+
+    if (status === 'active') {
+      query.isArchived = false;
+    } else if (status === 'archived') {
+      query.isArchived = true;
+    }
+
+    if (args.search && typeof args.search === 'string' && args.search.trim()) {
+      const searchTerms = getBilingualSearchTerms(args.search.trim());
+      const termOrConditions = searchTerms.flatMap((term) => {
+        const termRegex = new RegExp(escapeRegex(term), 'i');
+        return [
+          { name: termRegex },
+          { code: termRegex },
+          { aliases: termRegex },
+          { managerName: termRegex },
+          { 'location.address': termRegex },
+          { 'location.subcity': termRegex },
+        ];
+      });
+      query.$or = termOrConditions;
+    }
+
+    const branches = await Branch.find(query)
+      .select('_id name code location managerName contactPhone isArchived archivedAt')
+      .sort({ name: 1 })
+      .lean();
+
+    return {
+      branches: branches.map((b) => ({
+        _id: b._id.toString(),
+        name: b.name,
+        code: b.code,
+        location: b.location?.address || b.location?.city || null,
+        address: b.location?.address || null,
+        phone: b.contactPhone || null,
+        managerName: b.managerName || null,
+        isArchived: b.isArchived,
+      })),
+      count: branches.length,
+    };
+  },
+
+  /**
+   * 2. create_branch
+   */
+  create_branch: async ({ args = {}, userId, session = null }) => {
+    const { name, address, phone, managerName } = args;
+    const cleanName = String(name || '').trim();
+
+    if (!cleanName) {
+      throw new ValidationError('Branch name is required.');
+    }
+
+    return await runInTransaction(session, async (activeSession) => {
+      // 1. Collision check for active branch name
+      const nameRegex = new RegExp(`^${escapeRegex(cleanName)}$`, 'i');
+      const existingByName = await Branch.findOne({
+        user: userId,
+        name: nameRegex,
+        isArchived: false,
+      }).session(activeSession);
+
+      if (existingByName) {
+        throw new ConflictError('A branch with this name already exists.');
+      }
+
+      // 2. Auto-generate operational code
+      const existingBranches = await Branch.find({ user: userId })
+        .select('code')
+        .session(activeSession)
+        .lean();
+      const existingCodes = existingBranches.map((b) => b.code);
+      const branchCode = generateBranchCode(cleanName, existingCodes);
+
+      // 3. Resolve bilingual aliases
+      const aliases = resolveBranchAliases(cleanName);
+
+      // 4. Create branch document
+      const [newBranch] = await Branch.create(
+        [
+          {
+            user: userId,
+            name: cleanName,
+            code: branchCode,
+            aliases,
+            location: {
+              city: BRANCH_CONSTANTS.DEFAULT_CITY,
+              address: (address || '').trim(),
+            },
+            managerName: (managerName || '').trim(),
+            contactPhone: (phone || '').trim(),
+            isArchived: false,
+          },
+        ],
+        { session: activeSession }
+      );
+
+      return {
+        branchId: newBranch._id.toString(),
+        name: newBranch.name,
+        code: newBranch.code,
+        address: newBranch.location?.address || '',
+        phone: newBranch.contactPhone,
+        managerName: newBranch.managerName,
+        message: 'Branch created successfully.',
+      };
+    });
+  },
+
+  /**
+   * 3. update_branch
+   */
+  update_branch: async ({ args = {}, userId, session = null }) => {
+    const { branchId, name, address, phone, managerName } = args;
+
+    if (!branchId) {
+      throw new ValidationError('Branch identifier is required.');
+    }
+
+    return await runInTransaction(session, async (activeSession) => {
+      const query = {
+        ...buildBranchIdentifierQuery(branchId, userId),
+        isArchived: false,
+      };
+      const branch = await Branch.findOne(query).session(activeSession);
+
+      if (!branch) {
+        throw new NotFoundError('Branch not found.');
+      }
+
+      // If name updated, verify collision
+      if (name && name.trim() !== branch.name) {
+        const cleanName = name.trim();
+        const nameRegex = new RegExp(`^${escapeRegex(cleanName)}$`, 'i');
+        const collidingName = await Branch.findOne({
+          _id: { $ne: branch._id },
+          user: userId,
+          name: nameRegex,
+          isArchived: false,
+        }).session(activeSession);
+
+        if (collidingName) {
+          throw new ConflictError('A branch with this name already exists.');
+        }
+
+        branch.name = cleanName;
+        branch.aliases = resolveBranchAliases(cleanName);
+      }
+
+      if (address !== undefined) {
+        if (!branch.location) branch.location = {};
+        branch.location.address = String(address).trim();
+      }
+      if (phone !== undefined) {
+        branch.contactPhone = String(phone).trim();
+      }
+      if (managerName !== undefined) {
+        branch.managerName = String(managerName).trim();
+      }
+
+      await branch.save({ session: activeSession });
+
+      return {
+        branchId: branch._id.toString(),
+        name: branch.name,
+        code: branch.code,
+        address: branch.location?.address || '',
+        phone: branch.contactPhone,
+        managerName: branch.managerName,
+        message: 'Branch updated successfully.',
+      };
+    });
+  },
+
+  /**
+   * 4. archive_branch
+   */
+  archive_branch: async ({ args = {}, userId, session = null }) => {
+    const { branchId } = args;
+    if (!branchId) {
+      throw new ValidationError('Branch identifier is required.');
+    }
+
+    return await runInTransaction(session, async (activeSession) => {
+      const query = buildBranchIdentifierQuery(branchId, userId);
+      const branch = await Branch.findOne(query).session(activeSession);
+
+      if (!branch) {
+        throw new NotFoundError('Branch not found.');
+      }
+      if (branch.isArchived) {
+        throw new BadRequestError('Branch is already archived.');
+      }
+
+      branch.isArchived = true;
+      branch.archivedAt = new Date();
+      await branch.save({ session: activeSession });
+
+      return {
+        branchId: branch._id.toString(),
+        name: branch.name,
+        code: branch.code,
+        isArchived: true,
+        archivedAt: branch.archivedAt,
+        message: 'Branch archived successfully.',
+      };
+    });
+  },
+
+  /**
+   * 5. restore_branch
+   */
+  restore_branch: async ({ args = {}, userId, session = null }) => {
+    const { branchId } = args;
+    if (!branchId) {
+      throw new ValidationError('Branch identifier is required.');
+    }
+
+    return await runInTransaction(session, async (activeSession) => {
+      const query = buildBranchIdentifierQuery(branchId, userId);
+      const branch = await Branch.findOne(query).session(activeSession);
+
+      if (!branch) {
+        throw new NotFoundError('Branch not found.');
+      }
+      if (!branch.isArchived) {
+        throw new BadRequestError('Branch is already active and cannot be restored.');
+      }
+
+      // Name collision check
+      const nameRegex = new RegExp(`^${escapeRegex(branch.name)}$`, 'i');
+      const collidingName = await Branch.findOne({
+        _id: { $ne: branch._id },
+        user: userId,
+        name: nameRegex,
+        isArchived: false,
+      }).session(activeSession);
+
+      if (collidingName) {
+        throw new ConflictError(
+          'An active branch with this name already exists. Please resolve the collision before restoring.'
+        );
+      }
+
+      // Code collision check
+      const collidingCode = await Branch.findOne({
+        _id: { $ne: branch._id },
+        user: userId,
+        code: branch.code,
+        isArchived: false,
+      }).session(activeSession);
+
+      if (collidingCode) {
+        throw new ConflictError(
+          'An active branch with this operational code already exists. Please resolve the collision before restoring.'
+        );
+      }
+
+      branch.isArchived = false;
+      branch.archivedAt = null;
+      await branch.save({ session: activeSession });
+
+      return {
+        branchId: branch._id.toString(),
+        name: branch.name,
+        code: branch.code,
+        isArchived: false,
+        message: 'Branch restored successfully.',
+      };
+    });
+  },
+
+  /**
+   * 6. delete_branch_permanently
+   */
+  delete_branch_permanently: async ({ args = {}, userId, session = null }) => {
+    const { branchId } = args;
+    if (!branchId) {
+      throw new ValidationError('Branch identifier is required.');
+    }
+
+    return await runInTransaction(session, async (activeSession) => {
+      const query = buildBranchIdentifierQuery(branchId, userId);
+      const branch = await Branch.findOne(query).session(activeSession);
+
+      if (!branch) {
+        throw new NotFoundError('Branch not found.');
+      }
+      if (!branch.isArchived) {
+        throw new BadRequestError(
+          'Only archived branches can be permanently deleted. Please archive the branch first.'
+        );
+      }
+
+      await cascadeDeleteBranch(branch._id, activeSession);
+
+      return {
+        branchId: branch._id.toString(),
+        message: 'Branch permanently deleted successfully.',
+      };
+    });
+  },
+
+  // ----------------------------------------------------------------------------
+  // Category 2: Report Scope Handlers
+  // ----------------------------------------------------------------------------
+
+  /**
+   * 7. create_report
+   */
+  create_report: async ({ args, userId, session = null }) => {
+    const validatedPayload = validateReportPayload(args);
+    const createdReport = await createReportRecord({
+      userId,
+      payload: validatedPayload,
+      existingSession: session,
+    });
+
+    return {
+      reportId: createdReport._id.toString(),
+      date: createdReport.date,
+      ethiopianDate: createdReport.ethiopianDate,
+      supervisorName: createdReport.supervisorName,
+      visitsCount: createdReport.visits.length,
+      activitiesCount: createdReport.activities.length,
+      issuesCount: createdReport.issues.length,
+      commentsCount: createdReport.comments.length,
+      transcription: createdReport.transcription,
+      message: 'Operational report successfully created and persisted.',
+    };
+  },
+
+  /**
+   * 8. update_report
+   */
+  update_report: async ({ args = {}, userId, session = null }) => {
+    const { reportId, date, clockIn, clockOut, visits, transcription } = args;
+    const activitiesToAppend = args.newActivities || args.appendActivities || [];
+    const issuesToAppend = args.newIssues || args.appendIssues || [];
+    const commentsToAppend = args.newComments || args.appendComments || [];
+
+    if (!isValidObjectId(reportId)) {
+      throw new ValidationError('Invalid report ID.');
+    }
+
+    return await runInTransaction(session, async (activeSession) => {
+      const report = await Report.findOne({ _id: reportId, user: userId, isArchived: false }).session(
+        activeSession
+      );
+      if (!report) {
+        throw new NotFoundError('Report not found.');
+      }
+
+      if (date !== undefined) report.date = new Date(date);
+      if (clockIn !== undefined) report.clockIn = clockIn;
+      if (clockOut !== undefined) report.clockOut = clockOut;
+      if (transcription !== undefined) report.transcription = transcription;
+
+      if (Array.isArray(visits) && visits.length > 0) {
+        const branchIdsToVerify = visits.map((v) => String(v.branch)).filter(Boolean);
+        const uniqueIds = [...new Set(branchIdsToVerify)];
+        const branches = await Branch.find({
+          _id: { $in: uniqueIds },
+          user: userId,
+          isArchived: false,
+        }).session(activeSession);
+
+        if (branches.length !== uniqueIds.length) {
+          throw new NotFoundError(
+            'One or more updated branches could not be found or do not belong to your account.'
+          );
+        }
+        report.visits = visits;
+      }
+
+      if (Array.isArray(activitiesToAppend) && activitiesToAppend.length > 0) {
+        for (const act of activitiesToAppend) {
+          const actText = typeof act === 'string' ? act.trim() : act?.text?.trim();
+          if (actText) {
+            report.activities.push({
+              text: actText,
+              status: (typeof act === 'object' && act?.status) || 'completed',
+            });
+          }
+        }
+      }
+
+      if (Array.isArray(issuesToAppend) && issuesToAppend.length > 0) {
+        for (const iss of issuesToAppend) {
+          const issText = typeof iss === 'string' ? iss.trim() : iss?.text?.trim();
+          if (issText) {
+            report.issues.push({
+              text: issText,
+              status: (typeof iss === 'object' && iss?.status) || 'reported',
+            });
+          }
+        }
+      }
+
+      if (Array.isArray(commentsToAppend) && commentsToAppend.length > 0) {
+        for (const com of commentsToAppend) {
+          const comText = typeof com === 'string' ? com.trim() : com?.text?.trim();
+          if (comText) {
+            report.comments.push({ text: comText });
+          }
+        }
+      }
+
+      await report.save({ session: activeSession });
+
+      return {
+        reportId: report._id.toString(),
+        clockIn: report.clockIn,
+        clockOut: report.clockOut,
+        activitiesCount: report.activities.length,
+        issuesCount: report.issues.length,
+        commentsCount: report.comments.length,
+        transcription: report.transcription,
+        message: 'Report updated successfully.',
+      };
+    });
+  },
+
+  /**
+   * 9. update_branch_record_status
+   */
+  update_branch_record_status: async ({ args = {}, userId, session = null }) => {
+    const { reportId, recordType, newStatus, resolutionNotes } = args;
+    const targetItemId = args.recordId || args.itemId;
+
+    if (!isValidObjectId(reportId)) {
+      throw new ValidationError('Invalid report ID.');
+    }
+    if (!isValidObjectId(targetItemId)) {
+      throw new ValidationError('Invalid item/record ID.');
+    }
+
+    return await runInTransaction(session, async (activeSession) => {
+      const report = await Report.findOne({ _id: reportId, user: userId, isArchived: false }).session(
+        activeSession
+      );
+      if (!report) {
+        throw new NotFoundError('Report not found.');
+      }
+
+      let updatedItem = null;
+
+      if (recordType === 'issue') {
+        if (!REPORT_CONSTANTS.ISSUE_STATUSES.includes(newStatus)) {
+          throw new ValidationError(
+            `Invalid issue status. Must be one of: ${REPORT_CONSTANTS.ISSUE_STATUSES.join(', ')}`
+          );
+        }
+        const item = report.issues.id(targetItemId);
+        if (!item) {
+          throw new NotFoundError('Issue item not found in report.');
+        }
+        item.status = newStatus;
+        if (resolutionNotes && typeof resolutionNotes === 'string' && resolutionNotes.trim()) {
+          item.text = `${item.text} (Resolution: ${resolutionNotes.trim()})`;
+        }
+        updatedItem = item;
+      } else if (recordType === 'activity') {
+        if (!REPORT_CONSTANTS.ACTIVITY_STATUSES.includes(newStatus)) {
+          throw new ValidationError(
+            `Invalid activity status. Must be one of: ${REPORT_CONSTANTS.ACTIVITY_STATUSES.join(', ')}`
+          );
+        }
+        const item = report.activities.id(targetItemId);
+        if (!item) {
+          throw new NotFoundError('Activity item not found in report.');
+        }
+        item.status = newStatus;
+        updatedItem = item;
+      } else {
+        throw new ValidationError('recordType must be "issue" or "activity".');
+      }
+
+      await report.save({ session: activeSession });
+
+      return {
+        reportId,
+        recordType,
+        recordId: targetItemId,
+        itemId: targetItemId,
+        newStatus,
+        updatedItem: {
+          _id: updatedItem._id.toString(),
+          text: updatedItem.text,
+          status: updatedItem.status,
+        },
+        message: `Record status successfully updated to "${newStatus}".`,
+      };
+    });
+  },
+
+  /**
+   * 10. archive_report
+   */
+  archive_report: async ({ args = {}, userId, session = null }) => {
+    const { reportId } = args;
+    if (!isValidObjectId(reportId)) {
+      throw new ValidationError('Invalid report ID.');
+    }
+
+    return await runInTransaction(session, async (activeSession) => {
+      const report = await Report.findOne({ _id: reportId, user: userId }).session(activeSession);
+      if (!report) {
+        throw new NotFoundError('Report not found.');
+      }
+      if (report.isArchived) {
+        throw new BadRequestError('Report is already archived.');
+      }
+
+      report.isArchived = true;
+      report.archivedAt = new Date();
+      await report.save({ session: activeSession });
+
+      return {
+        reportId: report._id.toString(),
+        isArchived: true,
+        archivedAt: report.archivedAt,
+        message: 'Report archived successfully.',
+      };
+    });
+  },
+
+  /**
+   * 11. restore_report
+   */
+  restore_report: async ({ args = {}, userId, session = null }) => {
+    const { reportId } = args;
+    if (!isValidObjectId(reportId)) {
+      throw new ValidationError('Invalid report ID.');
+    }
+
+    return await runInTransaction(session, async (activeSession) => {
+      const report = await Report.findOne({ _id: reportId, user: userId }).session(activeSession);
+      if (!report) {
+        throw new NotFoundError('Report not found.');
+      }
+      if (!report.isArchived) {
+        throw new BadRequestError('Report is not archived.');
+      }
+
+      report.isArchived = false;
+      report.archivedAt = null;
+      await report.save({ session: activeSession });
+
+      return {
+        reportId: report._id.toString(),
+        isArchived: false,
+        message: 'Report restored successfully.',
+      };
+    });
+  },
+
+  /**
+   * 12. delete_report_permanently
+   */
+  delete_report_permanently: async ({ args = {}, userId, session = null }) => {
+    const { reportId } = args;
+    if (!isValidObjectId(reportId)) {
+      throw new ValidationError('Invalid report ID.');
+    }
+
+    const audioPathsToUnlink = [];
+
+    await runInTransaction(session, async (activeSession) => {
+      const report = await Report.findOne({ _id: reportId, user: userId }).session(activeSession);
+      if (!report) {
+        throw new NotFoundError('Report not found.');
+      }
+      if (!report.isArchived) {
+        throw new BadRequestError(
+          'Only archived reports can be permanently deleted. Please archive the report first.'
+        );
+      }
+
+      // Collect audio filepaths to unlink post-commit
+      if (report.audios && report.audios.length > 0) {
+        const audioDocs = await Audio.find({
+          _id: { $in: report.audios },
+          user: userId,
+        })
+          .select('path')
+          .session(activeSession)
+          .lean();
+
+        for (const a of audioDocs) {
+          if (a.path) audioPathsToUnlink.push(a.path);
+        }
+
+        await Audio.deleteMany({
+          _id: { $in: report.audios },
+          user: userId,
+        }).session(activeSession);
+      }
+
+      await Report.deleteOne({ _id: reportId }).session(activeSession);
+    });
+
+    // Clean post-commit unlink of audio binaries from disk
+    for (const audioPath of audioPathsToUnlink) {
+      try {
+        const resolvedPath = path.resolve(audioPath);
+        await fs.promises.unlink(resolvedPath);
+        logger.info(`[Report Tool Deletion] Unlinked audio binary: ${resolvedPath}`);
+      } catch (unlinkErr) {
+        if (unlinkErr.code !== 'ENOENT') {
+          logger.warn(
+            `[Report Tool Deletion] Failed to unlink audio binary ${audioPath}: ${unlinkErr.message}`
+          );
+        }
+      }
+    }
+
+    return {
+      reportId,
+      message: 'Report permanently deleted successfully.',
+    };
+  },
+
+  // ----------------------------------------------------------------------------
+  // Category 3: Enterprise Intelligence & Cross-Branch Queries
+  // ----------------------------------------------------------------------------
+
+  /**
+   * 13. query_historical_reports
+   */
+  query_historical_reports: async ({ args = {}, userId }) => {
+    const status = args.status || 'active';
+    const query = { user: userId };
+
+    if (status === 'active') {
+      query.isArchived = false;
+    } else if (status === 'archived') {
+      query.isArchived = true;
+    }
+
+    // Branch filter: plural branchIds or singular branchId
+    const rawBranchIds = args.branchIds || (args.branchId ? [args.branchId] : []);
+    if (rawBranchIds.length > 0) {
+      const resolvedIds = await resolveBranchObjectIds(rawBranchIds, userId);
+      if (resolvedIds.length > 0) {
+        query['visits.branch'] = { $in: resolvedIds };
+      }
+    }
+
+    // Date filters
+    if (args.date) {
+      const targetDate = new Date(args.date);
+      const startOfDay = new Date(targetDate);
+      startOfDay.setUTCHours(0, 0, 0, 0);
+      const endOfDay = new Date(targetDate);
+      endOfDay.setUTCHours(23, 59, 59, 999);
+      query.date = { $gte: startOfDay, $lte: endOfDay };
+    } else if (args.startDate || args.endDate) {
+      query.date = {};
+      if (args.startDate) query.date.$gte = new Date(args.startDate);
+      if (args.endDate) query.date.$lte = new Date(args.endDate);
+    }
+
+    // Keyword filter
+    if (args.keyword && typeof args.keyword === 'string' && args.keyword.trim()) {
+      query.transcription = new RegExp(escapeRegex(args.keyword.trim()), 'i');
+    }
+
+    const limit = Math.min(Math.max(Number(args.limit) || 5, 1), 20);
+
+    const reports = await Report.find(query)
+      .sort({ date: -1, createdAt: -1 })
+      .limit(limit)
+      .populate('visits.branch', 'name code')
+      .select('date clockIn clockOut visits activities issues comments transcription isArchived createdAt')
+      .lean();
+
+    return {
+      reports: reports.map((r) => ({
+        reportId: r._id.toString(),
+        date: r.date,
+        ethiopianDate: toEthiopianDateString(r.date),
+        isArchived: r.isArchived,
+        visits: (r.visits || []).map((v) => ({
+          branchName: v.branch?.name || 'Unknown',
+          branchCode: v.branch?.code || 'N/A',
+          clockIn: v.clockIn,
+          clockOut: v.clockOut,
+        })),
+        activitiesCount: r.activities?.length || 0,
+        issuesCount: r.issues?.length || 0,
+        openIssues: (r.issues || [])
+          .filter((i) => i.status !== 'completed' && i.status !== 'no_issue')
+          .map((i) => ({
+            itemId: i._id.toString(),
+            text: i.text,
+            status: i.status,
+          })),
+        transcription: r.transcription,
+      })),
+      count: reports.length,
+    };
+  },
+
+  /**
+   * 14. query_branch_records
+   */
+  query_branch_records: async ({ args = {}, userId }) => {
+    const query = { user: userId, isArchived: false };
+
+    // Branch filter: plural branchIds or singular branchId
+    const rawBranchIds = args.branchIds || (args.branchId ? [args.branchId] : []);
+    if (rawBranchIds.length > 0) {
+      const resolvedIds = await resolveBranchObjectIds(rawBranchIds, userId);
+      if (resolvedIds.length > 0) {
+        query['visits.branch'] = { $in: resolvedIds };
+      }
+    }
+
+    // Date filters
+    if (args.date) {
+      const targetDate = new Date(args.date);
+      const startOfDay = new Date(targetDate);
+      startOfDay.setUTCHours(0, 0, 0, 0);
+      const endOfDay = new Date(targetDate);
+      endOfDay.setUTCHours(23, 59, 59, 999);
+      query.date = { $gte: startOfDay, $lte: endOfDay };
+    } else if (args.startDate || args.endDate) {
+      query.date = {};
+      if (args.startDate) query.date.$gte = new Date(args.startDate);
+      if (args.endDate) query.date.$lte = new Date(args.endDate);
+    }
+
+    const reports = await Report.find(query)
+      .sort({ date: -1, createdAt: -1 })
+      .limit(30)
+      .populate('visits.branch', 'name code')
+      .lean();
+
+    const recordType = args.recordType || 'all';
+    const statusFilter = args.status && args.status !== 'all' ? args.status : null;
+    const keywordFilter = args.keyword && typeof args.keyword === 'string' ? args.keyword.trim().toLowerCase() : null;
+    const maxLimit = Math.min(Math.max(Number(args.limit) || 15, 1), 50);
+
+    const results = [];
+
+    for (const report of reports) {
+      const reportMeta = {
+        reportId: report._id.toString(),
+        date: report.date,
+        ethiopianDate: toEthiopianDateString(report.date),
+        branches: (report.visits || []).map((v) => v.branch?.name || v.branch?.code || 'Branch'),
+      };
+
+      // Issues
+      if (recordType === 'all' || recordType === 'issues') {
+        for (const issue of report.issues || []) {
+          const matchesStatus = !statusFilter || issue.status === statusFilter;
+          const matchesKeyword = !keywordFilter || issue.text.toLowerCase().includes(keywordFilter);
+          if (matchesStatus && matchesKeyword) {
+            results.push({
+              type: 'issue',
+              itemId: issue._id.toString(),
+              text: issue.text,
+              status: issue.status,
+              ...reportMeta,
+            });
+            if (results.length >= maxLimit) break;
+          }
+        }
+      }
+      if (results.length >= maxLimit) break;
+
+      // Activities
+      if (recordType === 'all' || recordType === 'activities') {
+        for (const act of report.activities || []) {
+          const matchesStatus = !statusFilter || act.status === statusFilter;
+          const matchesKeyword = !keywordFilter || act.text.toLowerCase().includes(keywordFilter);
+          if (matchesStatus && matchesKeyword) {
+            results.push({
+              type: 'activity',
+              itemId: act._id.toString(),
+              text: act.text,
+              status: act.status,
+              ...reportMeta,
+            });
+            if (results.length >= maxLimit) break;
+          }
+        }
+      }
+      if (results.length >= maxLimit) break;
+
+      // Visits
+      if (recordType === 'all' || recordType === 'visits') {
+        for (const visit of report.visits || []) {
+          const bName = visit.branch?.name || visit.branch?.code || 'Branch';
+          const matchesKeyword = !keywordFilter || bName.toLowerCase().includes(keywordFilter);
+          if (matchesKeyword) {
+            results.push({
+              type: 'visit',
+              itemId: visit._id?.toString() || reportMeta.reportId,
+              branchName: bName,
+              clockIn: visit.clockIn,
+              clockOut: visit.clockOut,
+              ...reportMeta,
+            });
+            if (results.length >= maxLimit) break;
+          }
+        }
+      }
+      if (results.length >= maxLimit) break;
+
+      // Comments
+      if (recordType === 'all' || recordType === 'comments') {
+        for (const com of report.comments || []) {
+          const matchesKeyword = !keywordFilter || com.text.toLowerCase().includes(keywordFilter);
+          if (matchesKeyword) {
+            results.push({
+              type: 'comment',
+              itemId: com._id.toString(),
+              text: com.text,
+              ...reportMeta,
+            });
+            if (results.length >= maxLimit) break;
+          }
+        }
+      }
+      if (results.length >= maxLimit) break;
+    }
+
+    return {
+      records: results,
+      count: results.length,
+    };
+  },
+
+  // ----------------------------------------------------------------------------
+  // Category 4: External Channels, Export & Directives SSOT
+  // ----------------------------------------------------------------------------
+
+  /**
+   * 15. export_report
+   */
+  export_report: async ({ args = {}, userId }) => {
+    const format = args.format || 'txt';
+    const destination = args.destination || 'download';
+
+    let reportsToExport = [];
+    if (args.reportId && isValidObjectId(args.reportId)) {
+      const singleReport = await Report.findOne({ _id: args.reportId, user: userId })
+        .populate('visits.branch', 'name code')
+        .lean();
+      if (!singleReport) {
+        throw new NotFoundError('Report not found.');
+      }
+      reportsToExport = [singleReport];
+    } else {
+      const query = { user: userId, isArchived: false };
+      const rawBranchIds = args.branchIds || (args.branchId ? [args.branchId] : []);
+      if (rawBranchIds.length > 0) {
+        const resolvedIds = await resolveBranchObjectIds(rawBranchIds, userId);
+        if (resolvedIds.length > 0) {
+          query['visits.branch'] = { $in: resolvedIds };
+        }
+      }
+      reportsToExport = await Report.find(query)
+        .sort({ date: -1, createdAt: -1 })
+        .limit(20)
+        .populate('visits.branch', 'name code')
+        .lean();
+    }
+
+    const isSingle = reportsToExport.length === 1;
+    const report = isSingle ? reportsToExport[0] : null;
+
+    let exportContent = '';
+    const ethiopianDateStr = report ? toEthiopianDateString(report.date) : toEthiopianDateString(new Date());
+    const gregorianDateStr = report
+      ? new Date(report.date).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0];
+
+    if (format === 'json') {
+      exportContent = JSON.stringify(isSingle ? report : reportsToExport, null, 2);
+    } else if (format === 'markdown') {
+      if (isSingle) {
+        exportContent =
+          `# Operational Report (${ethiopianDateStr})\n\n` +
+          `**Date**: ${gregorianDateStr} (Ethiopian: ${ethiopianDateStr})\n` +
+          `**Supervisor**: ${report.supervisorName || 'N/A'}\n` +
+          `**Work Hours**: ${report.clockIn} - ${report.clockOut}\n\n` +
+          `## Branch Visits\n` +
+          (report.visits || [])
+            .map((v) => `- **${v.branch?.name || 'Branch'}** (${v.branch?.code || 'N/A'}): ${v.clockIn} - ${v.clockOut}`)
+            .join('\n') +
+          `\n\n## Activities Conducted\n` +
+          (report.activities || []).map((a) => `- [x] ${a.text} (${a.status})`).join('\n') +
+          `\n\n## Issues & Challenges\n` +
+          (report.issues || []).map((i) => `- [ ] ${i.text} (${i.status})`).join('\n') +
+          `\n\n## General Comments\n` +
+          (report.comments && report.comments.length
+            ? report.comments.map((c) => `- ${c.text}`).join('\n')
+            : '_None_') +
+          `\n\n## Corporate Transcription\n\n${report.transcription}`;
+      } else if (reportsToExport.length > 1) {
+        exportContent =
+          `# Cross-Branch Operational Audit Export\n\n` +
+          `**Total Reports**: ${reportsToExport.length}\n` +
+          `**Export Date**: ${gregorianDateStr} (Ethiopian: ${ethiopianDateStr})\n\n` +
+          reportsToExport
+            .map((r, idx) => {
+              const rEth = toEthiopianDateString(r.date);
+              const rGreg = new Date(r.date).toISOString().split('T')[0];
+              const bNames = (r.visits || []).map((v) => v.branch?.name || 'Branch').join(', ');
+              return (
+                `### ${idx + 1}. Audit: ${bNames} (${rGreg} / Eth: ${rEth})\n` +
+                `- **Work Hours**: ${r.clockIn} - ${r.clockOut}\n` +
+                `- **Activities**: ${(r.activities || []).map((a) => a.text).join('; ') || 'None'}\n` +
+                `- **Issues**: ${(r.issues || []).map((i) => `${i.text} [${i.status}]`).join('; ') || 'None'}\n`
+              );
+            })
+            .join('\n');
+      } else {
+        exportContent = '# Operational Report Export\nNo matching reports found.';
+      }
+    } else if (format === 'csv' || format === 'spreadsheet' || format === 'gsheet') {
+      const csvRows = ['Date,EthiopianDate,Branch,RecordType,Description,Status'];
+      for (const rep of reportsToExport) {
+        const repEth = toEthiopianDateString(rep.date);
+        const repGreg = new Date(rep.date).toISOString().split('T')[0];
+        const branchNames = (rep.visits || []).map((v) => v.branch?.name || 'Branch').join('; ');
+
+        (rep.activities || []).forEach((act) => {
+          csvRows.push(
+            `"${repGreg}","${repEth}","${branchNames}","Activity","${act.text.replace(/"/g, '""')}","${act.status}"`
+          );
+        });
+        (rep.issues || []).forEach((iss) => {
+          csvRows.push(
+            `"${repGreg}","${repEth}","${branchNames}","Issue","${iss.text.replace(/"/g, '""')}","${iss.status}"`
+          );
+        });
+        (rep.comments || []).forEach((com) => {
+          csvRows.push(
+            `"${repGreg}","${repEth}","${branchNames}","Comment","${com.text.replace(/"/g, '""')}","N/A"`
+          );
+        });
+      }
+      exportContent = csvRows.join('\n');
+    } else {
+      // Default plain text (verbatim transcription or summary)
+      if (isSingle) {
+        exportContent = report.transcription || 'Operational Report Export';
+      } else if (reportsToExport.length > 0) {
+        exportContent = reportsToExport
+          .map((r, i) => `=== REPORT ${i + 1} (${new Date(r.date).toISOString().split('T')[0]}) ===\n${r.transcription}`)
+          .join('\n\n');
+      } else {
+        exportContent = 'Operational Report Export: No matching reports found.';
+      }
+    }
+
+    // Functional Stub Architecture: Google Drive / Sheets
+    if (destination === 'google_drive') {
+      const ext = format === 'csv' || format === 'spreadsheet' || format === 'gsheet' ? 'csv' : 'txt';
+      const fileName = `Operational_Report_${gregorianDateStr}_${Date.now()}.${ext}`;
+      return {
+        success: true,
+        isStub: true,
+        format,
+        destination,
+        fileName,
+        payloadPreview: exportContent.slice(0, 300),
+        reportsCount: reportsToExport.length,
+        message: 'Google Drive integration stub: payload formatted and ready for dispatch.',
+      };
+    }
+
+    return {
+      reportId: report ? report._id.toString() : null,
+      reportsCount: reportsToExport.length,
+      format,
+      destination,
+      exportContent,
+      message: `Report successfully exported in ${format} format.`,
+    };
+  },
+
+  /**
+   * 16. share_to_telegram
+   */
+  share_to_telegram: async ({ args = {}, userId }) => {
+    const { reportId, messageText, targetChannel = 'management', customNote } = args;
+
+    let formattedMessage = '';
+
+    if (reportId && isValidObjectId(reportId)) {
+      const report = await Report.findOne({ _id: reportId, user: userId })
+        .populate('visits.branch', 'name code')
+        .lean();
+
+      if (report) {
+        const ethDate = toEthiopianDateString(report.date);
+        const gregDate = new Date(report.date).toISOString().split('T')[0];
+        const visits = (report.visits || [])
+          .map((v) => `• *${v.branch?.name || 'Branch'}* (${v.clockIn} - ${v.clockOut})`)
+          .join('\n');
+        const activities = (report.activities || [])
+          .map((a) => `• ${a.text}`)
+          .join('\n');
+        const issues = (report.issues || [])
+          .map((i) => `• ${i.text} (${i.status})`)
+          .join('\n');
+
+        formattedMessage = [
+          '📋 *የስራ ሪፖርት (Operational Report)*',
+          `📅 *ቀን:* ${ethDate} (${gregDate})`,
+          `⏰ *የስራ ሰዓት:* ${report.clockIn} - ${report.clockOut}`,
+          '',
+          '🏢 *የተጎበኙ ቅርንጫፎች:*',
+          visits || '• None',
+          '',
+          '✅ *የተሰሩ ስራዎች (Activities):*',
+          activities || '• None',
+          '',
+          '⚠️ *መፍትሄ የሚፈልጉ ጉዳዮች (Issues):*',
+          issues || '• None',
+        ].join('\n');
+      }
+    }
+
+    if (!formattedMessage && messageText) {
+      formattedMessage = messageText;
+    }
+
+    if (customNote) {
+      formattedMessage = `📌 *ማስታወሻ:* ${customNote}\n\n${formattedMessage}`;
+    }
+
+    // Enforce Telegram 4096 character limit
+    if (formattedMessage.length > 4096) {
+      formattedMessage = formattedMessage.slice(0, 4050) + '\n\n... [Truncated for Telegram limit]';
+    }
+
+    return {
+      success: true,
+      isStub: true,
+      channel: 'telegram',
+      targetChannel,
+      characterCount: formattedMessage.length,
+      formattedPayload: formattedMessage,
+      message:
+        'Telegram dispatch stub: report formatted for Telegram broadcast. (Awaiting Bot token configuration in Settings).',
+    };
+  },
+
+  /**
+   * 17. save_supervisor_directive
+   */
+  save_supervisor_directive: async ({ args = {}, userId, session = null }) => {
+    return await runInTransaction(session, async (activeSession) => {
+      const user = await User.findById(userId).session(activeSession);
+      if (!user) {
+        throw new NotFoundError('User not found.');
+      }
+
+      if (!user.settings) user.settings = {};
+      if (!user.settings.directives) {
+        user.settings.directives = {
+          negativeVocabulary: [],
+          phraseMappings: new Map(),
+          customInstructions: [],
+        };
+      }
+
+      let changed = false;
+
+      // 1. Negative vocabulary add
+      if (Array.isArray(args.negativeVocabularyToAdd)) {
+        const existing = new Set(user.settings.directives.negativeVocabulary || []);
+        for (const word of args.negativeVocabularyToAdd) {
+          if (word && typeof word === 'string' && word.trim()) {
+            existing.add(word.trim());
+            changed = true;
+          }
+        }
+        user.settings.directives.negativeVocabulary = Array.from(existing);
+      }
+
+      // 2. Negative vocabulary remove
+      if (Array.isArray(args.negativeVocabularyToRemove)) {
+        const toRemove = new Set(args.negativeVocabularyToRemove.map((w) => String(w).trim()));
+        user.settings.directives.negativeVocabulary = (
+          user.settings.directives.negativeVocabulary || []
+        ).filter((w) => !toRemove.has(w));
+        changed = true;
+      }
+
+      // 3. Phrase mappings add
+      if (args.phraseMappingsToAdd && typeof args.phraseMappingsToAdd === 'object') {
+        if (!user.settings.directives.phraseMappings) {
+          user.settings.directives.phraseMappings = new Map();
+        }
+        for (const [key, value] of Object.entries(args.phraseMappingsToAdd)) {
+          if (key && value && typeof key === 'string' && typeof value === 'string') {
+            user.settings.directives.phraseMappings.set(key.trim(), value.trim());
+            changed = true;
+          }
+        }
+      }
+
+      // 4. Phrase mappings remove
+      if (Array.isArray(args.phraseMappingsToRemove) && user.settings.directives.phraseMappings) {
+        for (const key of args.phraseMappingsToRemove) {
+          if (typeof key === 'string' && user.settings.directives.phraseMappings.has(key.trim())) {
+            user.settings.directives.phraseMappings.delete(key.trim());
+            changed = true;
+          }
+        }
+      }
+
+      // 5. Custom instructions add
+      if (Array.isArray(args.customInstructionsToAdd)) {
+        const existing = new Set(user.settings.directives.customInstructions || []);
+        for (const inst of args.customInstructionsToAdd) {
+          if (inst && typeof inst === 'string' && inst.trim()) {
+            existing.add(inst.trim());
+            changed = true;
+          }
+        }
+        user.settings.directives.customInstructions = Array.from(existing);
+      }
+
+      // 6. Custom instructions remove
+      if (Array.isArray(args.customInstructionsToRemove)) {
+        const toRemove = new Set(args.customInstructionsToRemove.map((i) => String(i).trim()));
+        user.settings.directives.customInstructions = (
+          user.settings.directives.customInstructions || []
+        ).filter((i) => !toRemove.has(i));
+        changed = true;
+      }
+
+      // 7. Custom report templates update
+      if (args.singleBranchTemplate !== undefined) {
+        if (!user.settings.reportTemplates) user.settings.reportTemplates = {};
+        user.settings.reportTemplates.singleBranch =
+          args.singleBranchTemplate && typeof args.singleBranchTemplate === 'string' && args.singleBranchTemplate.trim()
+            ? args.singleBranchTemplate.trim()
+            : null;
+        changed = true;
+      }
+      if (args.multiBranchTemplate !== undefined) {
+        if (!user.settings.reportTemplates) user.settings.reportTemplates = {};
+        user.settings.reportTemplates.multiBranch =
+          args.multiBranchTemplate && typeof args.multiBranchTemplate === 'string' && args.multiBranchTemplate.trim()
+            ? args.multiBranchTemplate.trim()
+            : null;
+        changed = true;
+      }
+
+      if (changed) {
+        await user.save({ session: activeSession });
+      }
+
+      const normalizedMappings =
+        user.settings.directives.phraseMappings instanceof Map
+          ? Object.fromEntries(user.settings.directives.phraseMappings)
+          : user.settings.directives.phraseMappings || {};
+
+      return {
+        negativeVocabulary: user.settings.directives.negativeVocabulary,
+        phraseMappings: normalizedMappings,
+        customInstructions: user.settings.directives.customInstructions,
+        reportTemplates: user.settings.reportTemplates || {},
+        message: 'Supervisor directives successfully updated in user settings.',
+      };
+    });
+  },
+};
+
+/**
+ * ==============================================================================
+ * 3. Unified In-Process Tool Dispatcher
+ * ==============================================================================
+ * Safely executes requested tool with error containment so errors do not crash chat streaming.
+ *
+ * @param {string} toolName - Name of the tool called by Gemini.
+ * @param {object} args - Arguments generated by Gemini.
+ * @param {object} context - Execution context { userId, session }.
+ * @returns {Promise<{ success: boolean, data?: any, error?: string, details?: any }>}
+ */
+export async function executeAgentTool(toolName, args = {}, { userId, session = null } = {}) {
+  const handler = toolHandlers[toolName];
+  if (!handler) {
+    return {
+      success: false,
+      error: `Unknown tool "${toolName}". Available tools: ${Object.keys(toolHandlers).join(', ')}`,
+    };
+  }
+
+  try {
+    const data = await handler({ args, userId, session });
+    return {
+      success: true,
+      data,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err.message || 'Tool execution failed.',
+      details: err.details || err.errors || null,
+    };
+  }
+}
+
+export default {
+  agentToolDeclarations,
+  toolHandlers,
+  executeAgentTool,
+};

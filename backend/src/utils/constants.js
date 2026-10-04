@@ -342,12 +342,14 @@ export const REPORT_CONSTANTS = Object.freeze({
   ISSUE_TEXT_MAX_LENGTH: 1000,
   COMMENT_TEXT_MAX_LENGTH: 2000,
   TRANSCRIPTION_MAX_LENGTH: 50000,
+  TEMPLATE_MAX_LENGTH: 4000,
 });
 
 /**
  * Chat session and AI agent engine constants.
  * @constant
  * @type {Readonly<{
+ *   DEFAULT_PERSONA: string,
  *   DEFAULT_MODEL: string,
  *   SUPPORTED_MODELS: string[],
  *   DEFAULT_THINKING_BUDGET: number,
@@ -368,6 +370,8 @@ export const REPORT_CONSTANTS = Object.freeze({
  * }>}
  */
 export const CHAT_CONSTANTS = Object.freeze({
+  DEFAULT_PERSONA:
+    'Personal AI Agent and Executive Operations Partner for multi-branch restaurant operations, professional leadership, and personal productivity in Ethiopia',
   DEFAULT_MODEL: 'gemini-2.5-flash',
   SUPPORTED_MODELS: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'],
   DEFAULT_THINKING_BUDGET: 2048,

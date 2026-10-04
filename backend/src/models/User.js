@@ -14,6 +14,7 @@ import {
   EMAIL_REGEX,
   BCRYPT_SALT_ROUNDS,
   CHAT_CONSTANTS,
+  REPORT_CONSTANTS,
 } from '../utils/constants.js';
 
 /**
@@ -101,7 +102,7 @@ const userSchema = new mongoose.Schema(
       agentConfig: {
         persona: {
           type: String,
-          default: 'Area Supervisor Operations Assistant for multi-branch restaurant operations in Ethiopia',
+          default: CHAT_CONSTANTS.DEFAULT_PERSONA,
         },
         defaultModel: {
           type: String,
@@ -118,6 +119,26 @@ const userSchema = new mongoose.Schema(
           type: String,
           enum: CHAT_CONSTANTS.SUPPORTED_LANGUAGES,
           default: CHAT_CONSTANTS.DEFAULT_LANGUAGE,
+        },
+      },
+      reportTemplates: {
+        singleBranch: {
+          type: String,
+          default: null,
+          trim: true,
+          maxlength: [
+            REPORT_CONSTANTS.TEMPLATE_MAX_LENGTH,
+            `Single branch template cannot exceed ${REPORT_CONSTANTS.TEMPLATE_MAX_LENGTH} characters.`,
+          ],
+        },
+        multiBranch: {
+          type: String,
+          default: null,
+          trim: true,
+          maxlength: [
+            REPORT_CONSTANTS.TEMPLATE_MAX_LENGTH,
+            `Multi branch template cannot exceed ${REPORT_CONSTANTS.TEMPLATE_MAX_LENGTH} characters.`,
+          ],
         },
       },
       directives: {
