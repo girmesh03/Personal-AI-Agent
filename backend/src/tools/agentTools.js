@@ -81,19 +81,26 @@ function buildBranchIdentifierQuery(identifier, userId) {
 async function resolveBranchObjectIds(identifiers, userId, session = null) {
   if (!identifiers || !Array.isArray(identifiers) || identifiers.length === 0) return [];
   const resolvedIds = [];
-  const pendingCodes = [];
+  const pendingIdentifiers = [];
 
   for (const item of identifiers) {
     const clean = String(item || '').trim();
     if (mongoose.Types.ObjectId.isValid(clean) && String(new mongoose.Types.ObjectId(clean)) === clean) {
       resolvedIds.push(new mongoose.Types.ObjectId(clean));
     } else if (clean) {
-      pendingCodes.push(clean.toUpperCase());
+      pendingIdentifiers.push(clean);
     }
   }
 
-  if (pendingCodes.length > 0) {
-    const found = await Branch.find({ user: userId, code: { $in: pendingCodes } })
+  if (pendingIdentifiers.length > 0) {
+    const uppercaseCodes = pendingIdentifiers.map((s) => s.toUpperCase());
+    const found = await Branch.find({
+      user: userId,
+      $or: [
+        { code: { $in: uppercaseCodes } },
+        { name: { $in: pendingIdentifiers } },
+      ],
+    })
       .select('_id')
       .session(session || null)
       .lean();
@@ -1075,7 +1082,62 @@ export const toolHandlers = {
    * 7. create_report
    */
   create_report: async ({ args, userId, session = null }) => {
-    const validatedPayload = validateReportPayload(args);
+    const normalizedArgs = { ...args };
+
+    // Resolve branch identifiers if passed as codes or names
+    if (Array.isArray(normalizedArgs.visits)) {
+      normalizedArgs.visits = await Promise.all(
+        normalizedArgs.visits.map(async (v) => {
+          let branchId = v.branch || v.branchId;
+          if (branchId && !isValidObjectId(String(branchId))) {
+            const resolved = await resolveBranchObjectIds([branchId], userId, session);
+            if (resolved.length > 0) {
+              branchId = resolved[0].toString();
+            }
+          }
+          return {
+            ...v,
+            branch: branchId,
+            clockIn: (v.clockIn || normalizedArgs.clockIn || '08:00').trim(),
+            clockOut: (v.clockOut || normalizedArgs.clockOut || '17:00').trim(),
+          };
+        })
+      );
+    }
+
+    // Normalize activities to { text, status }
+    if (Array.isArray(normalizedArgs.activities)) {
+      normalizedArgs.activities = normalizedArgs.activities.map((a) =>
+        typeof a === 'string'
+          ? { text: a.trim(), status: 'completed' }
+          : { text: (a.text || a.description || '').trim(), status: a.status || 'completed' }
+      );
+    }
+
+    // Normalize issues to { text, status }
+    if (Array.isArray(normalizedArgs.issues)) {
+      normalizedArgs.issues = normalizedArgs.issues.map((i) =>
+        typeof i === 'string'
+          ? { text: i.trim(), status: 'open' }
+          : { text: (i.text || i.description || '').trim(), status: i.status || 'open' }
+      );
+    }
+
+    // Normalize comments to { text }
+    if (Array.isArray(normalizedArgs.comments)) {
+      normalizedArgs.comments = normalizedArgs.comments.map((c) =>
+        typeof c === 'string'
+          ? { text: c.trim() }
+          : { text: (c.text || c.content || c.comment || '').trim() }
+      );
+    }
+
+    // Default transcription text if empty
+    if (!normalizedArgs.transcription || typeof normalizedArgs.transcription !== 'string' || !normalizedArgs.transcription.trim()) {
+      normalizedArgs.transcription = 'ዕለታዊ የስራ እንቅስቃሴ ሪፖርት';
+    }
+
+    const validatedPayload = validateReportPayload(normalizedArgs);
     const createdReport = await createReportRecord({
       userId,
       payload: validatedPayload,

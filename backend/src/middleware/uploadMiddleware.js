@@ -9,15 +9,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import multer from 'multer';
-import { AUDIO_CONSTANTS } from '../utils/constants.js';
+import { AUDIO_CONSTANTS, ATTACHMENT_CONSTANTS } from '../utils/constants.js';
 import { BadRequestError } from '../errors/CustomError.js';
 
 // Resolve canonical uploads destination directory
 const AUDIO_UPLOAD_DIR = path.resolve('uploads/audio');
+const ATTACHMENT_UPLOAD_DIR = path.resolve('uploads/attachments');
 
-// Ensure storage directory exists synchronously at module initialization
+// Ensure storage directories exist synchronously at module initialization
 if (!fs.existsSync(AUDIO_UPLOAD_DIR)) {
   fs.mkdirSync(AUDIO_UPLOAD_DIR, { recursive: true });
+}
+if (!fs.existsSync(ATTACHMENT_UPLOAD_DIR)) {
+  fs.mkdirSync(ATTACHMENT_UPLOAD_DIR, { recursive: true });
 }
 
 /**
@@ -116,6 +120,98 @@ export const uploadReportAudiosMiddleware = (req, res, next) => {
   });
 };
 
+/**
+ * Multer disk storage engine for chat document and image attachments.
+ */
+const attachmentDiskStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, ATTACHMENT_UPLOAD_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const safeFilename = `${crypto.randomUUID()}${ext}`;
+    cb(null, safeFilename);
+  },
+});
+
+/**
+ * Multer file filter enforcing strict attachment MIME types and extension whitelists.
+ */
+const attachmentFileFilter = (_req, file, cb) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  const isValidMime = ATTACHMENT_CONSTANTS.ALLOWED_MIME_TYPES.includes(file.mimetype);
+  const isValidExt = ATTACHMENT_CONSTANTS.ALLOWED_EXTENSIONS.includes(ext);
+
+  if (!isValidMime || !isValidExt) {
+    return cb(
+      new BadRequestError(
+        `Unsupported attachment format (${ext || 'unknown'}). Allowed formats: ${ATTACHMENT_CONSTANTS.ALLOWED_EXTENSIONS.join(', ')}.`
+      )
+    );
+  }
+
+  cb(null, true);
+};
+
+/**
+ * Pre-configured Multer instance for multi-file attachment ingestion.
+ */
+const multerAttachmentUpload = multer({
+  storage: attachmentDiskStorage,
+  fileFilter: attachmentFileFilter,
+  limits: {
+    fileSize: ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES, // 25MB
+    files: ATTACHMENT_CONSTANTS.MAX_FILES_COUNT, // 5 files
+  },
+});
+
+/**
+ * Express middleware handling attachment multi-part uploads with normalized error handling.
+ *
+ * @function uploadChatAttachmentsMiddleware
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ * @param {import('express').NextFunction} next - Express next function.
+ */
+export const uploadChatAttachmentsMiddleware = (req, res, next) => {
+  const uploader = multerAttachmentUpload.array('attachments', ATTACHMENT_CONSTANTS.MAX_FILES_COUNT);
+
+  uploader(req, res, (err) => {
+    if (!err) {
+      return next();
+    }
+
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return next(
+          new BadRequestError(
+            `Attachment file exceeds the ${ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB maximum file limit.`
+          )
+        );
+      }
+      if (err.code === 'LIMIT_FILE_COUNT') {
+        return next(
+          new BadRequestError(
+            `Cannot upload more than ${ATTACHMENT_CONSTANTS.MAX_FILES_COUNT} attachments in a single request.`
+          )
+        );
+      }
+      if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+        return next(
+          new BadRequestError(
+            `Unexpected upload field "${err.field}". Attachments must be uploaded under the "attachments" field.`
+          )
+        );
+      }
+      return next(new BadRequestError(`Attachment upload error: ${err.message}`));
+    }
+
+    next(err);
+  });
+};
+
 export default {
   uploadReportAudiosMiddleware,
+  uploadChatAttachmentsMiddleware,
 };
+

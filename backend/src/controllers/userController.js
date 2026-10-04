@@ -214,10 +214,172 @@ export const updatePassword = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * Retrieves the supervisor's AI agent configuration and directives.
+ *
+ * @function getUserAgentConfig
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ * @returns {Promise<void>}
+ */
+export const getUserAgentConfig = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id).lean();
+  if (!user) {
+    throw new UnauthenticatedError('User not found. Please log in again.');
+  }
+
+  const directives = user.settings?.directives || {};
+  const phraseMappings =
+    directives.phraseMappings instanceof Map
+      ? Object.fromEntries(directives.phraseMappings)
+      : directives.phraseMappings || {};
+
+  res.status(HTTP_STATUS.OK).json({
+    success: true,
+    data: {
+      sttEngine: user.settings?.sttEngine || 'addis_ai',
+      agentConfig: user.settings?.agentConfig || {},
+      reportTemplates: user.settings?.reportTemplates || {},
+      directives: {
+        negativeVocabulary: directives.negativeVocabulary || [],
+        phraseMappings,
+        customInstructions: directives.customInstructions || [],
+      },
+    },
+  });
+});
+
+/**
+ * Updates the supervisor's AI agent configuration.
+ *
+ * @function updateUserAgentConfig
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ * @returns {Promise<void>}
+ */
+export const updateUserAgentConfig = asyncHandler(async (req, res) => {
+  const b = req.body || {};
+  const session = await mongoose.startSession();
+  try {
+    let updatedUser;
+    await session.withTransaction(async () => {
+      const user = await User.findById(req.user._id).session(session);
+      if (!user) {
+        throw new UnauthenticatedError('User not found. Please log in again.');
+      }
+
+      if (!user.settings) user.settings = {};
+      if (!user.settings.agentConfig) user.settings.agentConfig = {};
+
+      if (b.persona !== undefined) user.settings.agentConfig.persona = b.persona;
+      if (b.defaultModel !== undefined) user.settings.agentConfig.defaultModel = b.defaultModel;
+      if (b.defaultThinkingBudget !== undefined) user.settings.agentConfig.defaultThinkingBudget = b.defaultThinkingBudget;
+      if (b.defaultLanguage !== undefined) user.settings.agentConfig.defaultLanguage = b.defaultLanguage;
+      if (b.sttEngine !== undefined) user.settings.sttEngine = b.sttEngine;
+
+      if (b.reportTemplates) {
+        if (!user.settings.reportTemplates) user.settings.reportTemplates = {};
+        if (b.reportTemplates.singleBranch !== undefined) {
+          user.settings.reportTemplates.singleBranch = b.reportTemplates.singleBranch;
+        }
+        if (b.reportTemplates.multiBranch !== undefined) {
+          user.settings.reportTemplates.multiBranch = b.reportTemplates.multiBranch;
+        }
+      }
+
+      user.markModified('settings');
+      await user.save({ session });
+      updatedUser = user;
+    });
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: 'Agent configuration updated successfully.',
+      data: {
+        sttEngine: updatedUser.settings.sttEngine,
+        agentConfig: updatedUser.settings.agentConfig,
+        reportTemplates: updatedUser.settings.reportTemplates,
+      },
+    });
+  } finally {
+    await session.endSession();
+  }
+});
+
+/**
+ * Updates supervisor directives (negativeVocabulary, phraseMappings, customInstructions).
+ *
+ * @function updateSupervisorDirectives
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ * @returns {Promise<void>}
+ */
+export const updateSupervisorDirectives = asyncHandler(async (req, res) => {
+  const b = req.body || {};
+  const session = await mongoose.startSession();
+  try {
+    let updatedDirectives;
+    await session.withTransaction(async () => {
+      const user = await User.findById(req.user._id).session(session);
+      if (!user) {
+        throw new UnauthenticatedError('User not found. Please log in again.');
+      }
+
+      if (!user.settings) user.settings = {};
+      if (!user.settings.directives) user.settings.directives = {};
+
+      if (Array.isArray(b.negativeVocabulary)) {
+        user.settings.directives.negativeVocabulary = b.negativeVocabulary.map((s) => String(s).trim()).filter(Boolean);
+      }
+
+      if (b.phraseMappings && typeof b.phraseMappings === 'object') {
+        const map = new Map();
+        for (const [k, v] of Object.entries(b.phraseMappings)) {
+          if (k && v) map.set(String(k).trim(), String(v).trim());
+        }
+        user.settings.directives.phraseMappings = map;
+      }
+
+      if (b.customInstructions !== undefined) {
+        user.settings.directives.customInstructions = Array.isArray(b.customInstructions)
+          ? b.customInstructions.map((s) => String(s).trim()).filter(Boolean)
+          : [String(b.customInstructions).trim()].filter(Boolean);
+      }
+
+      user.markModified('settings');
+      await user.save({ session });
+
+      const normalizedMappings =
+        user.settings.directives.phraseMappings instanceof Map
+          ? Object.fromEntries(user.settings.directives.phraseMappings)
+          : user.settings.directives.phraseMappings || {};
+
+      updatedDirectives = {
+        negativeVocabulary: user.settings.directives.negativeVocabulary,
+        phraseMappings: normalizedMappings,
+        customInstructions: user.settings.directives.customInstructions,
+      };
+    });
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: 'Supervisor directives updated successfully.',
+      data: {
+        directives: updatedDirectives,
+      },
+    });
+  } finally {
+    await session.endSession();
+  }
+});
+
 export default {
   getProfile,
   updateProfile,
   updateAvatar,
   removeAvatar,
   updatePassword,
+  getUserAgentConfig,
+  updateUserAgentConfig,
+  updateSupervisorDirectives,
 };

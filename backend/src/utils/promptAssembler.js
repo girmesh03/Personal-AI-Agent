@@ -24,20 +24,20 @@ export const DEFAULT_PERSONA = CHAT_CONSTANTS.DEFAULT_PERSONA;
  * Default fallback Single-Branch Amharic report template.
  */
 export const DEFAULT_SINGLE_BRANCH_TEMPLATE = [
-  'ቀን: [DD-MM-YY]',
+  'ቀን: [DD/MM/YY]',
   'ብራንች: [ብራንች ስም]',
   'ስም: [ሙሉ ስም]',
   'ስራ የገባሁበት ሰዓት: [HH:mm]',
   '',
   'የተሰሩ ስራዎች:',
-  ' - [ስራ 1]',
-  ' - [ስራ 2]',
+  '* [ስራ 1]',
+  '* [ስራ 2]',
   '',
   'መፍትሄ የሚፈልጉ ጉዳዮች:',
-  ' - [ችግር 1]',
+  '* [ችግር 1]',
   '',
   'አጠቃላይ አስተያየት:',
-  ' - [አስተያየት 1]',
+  '* [አስተያየት 1]',
   '',
   'ከስራ የወጣሁበት ሰዓት: [HH:mm]',
 ].join('\n');
@@ -46,22 +46,22 @@ export const DEFAULT_SINGLE_BRANCH_TEMPLATE = [
  * Default fallback Multi-Branch Amharic report template.
  */
 export const DEFAULT_MULTI_BRANCH_TEMPLATE = [
-  'ቀን: [DD-MM-YY]',
+  'ቀን: [DD/MM/YY]',
   'ብራንች: [የመጀመሪያ ብራንች]፣ [ሁለተኛ ብራንች] እና [ሶስተኛ ብራንች]',
   'ስም: [ሙሉ ስም]',
   'ስራ የገባሁበት ሰዓት: [HH:mm]',
-  'ከ [HH:mm] – [HH:mm] ([የመጀመሪያ ብራንች] ብራንች)',
-  'ከ [HH:mm] – [HH:mm] ([ሁለተኛ ብራንች] ብራንች)',
+  '* ከ [HH:mm] እስከ [HH:mm] [የመጀመሪያ ብራንች]',
+  '* ከ [HH:mm] እስከ [HH:mm] [ሁለተኛ ብራንች]',
   '',
   'የተሰሩ ስራዎች:',
-  ' - [ስራ 1]',
-  ' - [ስራ 2]',
+  '* [ስራ 1]',
+  '* [ስራ 2]',
   '',
   'መፍትሄ የሚፈልጉ ጉዳዮች:',
-  ' - [ችግር 1]',
+  '* [ችግር 1]',
   '',
   'አጠቃላይ አስተያየት:',
-  ' - [አስተያየት 1]',
+  '* [አስተያየት 1]',
   '',
   'ከስራ የወጣሁበት ሰዓት: [HH:mm]',
 ].join('\n');
@@ -97,14 +97,14 @@ export function formatSingleBranchTemplate(
     'ስራ የገባሁበት ሰዓት: [HH:mm]',
     '',
     'የተሰሩ ስራዎች:',
-    ' - [ስራ 1]',
-    ' - [ስራ 2]',
+    '* [ስራ 1]',
+    '* [ስራ 2]',
     '',
     'መፍትሄ የሚፈልጉ ጉዳዮች:',
-    ' - [ችግር 1]',
+    '* [ችግር 1]',
     '',
     'አጠቃላይ አስተያየት:',
-    ' - [አስተያየት 1]',
+    '* [አስተያየት 1]',
     '',
     'ከስራ የወጣሁበት ሰዓት: [HH:mm]',
   ].join('\n');
@@ -113,13 +113,13 @@ export function formatSingleBranchTemplate(
 /**
  * Generates the authoritative Multi-Branch Amharic report template specification.
  *
- * @param {string} [ethiopianDate='[DD-MM-YY]'] - Formatted Ethiopian calendar date (DD-MM-YY).
+ * @param {string} [ethiopianDate='[DD/MM/YY]'] - Formatted Ethiopian calendar date (DD/MM/YY).
  * @param {string} [branchesText='[የመጀመሪያ ብራንች]፣ [ሁለተኛ ብራንች] እና [ሶስተኛ ብራንች]'] - Joined branch names.
  * @param {string} [supervisorName='[ሙሉ ስም]'] - Supervisor full name.
  * @returns {string} Formatted template text.
  */
 export function formatMultiBranchTemplate(
-  ethiopianDate = '[DD-MM-YY]',
+  ethiopianDate = '[DD/MM/YY]',
   branchesText = '[የመጀመሪያ ብራንች]፣ [ሁለተኛ ብራንች] እና [ሶስተኛ ብራንች]',
   supervisorName = '[ሙሉ ስም]'
 ) {
@@ -128,18 +128,18 @@ export function formatMultiBranchTemplate(
     `ብራንች: ${branchesText}`,
     `ስም: ${supervisorName}`,
     'ስራ የገባሁበት ሰዓት: [HH:mm]',
-    'ከ [HH:mm] – [HH:mm] ([የመጀመሪያ ብራንች] ብራንች)',
-    'ከ [HH:mm] – [HH:mm] ([ሁለተኛ ብራንች] ብራንች)',
+    '* ከ [HH:mm] እስከ [HH:mm] [የመጀመሪያ ብራንች]',
+    '* ከ [HH:mm] እስከ [HH:mm] [ሁለተኛ ብራንች]',
     '',
     'የተሰሩ ስራዎች:',
-    ' - [ስራ 1]',
-    ' - [ስራ 2]',
+    '* [ስራ 1]',
+    '* [ስራ 2]',
     '',
     'መፍትሄ የሚፈልጉ ጉዳዮች:',
-    ' - [ችግር 1]',
+    '* [ችግር 1]',
     '',
     'አጠቃላይ አስተያየት:',
-    ' - [አስተያየት 1]',
+    '* [አስተያየት 1]',
     '',
     'ከስራ የወጣሁበት ሰዓት: [HH:mm]',
   ].join('\n');
@@ -252,14 +252,19 @@ export async function assembleSystemPrompt({
     'The Single-Branch and Multi-Branch report templates apply EXCLUSIVELY to formal operational reports (Quadrant 2). NEVER wrap casual conversation, advisory responses, math, emails, or open-domain answers inside report templates.',
     '',
     'CRITICAL REPORT PRESENTATION & PERSISTENCE RULES:',
-    '- Presentation Layer: When generating an operational report text in chat, format it exactly according to the active template above.',
-    '- Persistence Layer: Autonomously extract structured entities (date, clockIn, clockOut, visits, activities, issues, comments, transcription) and persist via the create_report tool.',
-    '- In Multi-Branch reports, list all visited branch names joined by commas and the Amharic conjunction "እና".',
-    '- Document the chronological arrival and departure interval for each branch: "ከ [HH:mm] – [HH:mm] ([ብራንች ስም] ብራንች)".',
-    '- Work hours (ስራ የገባሁበት ሰዓት / ከስራ የወጣሁበት ሰዓት) and visit times must use 24-hour HH:mm format (e.g. 08:30, 17:30).',
-    '- Report date is always formatted in Ethiopian calendar format DD-MM-YY (e.g. 23-01-19).',
+    '- Presentation Layer: When generating an operational report text in chat, format it exactly according to the active template above using literal plain-text "* " bullets for list items. Strictly NEVER use Markdown headers ("#", "##"), bold wraps ("**"), or italics ("_") within the report body.',
+    '- The Zero Hardcoding Law: Report content (observations, tasks, issues, risks, actions, tomorrow\'s schedule) is NEVER hardcoded or copied from boilerplate. Every detail must be 100% dynamically derived from the user\'s narration, voice notes, or files. If the supervisor mentions "ቼክ ሊስት", dynamically elevate it into formal corporate audit language ("በቼክሊስቱ መሰረት የሚከናወኑ የዕለት ተዕለት ተግባራትን እና የአሰራር ሂደቶችን ተከታትዬ አረጋግጫለሁ"). If they performed inventory or kitchen maintenance, describe those exact activities.',
+    '- Issues & The Triad Rule: Deconstruct reported problems into: (1) Defect details, (2) Operational risk/impact, and (3) Recommended action.',
+    '- "No Issues" Handling: If the supervisor states that there were no urgent issues, explicitly record: "* በዕለቱ አፋጣኝ መፍትሄ የሚፈልግ የተለየ ጉዳይ አልነበረም።". Never omit the section or insert phantom issues.',
+    '- Supervisor Identity Grounding: Always ground supervisor name against official profile name (${supervisorName}), correcting speech-to-text phonetic misspellings (e.g., resolving "ቤዛ እያለው" to "ቤዛ አያሌው").',
+    '- Multi-Branch Synthesis: In multi-branch reports, scan the entire narration to extract all visited branches (joined by commas and "እና"). Under "ስራ የገባሁበት ሰዓት: [HH:mm]", list chronological intervals: "* ከ [HH:mm] እስከ [HH:mm] [ብራንች ስም]".',
+    '- Single-Branch Clarity: In single-branch reports, list clock-in time cleanly without branch interval sub-bullets.',
+    '- Tomorrow\'s Schedule: If the supervisor mentions where they plan to work tomorrow, format it as the final bullet under "አጠቃላይ አስተያየት:". If unmentioned, do not invent it.',
+    '- Footer Clock-Out: Always place "ከስራ የወጣሁበት ሰዓት: [HH:mm]" at the bottom as the report\'s closing boundary.',
+    '- Persistence Layer: Autonomously extract structured entities (date, clockIn, clockOut, visits, activities, issues, comments, transcription) and persist in MongoDB via the create_report tool inside an ACID session.',
+    '- Work hours and visit times must use 24-hour HH:mm format (e.g. 08:30, 17:30). Report date uses Ethiopian calendar format DD/MM/YY (or DD-MM-YY).',
     '- Operational reports have NO draft or approval status; they are authoritative records persisted directly via create_report.',
-    '- Activities default to "completed" (- [ስራ]). Issues default to "reported" (- [ችግር]). Comments declare zero status (- [አስተያየት]).',
+    '- Activities default to "completed" (* [ስራ]). Issues default to "reported" (* [ችግር]). Comments declare zero status (* [አስተያየት]).',
   ].join('\n');
 
   // ==========================================

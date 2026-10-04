@@ -9,6 +9,8 @@ import {
   USER_NAME_LENGTH,
   PASSWORD_MIN_LENGTH,
   PASSWORD_REGEX,
+  CHAT_CONSTANTS,
+  REPORT_CONSTANTS,
 } from '../utils/constants.js';
 
 /**
@@ -136,8 +138,91 @@ export const updatePasswordValidation = [
     }),
 ];
 
+/**
+ * Validation rules for user agent configuration updates.
+ * @constant
+ * @type {import('express-validator').ValidationChain[]}
+ */
+export const updateAgentConfigValidation = [
+  body('persona')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 })
+    .withMessage('Persona cannot exceed 2000 characters.'),
+
+  body('defaultModel')
+    .optional()
+    .isIn(CHAT_CONSTANTS.SUPPORTED_MODELS)
+    .withMessage(`Model must be one of: ${CHAT_CONSTANTS.SUPPORTED_MODELS.join(', ')}`),
+
+  body('defaultThinkingBudget')
+    .optional()
+    .isInt({ min: CHAT_CONSTANTS.MIN_THINKING_BUDGET, max: CHAT_CONSTANTS.MAX_THINKING_BUDGET })
+    .withMessage(`Thinking budget must be between ${CHAT_CONSTANTS.MIN_THINKING_BUDGET} and ${CHAT_CONSTANTS.MAX_THINKING_BUDGET}.`),
+
+  body('defaultLanguage')
+    .optional()
+    .isIn(CHAT_CONSTANTS.SUPPORTED_LANGUAGES)
+    .withMessage(`Language must be one of: ${CHAT_CONSTANTS.SUPPORTED_LANGUAGES.join(', ')}`),
+
+  body('sttEngine')
+    .optional()
+    .isIn(CHAT_CONSTANTS.STT_ENGINES)
+    .withMessage(`STT engine must be one of: ${CHAT_CONSTANTS.STT_ENGINES.join(', ')}`),
+
+  body('reportTemplates')
+    .optional()
+    .isObject()
+    .withMessage('Report templates must be an object.'),
+
+  body('reportTemplates.singleBranch')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: REPORT_CONSTANTS.TEMPLATE_MAX_LENGTH })
+    .withMessage(`Single branch template cannot exceed ${REPORT_CONSTANTS.TEMPLATE_MAX_LENGTH} characters.`),
+
+  body('reportTemplates.multiBranch')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: REPORT_CONSTANTS.TEMPLATE_MAX_LENGTH })
+    .withMessage(`Multi branch template cannot exceed ${REPORT_CONSTANTS.TEMPLATE_MAX_LENGTH} characters.`),
+];
+
+/**
+ * Validation rules for supervisor directives updates.
+ * @constant
+ * @type {import('express-validator').ValidationChain[]}
+ */
+export const updateDirectivesValidation = [
+  body('negativeVocabulary')
+    .optional()
+    .isArray()
+    .withMessage('negativeVocabulary must be an array of strings.'),
+
+  body('negativeVocabulary.*')
+    .optional()
+    .trim()
+    .isString()
+    .withMessage('Each negative vocabulary entry must be a string.'),
+
+  body('phraseMappings')
+    .optional()
+    .isObject()
+    .withMessage('phraseMappings must be an object of key-value pairs.'),
+
+  body('customInstructions')
+    .optional()
+    .custom((val) => {
+      if (Array.isArray(val) || typeof val === 'string') return true;
+      throw new Error('customInstructions must be an array of strings or a string.');
+    }),
+];
+
 export default {
   updateProfileValidation,
   updateAvatarValidation,
   updatePasswordValidation,
+  updateAgentConfigValidation,
+  updateDirectivesValidation,
 };
+

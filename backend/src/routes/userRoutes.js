@@ -10,11 +10,16 @@ import {
   updateAvatar,
   removeAvatar,
   updatePassword,
+  getUserAgentConfig,
+  updateUserAgentConfig,
+  updateSupervisorDirectives,
 } from '../controllers/userController.js';
 import {
   updateProfileValidation,
   updateAvatarValidation,
   updatePasswordValidation,
+  updateAgentConfigValidation,
+  updateDirectivesValidation,
 } from '../validations/userValidation.js';
 import { validate } from '../middleware/validate.js';
 import { verifyToken } from '../middleware/authMiddleware.js';
@@ -58,5 +63,26 @@ router.delete('/avatar', removeAvatar);
  * @access Private
  */
 router.patch('/password', updatePasswordValidation, validate, updatePassword);
+
+/**
+ * @route GET /api/v1/users/agent-config
+ * @desc Retrieve current supervisor agent settings & directives.
+ * @access Private
+ */
+router.get('/agent-config', getUserAgentConfig);
+
+/**
+ * @route PATCH /api/v1/users/agent-config
+ * @desc Update supervisor agent settings (persona, model, thinkingBudget, etc.).
+ * @access Private
+ */
+router.patch('/agent-config', updateAgentConfigValidation, validate, updateUserAgentConfig);
+
+/**
+ * @route PATCH /api/v1/users/directives
+ * @desc Update supervisor directives (negativeVocabulary, phraseMappings, customInstructions).
+ * @access Private
+ */
+router.patch('/directives', updateDirectivesValidation, validate, updateSupervisorDirectives);
 
 export default router;

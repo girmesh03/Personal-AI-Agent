@@ -8,6 +8,7 @@ import authRoutes from './authRoutes.js';
 import userRoutes from './userRoutes.js';
 import branchRoutes from './branchRoutes.js';
 import reportRoutes from './reportRoutes.js';
+import chatRoutes from './chatRoutes.js';
 
 const router = express.Router();
 
@@ -22,5 +23,8 @@ router.use('/branches', branchRoutes);
 
 // Mount report domain routes (/api/v1/reports)
 router.use('/reports', reportRoutes);
+
+// Mount chat domain routes (/api/v1/chat)
+router.use('/chat', chatRoutes);
 
 export default router;
