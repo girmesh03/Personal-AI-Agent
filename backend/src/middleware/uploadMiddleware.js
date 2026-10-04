@@ -9,12 +9,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import multer from 'multer';
-import { AUDIO_CONSTANTS, ATTACHMENT_CONSTANTS } from '../utils/constants.js';
+import { AUDIO_CONSTANTS, ATTACHMENT_CONSTANTS, UPLOADS_CONFIG } from '../utils/constants.js';
 import { BadRequestError } from '../errors/CustomError.js';
 
-// Resolve canonical uploads destination directory
-const AUDIO_UPLOAD_DIR = path.resolve('uploads/audio');
-const ATTACHMENT_UPLOAD_DIR = path.resolve('uploads/attachments');
+// Resolve canonical uploads destination directory deterministically
+const AUDIO_UPLOAD_DIR = UPLOADS_CONFIG.AUDIOS_DIR;
+const ATTACHMENT_UPLOAD_DIR = UPLOADS_CONFIG.ATTACHMENTS_DIR;
 
 // Ensure storage directories exist synchronously at module initialization
 if (!fs.existsSync(AUDIO_UPLOAD_DIR)) {

@@ -3,8 +3,9 @@
  * @description Mongoose schema and model definition for Corporate Operational Reports.
  * Scoped strictly to the authenticated supervisor (user: req.user._id).
  * Enforces embedded subdocuments for visits, activities, issues, and comments,
- * standalone Audio document references, derived virtual getters for Ethiopian calendar
- * date and supervisor full name, and partial indexes for active inspection queries.
+ * standalone Audio document references, derived virtual getter for Ethiopian calendar
+ * date, and partial indexes for active inspection queries.
+ * Note: Author identity is grounded strictly via user reference (Single Source of Truth).
  * Note: Strictly zero status and zero templateType columns exist on the Report model.
  */
 
@@ -57,7 +58,6 @@ import { toEthiopianDateString } from '../utils/ethiopianCalendar.js';
  * @property {IIssue[]} issues - Embedded operational issues.
  * @property {IComment[]} comments - Embedded supervisory comments.
  * @property {string} ethiopianDate - Derived virtual Ethiopian calendar date (DD-MM-YY).
- * @property {string|null} supervisorName - Derived virtual supervisor full name.
  * @property {boolean} isArchived - Soft-deletion archival flag.
  * @property {Date|null} archivedAt - Timestamp when report was soft-archived.
  * @property {Date} createdAt - Document creation timestamp.
@@ -250,16 +250,6 @@ const reportSchema = new mongoose.Schema(
 reportSchema.virtual('ethiopianDate').get(function () {
   if (!this.date) return null;
   return toEthiopianDateString(this.date);
-});
-
-/**
- * Derived virtual getter: supervisorName
- * Dynamically resolves supervisor full name from populated user reference.
- * @memberof reportSchema
- * @returns {string|null} Supervisor full name.
- */
-reportSchema.virtual('supervisorName').get(function () {
-  return this.user?.fullName || null;
 });
 
 // Partial compound index for active reports ordered by date (primary query path)

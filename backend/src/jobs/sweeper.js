@@ -29,7 +29,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import mongoose from 'mongoose';
 import { Branch } from '../models/Branch.js';
-import { SWEEPER_INTERVAL_MS, ARCHIVED_TTL_SECONDS } from '../utils/constants.js';
+import { SWEEPER_INTERVAL_MS, ARCHIVED_TTL_SECONDS, UPLOADS_CONFIG } from '../utils/constants.js';
 import { logger } from '../config/logger.js';
 
 let sweeperTimer = null;
@@ -161,8 +161,8 @@ const runPass2OrphanSweep = async () => {
 
   // 1. Sweep Multer Temp Leaks in upload directories
   const tempDirectories = [
-    path.resolve(process.cwd(), 'uploads/audio'),
-    path.resolve(process.cwd(), 'uploads/temp'),
+    UPLOADS_CONFIG.AUDIOS_DIR,
+    UPLOADS_CONFIG.TEMP_DIR,
   ];
 
   const ONE_HOUR_MS = 60 * 60 * 1000;

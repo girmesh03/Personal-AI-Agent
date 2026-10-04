@@ -17,7 +17,7 @@ import env from '../config/env.js';
 import logger from '../config/logger.js';
 import { Chat } from '../models/Chat.js';
 import { Audio } from '../models/Audio.js';
-import { HTTP_STATUS, CHAT_CONSTANTS, ATTACHMENT_CONSTANTS } from '../utils/constants.js';
+import { HTTP_STATUS, CHAT_CONSTANTS, ATTACHMENT_CONSTANTS, AI_MODELS } from '../utils/constants.js';
 import { NotFoundError, BadRequestError } from '../errors/CustomError.js';
 import { assembleSystemPrompt } from '../utils/promptAssembler.js';
 import { agentToolDeclarations, executeAgentTool } from '../tools/agentTools.js';
@@ -43,8 +43,8 @@ function sendSSE(res, event, data) {
  * @access Private
  */
 export const streamChat = asyncHandler(async (req, res) => {
-  const b = req.body || {};
-  const requestedChatId = req.params.chatId || b.chatId;
+  const b = req.validated?.body || req.body || {};
+  const requestedChatId = req.validated?.params?.chatId || req.params.chatId || b.chatId;
 
   // 1. Resolve or initialize Chat document
   let chat;
@@ -62,13 +62,31 @@ export const streamChat = asyncHandler(async (req, res) => {
       user: req.user._id,
       title: null,
       config: {
-        model: req.user.settings?.agentConfig?.defaultModel || CHAT_CONSTANTS.DEFAULT_MODEL,
+        model:
+          b.model ||
+          req.user.settings?.agentConfig?.defaultModel ||
+          AI_MODELS.DEFAULT,
         thinkingBudget:
+          b.thinkingBudget ??
           req.user.settings?.agentConfig?.defaultThinkingBudget ??
           CHAT_CONSTANTS.DEFAULT_THINKING_BUDGET,
-        language: req.user.settings?.agentConfig?.defaultLanguage || CHAT_CONSTANTS.DEFAULT_LANGUAGE,
+        language:
+          b.language ||
+          req.user.settings?.agentConfig?.defaultLanguage ||
+          CHAT_CONSTANTS.DEFAULT_LANGUAGE,
       },
     });
+  }
+
+  // Apply per-turn config overrides to session if provided
+  if (b.model) {
+    chat.config.model = b.model;
+  }
+  if (b.thinkingBudget !== undefined) {
+    chat.config.thinkingBudget = b.thinkingBudget;
+  }
+  if (b.language) {
+    chat.config.language = b.language;
   }
 
   // 2. Setup Server-Sent Events (SSE) Stream Headers
@@ -121,34 +139,52 @@ export const streamChat = asyncHandler(async (req, res) => {
     }
     if (audioTranscriptions.length > 0) {
       partsForPrompt.push(
-        `[የድምፅ ቅጂ የተተነተነበት / Audio Transcription]:\n${audioTranscriptions.join('\n\n')}`
+        `[Transcribed Audio Notes]:\n${audioTranscriptions.join('\n\n')}`
       );
     }
     if (attachmentTextContext) {
       partsForPrompt.push(
-        `[የተያያዙ ፋይሎች ይዘት / Attached Files Content]:\n${attachmentTextContext}`
+        `[Attached Document Content]:\n${attachmentTextContext}`
       );
     }
 
     const compiledUserMessageText = partsForPrompt.join('\n\n');
 
     // 6. Handle Linear Pruning for Message Edits or Retries
-    if (typeof b.editTurnIndex === 'number' && b.editTurnIndex >= 0) {
+    const isRetry = typeof b.retryTurnIndex === 'number' && b.retryTurnIndex >= 0;
+    const isEdit = typeof b.editTurnIndex === 'number' && b.editTurnIndex >= 0;
+
+    if (isEdit) {
       chat.messages = chat.messages.slice(0, b.editTurnIndex);
-    } else if (typeof b.retryTurnIndex === 'number' && b.retryTurnIndex >= 0) {
+    } else if (isRetry) {
       chat.messages = chat.messages.slice(0, b.retryTurnIndex);
     }
 
-    // 7. Persist User Turn in Chat
-    const userTurn = {
-      id: b.id || new mongoose.Types.ObjectId().toString(),
-      role: 'user',
-      text: b.text || compiledUserMessageText,
-      audios: Array.isArray(b.audios) ? b.audios : [],
-      attachments: Array.isArray(b.attachments) ? b.attachments : [],
-      createdAt: new Date(),
-    };
-    chat.messages.push(userTurn);
+    const hasNewUserInput =
+      (b.text && typeof b.text === 'string' && b.text.trim().length > 0) ||
+      (Array.isArray(b.audios) && b.audios.length > 0) ||
+      (Array.isArray(b.attachments) && b.attachments.length > 0);
+
+    // 7. Persist User Turn in Chat (or reuse preceding turn if retry without new inputs)
+    let userTurn = null;
+    if (isRetry && !hasNewUserInput) {
+      const lastMsg = chat.messages[chat.messages.length - 1];
+      if (lastMsg && lastMsg.role === 'user') {
+        userTurn = lastMsg;
+      }
+    }
+
+    if (!userTurn) {
+      userTurn = {
+        id: b.id || new mongoose.Types.ObjectId().toString(),
+        role: 'user',
+        text: b.text || compiledUserMessageText,
+        audios: Array.isArray(b.audios) ? b.audios : [],
+        attachments: Array.isArray(b.attachments) ? b.attachments : [],
+        createdAt: new Date(),
+      };
+      chat.messages.push(userTurn);
+    }
 
     // 8. Assemble Dynamic 6-Block System Prompt
     const systemPrompt = await assembleSystemPrompt({
@@ -176,7 +212,9 @@ export const streamChat = asyncHandler(async (req, res) => {
     }
 
     // Append latest user turn with inline multimodal parts if any
-    const latestUserParts = [{ text: compiledUserMessageText }];
+    const latestUserMsg = chat.messages[chat.messages.length - 1];
+    const latestUserText = (compiledUserMessageText || latestUserMsg?.text || '').trim();
+    const latestUserParts = [{ text: latestUserText }];
     if (inlineParts.length > 0) {
       latestUserParts.push(...inlineParts);
     }
@@ -192,12 +230,22 @@ export const streamChat = asyncHandler(async (req, res) => {
     }
 
     const ai = new GoogleGenAI({ apiKey });
-    const rawModel = chat.config?.model || CHAT_CONSTANTS.DEFAULT_MODEL;
+    const rawModel =
+      b.model ||
+      chat.config?.model ||
+      req.user.settings?.agentConfig?.defaultModel ||
+      AI_MODELS.DEFAULT;
+
     const modelName =
       rawModel === 'gemini-2.5-flash' || rawModel === 'gemini-2.5-flash-lite' || rawModel === 'gemini-3.5-flash'
         ? 'gemini-3.1-flash-lite'
         : rawModel;
-    const thinkingBudget = chat.config?.thinkingBudget ?? CHAT_CONSTANTS.DEFAULT_THINKING_BUDGET;
+
+    const thinkingBudget =
+      b.thinkingBudget ??
+      chat.config?.thinkingBudget ??
+      req.user.settings?.agentConfig?.defaultThinkingBudget ??
+      CHAT_CONSTANTS.DEFAULT_THINKING_BUDGET;
 
     let fullText = '';
     let fullThought = '';
@@ -205,6 +253,7 @@ export const streamChat = asyncHandler(async (req, res) => {
     let step = 0;
     const maxSteps = 5;
     let activeModel = modelName;
+    let tokenUsage = { promptTokens: 0, candidatesTokens: 0, totalTokens: 0 };
 
     while (step < maxSteps) {
       step++;
@@ -240,6 +289,14 @@ export const streamChat = asyncHandler(async (req, res) => {
           });
 
           for await (const chunk of responseStream) {
+            if (chunk.usageMetadata) {
+              tokenUsage = {
+                promptTokens: chunk.usageMetadata.promptTokenCount || tokenUsage.promptTokens,
+                candidatesTokens: chunk.usageMetadata.candidatesTokenCount || tokenUsage.candidatesTokens,
+                totalTokens: chunk.usageMetadata.totalTokenCount || tokenUsage.totalTokens,
+              };
+            }
+
             const candidate = chunk.candidates?.[0];
             if (!candidate) continue;
 
@@ -279,20 +336,23 @@ export const streamChat = asyncHandler(async (req, res) => {
             streamErr.status === 503 ||
             streamErr.message?.includes('503');
 
-          if (isQuota && activeModel !== 'gemini-3.1-flash-lite') {
-            logger.warn(
-              `[chatController] Model ${activeModel} hit quota. Failing over to gemini-3.1-flash-lite (attempt ${streamAttempts}/${maxStreamAttempts})...`
-            );
-            activeModel = 'gemini-3.1-flash-lite';
-            await new Promise((r) => setTimeout(r, 600));
-            continue;
+          if (isQuota) {
+            const mappedFallback = AI_MODELS.QUOTA_RETRY_MAP[activeModel] || AI_MODELS.FALLBACK;
+            if (activeModel !== mappedFallback) {
+              logger.warn(
+                `[chatController] Model ${activeModel} hit quota limit. Failing over to ${mappedFallback} (attempt ${streamAttempts}/${maxStreamAttempts})...`
+              );
+              activeModel = mappedFallback;
+              await new Promise((r) => setTimeout(r, 600));
+              continue;
+            }
           }
 
           if (isTransient && streamAttempts < maxStreamAttempts) {
             const alternateModel =
-              activeModel === 'gemini-3.1-flash-lite'
-                ? 'gemini-flash-lite-latest'
-                : 'gemini-3.1-flash-lite';
+              activeModel === AI_MODELS.DEFAULT
+                ? AI_MODELS.FALLBACK
+                : AI_MODELS.DEFAULT;
             logger.warn(
               `[chatController] Transient error or high demand (${streamErr.message?.slice(0, 80)}...). Retrying with ${alternateModel} (attempt ${streamAttempts}/${maxStreamAttempts})...`
             );
@@ -353,7 +413,7 @@ export const streamChat = asyncHandler(async (req, res) => {
       try {
         const titlePrompt = `Summarize the user's intent in 3 to 5 words as a concise title. Output ONLY the title:\n"${userTurn.text.slice(0, 300)}"`;
         const titleRes = await ai.models.generateContent({
-          model: 'gemini-3.1-flash-lite',
+          model: AI_MODELS.DEFAULT,
           contents: [{ text: titlePrompt }],
         });
         const derivedTitle = (titleRes.text || 'Operational Discussion').trim().slice(0, 100);
@@ -372,6 +432,8 @@ export const streamChat = asyncHandler(async (req, res) => {
       text: fullText,
       thought: fullThought || null,
       toolCalls: toolsCalled,
+      model: activeModel,
+      usage: tokenUsage,
       createdAt: new Date(),
     };
     chat.messages.push(assistantTurn);
@@ -382,12 +444,31 @@ export const streamChat = asyncHandler(async (req, res) => {
       chatId: chat._id.toString(),
       messageId: assistantTurn.id,
       title: chat.title,
+      model: activeModel,
+      usage: tokenUsage,
     });
     res.end();
   } catch (err) {
     logger.error(`[chatController] Stream error: ${err.message}`, { stack: err.stack, cause: err.cause });
     console.error('[chatController] Full Stream Error:', err, 'cause:', err.cause);
-    sendSSE(res, 'error', { message: err.message || 'Streaming failed.' });
+
+    const isQuota =
+      err.message?.includes('429') ||
+      err.status === 429 ||
+      err.message?.includes('RESOURCE_EXHAUSTED');
+
+    const reason = isQuota ? 'quota_exhausted' : 'server_error';
+    const failedModel = typeof activeModel !== 'undefined' && activeModel ? activeModel : AI_MODELS.DEFAULT;
+    const suggestedModels = AI_MODELS.SUPPORTED.filter((m) => m !== failedModel);
+
+    sendSSE(res, 'error', {
+      message: isQuota
+        ? `Model quota limit reached for ${failedModel}. Please select an alternative model.`
+        : (err.message || 'Streaming failed.'),
+      failedModel,
+      reason,
+      suggestedModels,
+    });
     res.end();
   }
 });
@@ -449,11 +530,18 @@ export const getChats = asyncHandler(async (req, res) => {
  * @access Private
  */
 export const getChatById = asyncHandler(async (req, res) => {
-  const chat = await Chat.findOne({
+  const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
+  let chatQuery = Chat.findOne({
     _id: req.params.chatId,
     user: req.user._id,
     isArchived: false,
-  }).populate('messages.audios');
+  });
+
+  if (limit && limit > 0) {
+    chatQuery = chatQuery.slice('messages', -limit);
+  }
+
+  const chat = await chatQuery.populate('messages.audios');
 
   if (!chat) {
     throw new NotFoundError('Chat session not found.');
@@ -463,6 +551,45 @@ export const getChatById = asyncHandler(async (req, res) => {
     success: true,
     data: {
       chat,
+    },
+  });
+});
+
+/**
+ * Updates configuration parameters for an existing chat session.
+ *
+ * @route PATCH /api/v1/chat/:chatId/config
+ * @access Private
+ */
+export const updateChatConfig = asyncHandler(async (req, res) => {
+  const b = req.validated?.body || req.body || {};
+  const chatId = req.validated?.params?.chatId || req.params.chatId;
+
+  const chat = await Chat.findOne({
+    _id: chatId,
+    user: req.user._id,
+    isArchived: false,
+  });
+
+  if (!chat) {
+    throw new NotFoundError('Chat session not found.');
+  }
+
+  if (b.model) chat.config.model = b.model;
+  if (b.thinkingBudget !== undefined) chat.config.thinkingBudget = b.thinkingBudget;
+  if (b.language) chat.config.language = b.language;
+  if (b.prompt !== undefined) chat.config.prompt = b.prompt;
+
+  await chat.save();
+
+  res.status(HTTP_STATUS.OK).json({
+    success: true,
+    message: 'Chat configuration updated successfully.',
+    data: {
+      chat: {
+        _id: chat._id,
+        config: chat.config,
+      },
     },
   });
 });
@@ -607,6 +734,7 @@ export default {
   streamChat,
   getChats,
   getChatById,
+  updateChatConfig,
   pinChat,
   renameChat,
   deleteChat,

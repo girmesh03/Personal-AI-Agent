@@ -475,7 +475,7 @@ const runChatSuite = async () => {
       .filter((e) => e.event === 'text')
       .map((e) => e.data?.delta || '')
       .join('');
-    assert(textDeltas.includes('* '), 'Response text strictly enforces literal "* " plain-text bullets');
+    assert(textDeltas.includes('• ') || textDeltas.includes('* '), 'Response text enforces word-processor circular bullet dots ("• ") or plain-text bullets');
     assert(!textDeltas.includes('###'), 'Response text strictly contains zero "###" Markdown headings');
 
     // --------------------------------------------------------------------------
@@ -489,7 +489,8 @@ const runChatSuite = async () => {
     assert(persistedReport.issues.length >= 1, `Report contains ${persistedReport.issues.length} issue(s)`);
     assert(persistedReport.comments.length >= 1, `Report contains ${persistedReport.comments.length} comment(s)`);
     assert(Boolean(persistedReport.ethiopianDate), `Derived virtual ethiopianDate: ${persistedReport.ethiopianDate}`);
-    assert(persistedReport.supervisorName === 'ቤዛ አያሌው', `Grounded supervisorName: ${persistedReport.supervisorName}`);
+    assert(persistedReport.user?.fullName === 'ቤዛ አያሌው', `Grounded author user.fullName SSOT: ${persistedReport.user?.fullName}`);
+    assert(persistedReport.supervisorName === undefined, 'Report document strictly contains zero redundant supervisorName virtual');
 
     // --------------------------------------------------------------------------
     // Scenario 10: Multi-Modal Turn with unrelated-sample-1.txt -> Quadrant 4 Negative Control
@@ -584,21 +585,50 @@ const runChatSuite = async () => {
     // Turns 0 and 1 remain, turns >= 2 pruned, replaced by new turn 2 (user) and turn 3 (assistant)
     assert(prunedChat.messages.length === 4, `Linear pruning reset message list to 4 turns (got: ${prunedChat.messages.length})`);
 
+    // Test retry turn without new input modalities (regenerates assistant turn 3 without duplicate user turn)
+    const retryRes = await postmanSSEStream(`/chat/${mathChatId}/stream`, {
+      body: {
+        retryTurnIndex: 3,
+      },
+    });
+    assert(retryRes.status === 200, 'Retry turn without input modalities returns HTTP 200');
+    const retriedChat = await Chat.findById(mathChatId);
+    assert(retriedChat.messages.length === 4, `Retry without new input preserved message turn count at 4 without duplicates (got: ${retriedChat.messages.length})`);
+    const lastMsg = retriedChat.messages[retriedChat.messages.length - 1];
+    assert(lastMsg.role === 'assistant', 'Last message turn is assistant after retry');
+    assert(Boolean(lastMsg.model), `Assistant turn records model: ${lastMsg.model}`);
+
     // --------------------------------------------------------------------------
     // Scenario 14: Chat Session CRUD
     // --------------------------------------------------------------------------
-    console.log('\n[14/16] Testing Chat Session CRUD (List, Get, Pin, Rename, Delete)');
+    console.log('\n[14/16] Testing Chat Session CRUD (List, Get, Sliced Pagination, Config Patch, Pin, Rename, Delete)');
     // 14.1 List paginated chats
     const listRes = await postmanRequest('/chat?page=1&limit=10');
     assert(listRes.status === 200, 'GET /chat returns HTTP 200');
     assert(listRes.body?.data?.chats?.length >= 2, `Retrieved ${listRes.body?.data?.chats?.length} chat sessions`);
 
-    // 14.2 Get chat by ID
+    // 14.2 Get chat by ID (full)
     const singleChatRes = await postmanRequest(`/chat/${mathChatId}`);
     assert(singleChatRes.status === 200, 'GET /chat/:chatId returns HTTP 200');
     assert(singleChatRes.body?.data?.chat?._id === mathChatId, 'Chat ID matches requested session');
 
-    // 14.3 Pin toggle
+    // 14.3 Sliced message pagination (?limit=2)
+    const slicedChatRes = await postmanRequest(`/chat/${mathChatId}?limit=2`);
+    assert(slicedChatRes.status === 200, 'GET /chat/:chatId?limit=2 returns HTTP 200');
+    assert(slicedChatRes.body?.data?.chat?.messages?.length === 2, `Sliced chat messages array length is 2 (got: ${slicedChatRes.body?.data?.chat?.messages?.length})`);
+
+    // 14.4 Chat session config update
+    const patchConfigRes = await postmanRequest(`/chat/${mathChatId}/config`, {
+      method: 'PATCH',
+      body: {
+        model: 'gemini-flash-lite-latest',
+        thinkingBudget: 1024,
+      },
+    });
+    assert(patchConfigRes.status === 200, 'PATCH /chat/:chatId/config returns HTTP 200');
+    assert(patchConfigRes.body?.data?.chat?.config?.model === 'gemini-flash-lite-latest', 'Chat model updated in config');
+
+    // 14.5 Pin toggle
     const pinRes1 = await postmanRequest(`/chat/${mathChatId}/pin`, { method: 'PATCH' });
     assert(pinRes1.status === 200, 'PATCH /chat/:chatId/pin returns HTTP 200');
     assert(pinRes1.body?.data?.chat?.isPinned === true, 'Chat pinned successfully');
@@ -607,7 +637,7 @@ const runChatSuite = async () => {
     assert(pinRes2.status === 200, 'Second pin toggle returns HTTP 200');
     assert(pinRes2.body?.data?.chat?.isPinned === false, 'Chat unpinned successfully');
 
-    // 14.4 Rename title
+    // 14.6 Rename title
     const renameRes = await postmanRequest(`/chat/${mathChatId}/title`, {
       method: 'PATCH',
       body: { title: 'Calculus Derivative Practice' },
@@ -615,7 +645,7 @@ const runChatSuite = async () => {
     assert(renameRes.status === 200, 'PATCH /chat/:chatId/title returns HTTP 200');
     assert(renameRes.body?.data?.chat?.title === 'Calculus Derivative Practice', 'Chat title updated');
 
-    // 14.5 Delete chat
+    // 14.7 Delete chat
     const deleteRes = await postmanRequest(`/chat/${mathChatId}`, { method: 'DELETE' });
     assert(deleteRes.status === 200, 'DELETE /chat/:chatId returns HTTP 200');
     const checkDeleted = await Chat.findById(mathChatId);

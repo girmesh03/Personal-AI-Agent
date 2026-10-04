@@ -12,7 +12,7 @@ import { env } from './config/env.js';
 import { logStream } from './config/logger.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { errorHandler } from './middleware/errorHandler.js';
-import { HTTP_STATUS } from './utils/constants.js';
+import { HTTP_STATUS, UPLOADS_CONFIG } from './utils/constants.js';
 import apiV1Routes from './routes/index.js';
 
 const app = express();
@@ -70,7 +70,7 @@ app.get(['/api/health', '/api/v1/health'], (_req, res) => {
 });
 
 // 8. Static file serving for uploaded audio and attachments
-app.use('/uploads', express.static('uploads'));
+app.use('/uploads', express.static(UPLOADS_CONFIG.ROOT_DIR));
 
 // 9. API v1 Router Mount (consolidated domain route tree)
 app.use('/api/v1', apiV1Routes);

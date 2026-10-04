@@ -265,8 +265,51 @@ export const generateBranchCode = (name, existingCodes = []) => {
 };
 
 /**
- * Returns expanded search terms including transliterations so search queries
- * match bidirectionally across English and Amharic.
+ * Homophone mapping dictionary for Ge'ez (Ethiopic) characters.
+ * Maps alternative phonetic spellings to canonical base forms:
+ * - ሐ & ኀ series -> ሀ series
+ * - ሠ series -> ሰ series
+ * - ዐ series -> አ series
+ * - ፀ series -> ጸ series
+ * @constant
+ * @type {Readonly<Record<string, string>>}
+ */
+const ETHIOPIC_HOMOPHONES = Object.freeze({
+  // ሐ / ኀ series -> ሀ series
+  'ሐ': 'ሀ', 'ሑ': 'ሁ', 'ሒ': 'ሂ', 'ሓ': 'ሃ', 'ሔ': 'ሄ', 'ሕ': 'ህ', 'ሖ': 'ሆ', 'ሗ': 'ኋ',
+  'ኀ': 'ሀ', 'ኁ': 'ሁ', 'ኂ': 'ሂ', 'ኃ': 'ሃ', 'ኄ': 'ሄ', 'ኅ': 'ህ', 'ኆ': 'ሆ',
+  'ኻ': 'ሃ', 'ኽ': 'ህ',
+  // ሠ series -> ሰ series
+  'ሠ': 'ሰ', 'ሡ': 'ሱ', 'ሢ': 'ሲ', 'ሣ': 'ሳ', 'ሤ': 'ሴ', 'ሥ': 'ስ', 'ሦ': 'ሶ', 'ሧ': 'ሷ',
+  // ዐ series -> አ series
+  'ዐ': 'አ', 'ዑ': 'ኡ', 'ዒ': 'ኢ', 'ዓ': 'አ', 'ዔ': 'ኤ', 'ዕ': 'እ', 'ዖ': 'ኦ',
+  // ፀ series -> ጸ series
+  'ፀ': 'ጸ', 'ፁ': 'ጹ', 'ፂ': 'ጺ', 'ፃ': 'ጻ', 'ፄ': 'ጼ', 'ፅ': 'ጽ', 'ፆ': 'ጾ',
+});
+
+/**
+ * Normalizes Ethiopic (Ge'ez) homophones into their canonical representations.
+ * Crucial for audio transcriptions and search query matching where phonetically
+ * identical words may be spelled with different historical Fidel characters
+ * (e.g., 'ቦሌ መድኃኒዓለም' vs 'ቦሌ መድሃኒአለም').
+ *
+ * @function normalizeEthiopicSpelling
+ * @param {string} text - Input Amharic/Ethiopic text.
+ * @returns {string} Normalized text with homophones mapped to canonical characters.
+ */
+export const normalizeEthiopicSpelling = (text) => {
+  if (!text || typeof text !== 'string') return '';
+  let result = '';
+  for (const char of text) {
+    result += ETHIOPIC_HOMOPHONES[char] || char;
+  }
+  return result;
+};
+
+/**
+ * Generates an expanded set of bilingual search terms for a given query.
+ * For Amharic input, returns Amharic, normalized Fidel spelling, and Latin transliteration.
+ * For English input, returns English and matched Amharic location equivalents.
  *
  * @function getBilingualSearchTerms
  * @param {string} query - Raw search query string.
@@ -278,8 +321,11 @@ export const getBilingualSearchTerms = (query) => {
   const lower = trimmed.toLowerCase();
   const terms = new Set([trimmed, lower]);
 
-  // If query is Amharic, find English equivalents
+  // If query is Amharic, find English equivalents & normalized spelling
   if (hasEthiopic(trimmed)) {
+    const normalized = normalizeEthiopicSpelling(trimmed);
+    if (normalized) terms.add(normalized);
+
     if (CURATED_LOCATIONS[trimmed]) {
       CURATED_LOCATIONS[trimmed].latin.forEach((l) => terms.add(l));
     }
@@ -292,6 +338,7 @@ export const getBilingualSearchTerms = (query) => {
     for (const [amharicKey, entry] of Object.entries(CURATED_LOCATIONS)) {
       if (entry.latin.some((l) => l.toLowerCase() === lower || lower.includes(l.toLowerCase()))) {
         terms.add(amharicKey);
+        terms.add(normalizeEthiopicSpelling(amharicKey));
       }
     }
   }
@@ -313,5 +360,6 @@ export default {
   transliterateFidelToLatin,
   resolveBranchAliases,
   generateBranchCode,
+  normalizeEthiopicSpelling,
   getBilingualSearchTerms,
 };

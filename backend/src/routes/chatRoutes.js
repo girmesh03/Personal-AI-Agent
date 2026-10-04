@@ -12,6 +12,7 @@ import {
   streamChat,
   getChats,
   getChatById,
+  updateChatConfig,
   pinChat,
   renameChat,
   deleteChat,
@@ -22,9 +23,11 @@ import { uploadReportAudios } from '../controllers/reportController.js';
 
 import {
   chatIdValidation,
+  getChatByIdValidation,
   sendChatMessageValidation,
   renameChatValidation,
   getChatsValidation,
+  updateChatConfigValidation,
 } from '../validations/chatValidation.js';
 
 import {
@@ -77,10 +80,17 @@ router.get('/', getChatsValidation, validate, getChats);
 
 /**
  * @route GET /api/v1/chat/:chatId
- * @desc Retrieve full chat session details and message history
+ * @desc Retrieve full chat session details and message history (optional ?limit=N slice)
  * @access Protected (Area Supervisor)
  */
-router.get('/:chatId', chatIdValidation, validate, getChatById);
+router.get('/:chatId', getChatByIdValidation, validate, getChatById);
+
+/**
+ * @route PATCH /api/v1/chat/:chatId/config
+ * @desc Update chat session configuration parameters (model, thinkingBudget, language, prompt)
+ * @access Protected (Area Supervisor)
+ */
+router.patch('/:chatId/config', updateChatConfigValidation, validate, updateChatConfig);
 
 /**
  * @route PATCH /api/v1/chat/:chatId/pin

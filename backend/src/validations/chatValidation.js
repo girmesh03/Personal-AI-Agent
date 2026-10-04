@@ -11,6 +11,7 @@ import {
   CHAT_CONSTANTS,
   AUDIO_CONSTANTS,
   ATTACHMENT_CONSTANTS,
+  AI_MODELS,
 } from '../utils/constants.js';
 
 /**
@@ -45,14 +46,38 @@ export const chatIdValidation = [
 ];
 
 /**
+ * Validation rules for retrieving chat session by ID with optional message slice pagination.
+ * @constant
+ * @type {import('express-validator').ValidationChain[]}
+ */
+export const getChatByIdValidation = [
+  param('chatId')
+    .trim()
+    .notEmpty()
+    .withMessage('Chat ID parameter is required.')
+    .custom((value) => {
+      if (!isValidObjectId(value)) {
+        throw new Error('Valid chat ID is required.');
+      }
+      return true;
+    }),
+
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 200 })
+    .withMessage('Message history limit must be an integer between 1 and 200.')
+    .toInt(),
+];
+
+/**
  * Validation rules for submitting a multi-modal conversational turn.
- * Enforces the core invariant: at least one input modality (text, audios, or attachments) must be provided.
+ * Enforces the core invariant: at least one input modality (text, audios, attachments, or retryTurnIndex) must be provided.
  * Enforces single-file and batch upload limits, MIME whitelists, and rejects administrative field injections.
  * @constant
  * @type {import('express-validator').ValidationChain[]}
  */
 export const sendChatMessageValidation = [
-  // Multi-modal turn invariant: at least one of text, audios, or attachments must be non-empty
+  // Multi-modal turn invariant: at least one of text, audios, attachments, or retryTurnIndex must be provided
   body().custom((_, { req }) => {
     const b = req?.body || {};
     const hasText =
@@ -62,14 +87,62 @@ export const sendChatMessageValidation = [
     const hasAudios = Array.isArray(b.audios) && b.audios.length > 0;
     const hasAttachments =
       Array.isArray(b.attachments) && b.attachments.length > 0;
+    const hasRetry = b.retryTurnIndex !== undefined && b.retryTurnIndex !== null;
 
-    if (!hasText && !hasAudios && !hasAttachments) {
+    if (!hasText && !hasAudios && !hasAttachments && !hasRetry) {
       throw new Error(
         'Message turn must include at least one input modality: text, audio, or attachment.'
       );
     }
     return true;
   }),
+
+  body('chatId')
+    .optional()
+    .trim()
+    .custom((value) => {
+      if (value && !isValidObjectId(value)) {
+        throw new Error('Valid chat ID is required.');
+      }
+      return true;
+    }),
+
+  body('model')
+    .optional()
+    .trim()
+    .isString()
+    .withMessage('Model identifier must be a string.')
+    .custom((value) => {
+      if (value && !AI_MODELS.SUPPORTED.includes(value)) {
+        throw new Error(`Model '${value}' is not supported.`);
+      }
+      return true;
+    }),
+
+  body('thinkingBudget')
+    .optional()
+    .isInt({ min: 0, max: 24576 })
+    .withMessage('thinkingBudget must be an integer between 0 and 24576.')
+    .toInt(),
+
+  body('language')
+    .optional()
+    .trim()
+    .isString()
+    .isLength({ min: 2, max: 10 })
+    .withMessage('Language code must be a valid language string (e.g. "am", "en").'),
+
+  body('editTurnIndex')
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage('editTurnIndex must be a non-negative integer.')
+    .toInt(),
+
+  body('retryTurnIndex')
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage('retryTurnIndex must be a non-negative integer.')
+    .toInt(),
 
   body('text')
     .optional({ nullable: true })
@@ -305,9 +378,91 @@ export const getChatsValidation = [
     .withMessage('Search query cannot exceed 100 characters.'),
 ];
 
+/**
+ * Validation rules for updating chat session configuration (model, thinkingBudget, language, prompt).
+ * @constant
+ * @type {import('express-validator').ValidationChain[]}
+ */
+export const updateChatConfigValidation = [
+  param('chatId')
+    .trim()
+    .notEmpty()
+    .withMessage('Chat ID parameter is required.')
+    .custom((value) => {
+      if (!isValidObjectId(value)) {
+        throw new Error('Valid chat ID is required.');
+      }
+      return true;
+    }),
+
+  body().custom((_, { req }) => {
+    const b = req?.body || {};
+    const hasModel = b.model !== undefined;
+    const hasThinkingBudget = b.thinkingBudget !== undefined;
+    const hasLanguage = b.language !== undefined;
+    const hasPrompt = b.prompt !== undefined;
+
+    if (!hasModel && !hasThinkingBudget && !hasLanguage && !hasPrompt) {
+      throw new Error(
+        'At least one configuration property (model, thinkingBudget, language, prompt) must be provided.'
+      );
+    }
+    return true;
+  }),
+
+  body('model')
+    .optional()
+    .trim()
+    .isString()
+    .withMessage('Model identifier must be a string.')
+    .custom((value) => {
+      if (value && !AI_MODELS.SUPPORTED.includes(value)) {
+        throw new Error(`Model '${value}' is not supported.`);
+      }
+      return true;
+    }),
+
+  body('thinkingBudget')
+    .optional()
+    .isInt({ min: 0, max: 24576 })
+    .withMessage('thinkingBudget must be an integer between 0 and 24576.')
+    .toInt(),
+
+  body('language')
+    .optional()
+    .trim()
+    .isString()
+    .isLength({ min: 2, max: 10 })
+    .withMessage('Language code must be a valid language string (e.g. "am", "en").'),
+
+  body('prompt')
+    .optional()
+    .trim()
+    .isString()
+    .isLength({ max: 2000 })
+    .withMessage('Prompt cannot exceed 2000 characters.'),
+
+  // Security Invariants
+  body('user').custom((value) => {
+    if (value !== undefined) {
+      throw new Error('User ownership cannot be overridden.');
+    }
+    return true;
+  }),
+
+  body('_id').custom((value) => {
+    if (value !== undefined) {
+      throw new Error('Chat identifier cannot be modified.');
+    }
+    return true;
+  }),
+];
+
 export default {
   chatIdValidation,
+  getChatByIdValidation,
   sendChatMessageValidation,
   renameChatValidation,
   getChatsValidation,
+  updateChatConfigValidation,
 };

@@ -15,6 +15,7 @@ import { GoogleGenAI } from '@google/genai';
 import env from '../config/env.js';
 import logger from '../config/logger.js';
 import { Audio } from '../models/Audio.js';
+import { UPLOADS_CONFIG, AI_MODELS } from './constants.js';
 
 const FFMPEG = env.FFMPEG_PATH || process.env.FFMPEG_PATH || 'C:/ffmpeg/ffmpeg';
 const FFPROBE = env.FFPROBE_PATH || process.env.FFPROBE_PATH || 'C:/ffmpeg/ffprobe';
@@ -42,8 +43,21 @@ function resolveExecutable(binPath) {
 export function resolveAudioDiskPath(rawPath) {
   if (!rawPath) return '';
   if (path.isAbsolute(rawPath) && fs.existsSync(rawPath)) return rawPath;
+
+  // Direct check against cwd
   const direct = path.resolve(process.cwd(), rawPath);
   if (fs.existsSync(direct)) return direct;
+
+  // Check in canonical UPLOADS_CONFIG.AUDIOS_DIR
+  const basename = path.basename(rawPath);
+  const inAudiosDir = path.resolve(UPLOADS_CONFIG.AUDIOS_DIR, basename);
+  if (fs.existsSync(inAudiosDir)) return inAudiosDir;
+
+  // Check relative to UPLOADS_CONFIG.ROOT_DIR
+  const normalizedRel = rawPath.replace(/^(backend[\\/])?uploads[\\/]/, '');
+  const inUploadsRoot = path.resolve(UPLOADS_CONFIG.ROOT_DIR, normalizedRel);
+  if (fs.existsSync(inUploadsRoot)) return inUploadsRoot;
+
   if (rawPath.startsWith('backend/') || rawPath.startsWith('backend\\')) {
     const stripped = rawPath.replace(/^backend[\\/]/, '');
     const strippedPath = path.resolve(process.cwd(), stripped);
@@ -51,20 +65,7 @@ export function resolveAudioDiskPath(rawPath) {
   }
   const withBackend = path.resolve(process.cwd(), 'backend', rawPath);
   if (fs.existsSync(withBackend)) return withBackend;
-  if (rawPath.includes('uploads/audio/') || rawPath.includes('uploads\\audio\\')) {
-    const swapped = rawPath.replace(/uploads[\\/]audio[\\/]/, 'uploads/audios/');
-    const swappedPath = path.resolve(process.cwd(), swapped);
-    if (fs.existsSync(swappedPath)) return swappedPath;
-    const swappedBackend = path.resolve(process.cwd(), 'backend', swapped);
-    if (fs.existsSync(swappedBackend)) return swappedBackend;
-  }
-  if (rawPath.includes('uploads/audios/') || rawPath.includes('uploads\\audios\\')) {
-    const swapped = rawPath.replace(/uploads[\\/]audios[\\/]/, 'uploads/audio/');
-    const swappedPath = path.resolve(process.cwd(), swapped);
-    if (fs.existsSync(swappedPath)) return swappedPath;
-    const swappedBackend = path.resolve(process.cwd(), 'backend', swapped);
-    if (fs.existsSync(swappedBackend)) return swappedBackend;
-  }
+
   return direct;
 }
 
@@ -270,7 +271,7 @@ export async function transcribeWithGemini(filePath, mimeType = 'audio/wav') {
   const base64Data = audioBuffer.toString('base64');
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3.8-flash',
+    model: AI_MODELS.DEFAULT_AUDIO_CHUNKER_MODEL,
     contents: [
       {
         parts: [
@@ -292,7 +293,7 @@ export async function transcribeWithGemini(filePath, mimeType = 'audio/wav') {
   return {
     text,
     duration: duration || null,
-    engine: 'gemini-3.8-flash',
+    engine: AI_MODELS.DEFAULT_AUDIO_CHUNKER_MODEL,
     chunks: 1,
   };
 }

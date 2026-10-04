@@ -3,7 +3,53 @@
  * @description Centralized application constants and configuration thresholds for backend operations.
  */
 
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { env, parseDurationToMs } from '../config/env.js';
+
+const BACKEND_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+
+/**
+ * Deterministically resolved uploads storage directories.
+ * Anchored to backend/uploads/ regardless of process.cwd().
+ * @constant
+ */
+export const UPLOADS_CONFIG = Object.freeze({
+  ROOT_DIR: path.resolve(BACKEND_ROOT, 'uploads'),
+  AUDIOS_DIR: path.resolve(BACKEND_ROOT, 'uploads/audios'),
+  ATTACHMENTS_DIR: path.resolve(BACKEND_ROOT, 'uploads/attachments'),
+  TEMP_DIR: path.resolve(BACKEND_ROOT, 'uploads/temp'),
+});
+
+/**
+ * Centralized AI Model governance and identifiers.
+ * Single Source of Truth for Gemini models, quota failover mappings, and STT engines.
+ * @constant
+ */
+export const AI_MODELS = Object.freeze({
+  DEFAULT: 'gemini-3.1-flash-lite',
+  FALLBACK: 'gemini-flash-lite-latest',
+  SUPPORTED: Object.freeze([
+    'gemini-3.1-flash-lite',
+    'gemini-flash-lite-latest',
+    'gemini-3.8-flash',
+    'gemini-3.5-flash',
+    'gemini-flash-latest',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-2.5-pro',
+  ]),
+  QUOTA_RETRY_MAP: Object.freeze({
+    'gemini-2.5-flash': 'gemini-3.1-flash-lite',
+    'gemini-3.5-flash': 'gemini-3.1-flash-lite',
+    'gemini-3.8-flash': 'gemini-3.1-flash-lite',
+    'gemini-flash-latest': 'gemini-flash-lite-latest',
+    'gemini-3.1-flash-lite': 'gemini-flash-lite-latest',
+  }),
+  STT_ENGINES: Object.freeze(['addis_ai', 'gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-2.5-flash']),
+  DEFAULT_STT_ENGINE: 'addis_ai',
+  DEFAULT_AUDIO_CHUNKER_MODEL: 'gemini-3.8-flash',
+});
 
 /**
  * Standard HTTP Status Codes.
@@ -372,25 +418,16 @@ export const REPORT_CONSTANTS = Object.freeze({
 export const CHAT_CONSTANTS = Object.freeze({
   DEFAULT_PERSONA:
     'Personal AI Agent and Executive Operations Partner for multi-branch restaurant operations, professional leadership, and personal productivity in Ethiopia',
-  DEFAULT_MODEL: 'gemini-3.1-flash-lite',
-  SUPPORTED_MODELS: [
-    'gemini-3.1-flash-lite',
-    'gemini-flash-lite-latest',
-    'gemini-3.8-flash',
-    'gemini-3.5-flash',
-    'gemini-flash-latest',
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-2.5-pro',
-  ],
+  DEFAULT_MODEL: AI_MODELS.DEFAULT,
+  SUPPORTED_MODELS: AI_MODELS.SUPPORTED,
   DEFAULT_THINKING_BUDGET: 2048,
   MIN_THINKING_BUDGET: 0,
   MAX_THINKING_BUDGET: 8192,
   DEFAULT_LANGUAGE: 'am',
   SUPPORTED_LANGUAGES: ['am', 'en', 'auto'],
   DEFAULT_TEMPERATURE: 0.2,
-  STT_ENGINES: ['addis_ai', 'gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-2.5-flash'],
-  DEFAULT_STT_ENGINE: 'addis_ai',
+  STT_ENGINES: AI_MODELS.STT_ENGINES,
+  DEFAULT_STT_ENGINE: AI_MODELS.DEFAULT_STT_ENGINE,
   TITLE_MAX_LENGTH: 100,
   MAX_MESSAGE_LENGTH: 10000,
   ATTACHMENTS: ATTACHMENT_CONSTANTS,
@@ -420,6 +457,8 @@ export default {
   AUDIO_CONSTANTS,
   ATTACHMENT_CONSTANTS,
   AVATAR_CONSTANTS,
+  AI_MODELS,
+  UPLOADS_CONFIG,
 };
 
 

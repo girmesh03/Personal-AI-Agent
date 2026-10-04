@@ -43,6 +43,52 @@ function escapeRegex(str) {
 }
 
 /**
+ * Normalizes user/LLM input issue status to canonical domain status enum.
+ * Authoritative: 'reported' | 'completed' | 'in_progress' | 'no_issue'
+ * @function normalizeIssueStatus
+ * @param {string|undefined|null} status - Raw status from LLM/user.
+ * @returns {'reported'|'completed'|'in_progress'|'no_issue'}
+ */
+export function normalizeIssueStatus(status) {
+  if (!status || typeof status !== 'string') return 'reported';
+  const clean = status.trim().toLowerCase().replace(/[\s_-]+/g, '_');
+
+  if (['completed', 'resolved', 'done', 'fixed', 'closed'].includes(clean)) {
+    return 'completed';
+  }
+  if (['in_progress', 'ongoing', 'progress', 'investigating', 'working_on'].includes(clean)) {
+    return 'in_progress';
+  }
+  if (['no_issue', 'none', 'no_issues', 'ok', 'normal', 'good'].includes(clean)) {
+    return 'no_issue';
+  }
+  if (['reported', 'open', 'pending', 'unresolved', 'new', 'active'].includes(clean)) {
+    return 'reported';
+  }
+  return 'reported';
+}
+
+/**
+ * Normalizes user/LLM input activity status to canonical domain status enum.
+ * Authoritative: 'completed' | 'in_progress'
+ * @function normalizeActivityStatus
+ * @param {string|undefined|null} status - Raw status from LLM/user.
+ * @returns {'completed'|'in_progress'}
+ */
+export function normalizeActivityStatus(status) {
+  if (!status || typeof status !== 'string') return 'completed';
+  const clean = status.trim().toLowerCase().replace(/[\s_-]+/g, '_');
+
+  if (['in_progress', 'ongoing', 'progress', 'started', 'pending'].includes(clean)) {
+    return 'in_progress';
+  }
+  if (['completed', 'done', 'finished', 'closed', 'resolved'].includes(clean)) {
+    return 'completed';
+  }
+  return 'completed';
+}
+
+/**
  * Builds the MongoDB query filter for a branch identifier that may be either an ObjectId or an operational code.
  *
  * @private
@@ -1110,7 +1156,7 @@ export const toolHandlers = {
       normalizedArgs.activities = normalizedArgs.activities.map((a) =>
         typeof a === 'string'
           ? { text: a.trim(), status: 'completed' }
-          : { text: (a.text || a.description || '').trim(), status: a.status || 'completed' }
+          : { text: (a.text || a.description || '').trim(), status: normalizeActivityStatus(a.status) }
       );
     }
 
@@ -1118,8 +1164,8 @@ export const toolHandlers = {
     if (Array.isArray(normalizedArgs.issues)) {
       normalizedArgs.issues = normalizedArgs.issues.map((i) =>
         typeof i === 'string'
-          ? { text: i.trim(), status: 'open' }
-          : { text: (i.text || i.description || '').trim(), status: i.status || 'open' }
+          ? { text: i.trim(), status: 'reported' }
+          : { text: (i.text || i.description || '').trim(), status: normalizeIssueStatus(i.status) }
       );
     }
 
@@ -1148,7 +1194,6 @@ export const toolHandlers = {
       reportId: createdReport._id.toString(),
       date: createdReport.date,
       ethiopianDate: createdReport.ethiopianDate,
-      supervisorName: createdReport.supervisorName,
       visitsCount: createdReport.visits.length,
       activitiesCount: createdReport.activities.length,
       issuesCount: createdReport.issues.length,
@@ -1207,7 +1252,7 @@ export const toolHandlers = {
           if (actText) {
             report.activities.push({
               text: actText,
-              status: (typeof act === 'object' && act?.status) || 'completed',
+              status: normalizeActivityStatus(typeof act === 'object' ? act?.status : undefined),
             });
           }
         }
@@ -1219,7 +1264,7 @@ export const toolHandlers = {
           if (issText) {
             report.issues.push({
               text: issText,
-              status: (typeof iss === 'object' && iss?.status) || 'reported',
+              status: normalizeIssueStatus(typeof iss === 'object' ? iss?.status : undefined),
             });
           }
         }
@@ -1274,7 +1319,8 @@ export const toolHandlers = {
       let updatedItem = null;
 
       if (recordType === 'issue') {
-        if (!REPORT_CONSTANTS.ISSUE_STATUSES.includes(newStatus)) {
+        const canonicalStatus = normalizeIssueStatus(newStatus);
+        if (!REPORT_CONSTANTS.ISSUE_STATUSES.includes(canonicalStatus)) {
           throw new ValidationError(
             `Invalid issue status. Must be one of: ${REPORT_CONSTANTS.ISSUE_STATUSES.join(', ')}`
           );
@@ -1283,13 +1329,14 @@ export const toolHandlers = {
         if (!item) {
           throw new NotFoundError('Issue item not found in report.');
         }
-        item.status = newStatus;
+        item.status = canonicalStatus;
         if (resolutionNotes && typeof resolutionNotes === 'string' && resolutionNotes.trim()) {
           item.text = `${item.text} (Resolution: ${resolutionNotes.trim()})`;
         }
         updatedItem = item;
       } else if (recordType === 'activity') {
-        if (!REPORT_CONSTANTS.ACTIVITY_STATUSES.includes(newStatus)) {
+        const canonicalStatus = normalizeActivityStatus(newStatus);
+        if (!REPORT_CONSTANTS.ACTIVITY_STATUSES.includes(canonicalStatus)) {
           throw new ValidationError(
             `Invalid activity status. Must be one of: ${REPORT_CONSTANTS.ACTIVITY_STATUSES.join(', ')}`
           );
@@ -1298,7 +1345,7 @@ export const toolHandlers = {
         if (!item) {
           throw new NotFoundError('Activity item not found in report.');
         }
-        item.status = newStatus;
+        item.status = canonicalStatus;
         updatedItem = item;
       } else {
         throw new ValidationError('recordType must be "issue" or "activity".');
@@ -1677,6 +1724,7 @@ export const toolHandlers = {
     if (args.reportId && isValidObjectId(args.reportId)) {
       const singleReport = await Report.findOne({ _id: args.reportId, user: userId })
         .populate('visits.branch', 'name code')
+        .populate('user', 'fullName email')
         .lean();
       if (!singleReport) {
         throw new NotFoundError('Report not found.');
@@ -1695,6 +1743,7 @@ export const toolHandlers = {
         .sort({ date: -1, createdAt: -1 })
         .limit(20)
         .populate('visits.branch', 'name code')
+        .populate('user', 'fullName email')
         .lean();
     }
 
@@ -1714,7 +1763,7 @@ export const toolHandlers = {
         exportContent =
           `# Operational Report (${ethiopianDateStr})\n\n` +
           `**Date**: ${gregorianDateStr} (Ethiopian: ${ethiopianDateStr})\n` +
-          `**Supervisor**: ${report.supervisorName || 'N/A'}\n` +
+          `**Supervisor**: ${report.user?.fullName || 'N/A'}\n` +
           `**Work Hours**: ${report.clockIn} - ${report.clockOut}\n\n` +
           `## Branch Visits\n` +
           (report.visits || [])
@@ -1821,7 +1870,9 @@ export const toolHandlers = {
 
     let formattedMessage = '';
 
-    if (reportId && isValidObjectId(reportId)) {
+    if (messageText && typeof messageText === 'string' && messageText.trim()) {
+      formattedMessage = messageText.trim();
+    } else if (reportId && isValidObjectId(reportId)) {
       const report = await Report.findOne({ _id: reportId, user: userId })
         .populate('visits.branch', 'name code')
         .lean();
@@ -1840,28 +1891,24 @@ export const toolHandlers = {
           .join('\n');
 
         formattedMessage = [
-          '📋 *የስራ ሪፖርት (Operational Report)*',
-          `📅 *ቀን:* ${ethDate} (${gregDate})`,
-          `⏰ *የስራ ሰዓት:* ${report.clockIn} - ${report.clockOut}`,
+          '📋 *Operational Report*',
+          `📅 *Date:* ${ethDate} (${gregDate})`,
+          `⏰ *Work Hours:* ${report.clockIn} - ${report.clockOut}`,
           '',
-          '🏢 *የተጎበኙ ቅርንጫፎች:*',
+          '🏢 *Branch Visits:*',
           visits || '• None',
           '',
-          '✅ *የተሰሩ ስራዎች (Activities):*',
+          '✅ *Activities:*',
           activities || '• None',
           '',
-          '⚠️ *መፍትሄ የሚፈልጉ ጉዳዮች (Issues):*',
+          '⚠️ *Issues:*',
           issues || '• None',
         ].join('\n');
       }
     }
 
-    if (!formattedMessage && messageText) {
-      formattedMessage = messageText;
-    }
-
     if (customNote) {
-      formattedMessage = `📌 *ማስታወሻ:* ${customNote}\n\n${formattedMessage}`;
+      formattedMessage = `📌 *Note:* ${customNote}\n\n${formattedMessage}`;
     }
 
     // Enforce Telegram 4096 character limit

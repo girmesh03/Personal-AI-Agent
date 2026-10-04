@@ -15,6 +15,7 @@ import {
   AUDIO_CONSTANTS,
   ATTACHMENT_CONSTANTS,
   AVATAR_CONSTANTS,
+  AI_MODELS,
 } from '../src/utils/constants.js';
 import {
   BASE_SCHEMA_OPTIONS,
@@ -61,7 +62,7 @@ assert(REPORT_CONSTANTS.MAX_AUDIO_FILE_SIZE_BYTES === 25 * 1024 * 1024, 'REPORT_
 assert(REPORT_CONSTANTS.MAX_DOCUMENT_FILES === 5, 'REPORT_CONSTANTS.MAX_DOCUMENT_FILES is 5');
 assert(REPORT_CONSTANTS.MAX_DOCUMENT_FILE_SIZE_BYTES === 25 * 1024 * 1024, 'REPORT_CONSTANTS.MAX_DOCUMENT_FILE_SIZE_BYTES is 25MB');
 
-assert(CHAT_CONSTANTS.DEFAULT_MODEL === 'gemini-2.5-flash', 'CHAT_CONSTANTS.DEFAULT_MODEL is gemini-2.5-flash');
+assert(CHAT_CONSTANTS.DEFAULT_MODEL === AI_MODELS.DEFAULT, `CHAT_CONSTANTS.DEFAULT_MODEL is ${AI_MODELS.DEFAULT}`);
 assert(CHAT_CONSTANTS.DEFAULT_THINKING_BUDGET === 2048, 'CHAT_CONSTANTS.DEFAULT_THINKING_BUDGET is 2048');
 assert(CHAT_CONSTANTS.DEFAULT_LANGUAGE === 'am', 'CHAT_CONSTANTS.DEFAULT_LANGUAGE is am');
 assert(CHAT_CONSTANTS.DEFAULT_STT_ENGINE === 'addis_ai', 'CHAT_CONSTANTS.DEFAULT_STT_ENGINE is addis_ai');
@@ -123,7 +124,7 @@ const testUser = new User({
   },
 });
 assert(testUser.settings?.sttEngine === 'addis_ai', 'User.settings.sttEngine defaults to addis_ai');
-assert(testUser.settings?.agentConfig?.defaultModel === 'gemini-2.5-flash', 'User.settings.agentConfig.defaultModel defaults to gemini-2.5-flash');
+assert(testUser.settings?.agentConfig?.defaultModel === AI_MODELS.DEFAULT, `User.settings.agentConfig.defaultModel defaults to ${AI_MODELS.DEFAULT}`);
 assert(testUser.settings?.agentConfig?.defaultThinkingBudget === 2048, 'User.settings.agentConfig.defaultThinkingBudget defaults to 2048');
 assert(testUser.settings?.agentConfig?.defaultLanguage === 'am', 'User.settings.agentConfig.defaultLanguage defaults to am');
 assert(Array.isArray(testUser.settings?.directives?.negativeVocabulary), 'User.settings.directives.negativeVocabulary is array');
@@ -231,7 +232,7 @@ assert(testChat.title === null, 'Chat title defaults to null (dynamically genera
 assert(testChat.isPinned === false, 'Chat.isPinned defaults to false');
 assert(testChat.schema.paths.pinnedAt === undefined, 'Chat has strictly ZERO pinnedAt field (redundant)');
 assert(testChat.schema.paths.directives === undefined, 'Chat has strictly ZERO directives field (lives on User)');
-assert(testChat.config.model === 'gemini-2.5-flash', 'Chat.config.model defaults to gemini-2.5-flash');
+assert(testChat.config.model === AI_MODELS.DEFAULT, `Chat.config.model defaults to ${AI_MODELS.DEFAULT}`);
 assert(testChat.config.thinkingBudget === 2048, 'Chat.config.thinkingBudget defaults to 2048');
 assert(testChat.config.temperature === undefined, 'Chat.config.temperature is undefined (no hardcoded temperature)');
 
@@ -368,9 +369,10 @@ assert(testReport.archivedAt === null, 'archivedAt defaults to null');
 // Check derived virtuals
 assert(testReport.ethiopianDate === '22-01-19', 'Report.ethiopianDate virtual derived as 22-01-19');
 
-// Test populated supervisorName virtual
+// Author identity SSOT: user reference
 testReport.user = testUser;
-assert(testReport.supervisorName === 'Abebe Kebede', 'Report.supervisorName virtual resolves from user.fullName');
+assert(testReport.user.fullName === 'Abebe Kebede', 'Report author identity resolves directly from user.fullName SSOT');
+assert(testReport.supervisorName === undefined, 'Report has strictly NO redundant supervisorName virtual');
 
 // Invariants: Zero status on report, Zero templateType, Zero category/severity
 const reportJson = testReport.toJSON();

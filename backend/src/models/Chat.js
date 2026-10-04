@@ -42,6 +42,8 @@ import {
  * @property {import('mongoose').Types.ObjectId[]} audios - Standalone Audio document references.
  * @property {IChatAttachment[]} attachments - Document and image file attachments.
  * @property {Array<Record<string, any>>} toolCalls - Recorded tool invocation telemetry.
+ * @property {string|null} model - AI model identifier that generated the turn response.
+ * @property {{ promptTokens?: number, candidatesTokens?: number, totalTokens?: number }|null} usage - Token usage telemetry.
  * @property {Date} createdAt - Timestamp of turn creation.
  */
 
@@ -170,6 +172,15 @@ const messageTurnSchema = new mongoose.Schema(
     toolCalls: {
       type: Array,
       default: [],
+    },
+    model: {
+      type: String,
+      default: null,
+    },
+    usage: {
+      promptTokens: { type: Number, default: null },
+      candidatesTokens: { type: Number, default: null },
+      totalTokens: { type: Number, default: null },
     },
     createdAt: {
       type: Date,
