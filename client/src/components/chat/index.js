@@ -11,4 +11,7 @@ export { default as ReportCardPartRenderer } from './ReportCardPartRenderer.jsx'
 export { default as DirectiveAlertRenderer } from './DirectiveAlertRenderer.jsx';
 export { default as OperonCodeBlock } from './OperonCodeBlock.jsx';
 export { default as MessageActionsBar } from './MessageActionsBar.jsx';
+export { default as AudioRecordingHud } from './AudioRecordingHud.jsx';
+export { default as InferenceSettingsSheet } from './InferenceSettingsSheet.jsx';
+export { default as ChatComposerToolbar } from './ChatComposerToolbar.jsx';
 export { neutralMessageBubbleSx, chatMessageSlotProps } from './chatMessageStyles.js';
