@@ -226,7 +226,7 @@ export const useAudioRecorder = (options = {}) => {
 
       try {
         mediaRecorderRef.current.stop();
-      } catch (err) {
+      } catch {
         cleanupMediaTracks();
         setIsRecording(false);
         setIsPaused(false);
@@ -324,7 +324,7 @@ export const useAudioRecorder = (options = {}) => {
       // Fallback without mimeType option
       try {
         recorder = new MediaRecorder(stream);
-      } catch (recErr) {
+      } catch {
         cleanupMediaTracks();
         cleanupAudioContext();
         const err = 'Failed to initialize audio recorder.';

@@ -514,7 +514,7 @@ export class OperonChatAdapter {
    * @returns {Promise<{ messages: import('@mui/x-chat-headless').ChatMessage[], cursor: string|null, hasMore: boolean }>}
    */
   async listMessages(input = {}) {
-    const { conversationId: convId, chatId, cursor } = input || {};
+    const { conversationId: convId, chatId } = input || {};
     const conversationId = convId ?? chatId ?? null;
     if (!conversationId || conversationId === 'new') {
       return { messages: [], cursor: null, hasMore: false };

@@ -36,8 +36,6 @@ import chatReducer, {
   chatApi,
 } from '../src/redux/features/chatSlice.js';
 import {
-  ATTACHMENT_CONSTANTS,
-  AUDIO_CONSTANTS,
   AI_MODELS,
   CHAT_CONSTANTS,
 } from '../src/utils/constants.js';

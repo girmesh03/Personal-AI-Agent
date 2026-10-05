@@ -3,6 +3,7 @@
  * @description Cross-platform port freer for client workspace using native OS process inspection.
  */
 import { execSync } from 'node:child_process';
+import process from 'node:process';
 
 /**
  * Frees a specific TCP port by identifying and terminating occupying processes.
