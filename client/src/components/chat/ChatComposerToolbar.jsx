@@ -26,6 +26,7 @@ import useMediaQuery from '@mui/material/useMediaQuery';
 import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import PropTypes from 'prop-types';
+import { useChatComposer } from '@mui/x-chat-headless';
 
 import MuiTextField from '../reusable/MuiTextField.jsx';
 import MuiButton from '../reusable/MuiButton.jsx';
@@ -62,6 +63,21 @@ const getAttachmentIcon = (file) => {
     return <AudiotrackIcon sx={{ fontSize: 16 }} />;
   }
   return <DescriptionIcon sx={{ fontSize: 16 }} />;
+};
+
+/**
+ * Safe optional wrapper for useChatComposer.
+ * Returns headless composer when mounted inside ChatBox/ChatProvider, or null in standalone usage.
+ *
+ * @function useOptionalChatComposer
+ * @returns {object|null} Headless composer runtime or null.
+ */
+const useOptionalChatComposer = () => {
+  try {
+    return useChatComposer();
+  } catch {
+    return null;
+  }
 };
 
 /**
@@ -106,6 +122,14 @@ export const ChatComposerToolbar = ({
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
+  const headlessComposer = useOptionalChatComposer();
+
+  const activeText = text || headlessComposer?.value || '';
+  const activeAttachments = useMemo(() => {
+    return attachments.length > 0 ? attachments : (headlessComposer?.attachments || []);
+  }, [attachments, headlessComposer?.attachments]);
+  const activeIsStreaming = isStreaming || Boolean(headlessComposer?.isSubmitting);
+
   const activeModel = useSelector(selectActiveModel);
   const currentLanguage = useSelector(selectLanguage);
   const currentSttEngine = useSelector(selectSttEngine);
@@ -137,6 +161,7 @@ export const ChatComposerToolbar = ({
 
   // Open & close model settings sheet
   const handleOpenSettings = useCallback((event) => {
+    event.currentTarget?.blur?.();
     setSettingsAnchorEl(event.currentTarget);
   }, []);
 
@@ -199,10 +224,15 @@ export const ChatComposerToolbar = ({
       const transcribedText = res?.data?.text || res?.text || '';
 
       if (transcribedText.trim()) {
-        const updated = text && text.trim().length > 0
-          ? `${text} ${transcribedText.trim()}`
+        const currentVal = activeText;
+        const updated = currentVal && currentVal.trim().length > 0
+          ? `${currentVal} ${transcribedText.trim()}`
           : transcribedText.trim();
-        onTextChange?.(updated);
+        if (onTextChange) {
+          onTextChange(updated);
+        } else if (headlessComposer) {
+          headlessComposer.setValue(updated);
+        }
         toast.success('Voice transcribed successfully.');
         activeRecorder.clearCachedBlob();
       } else {
@@ -217,8 +247,9 @@ export const ChatComposerToolbar = ({
     currentSttEngine,
     currentLanguage,
     transcribeAudio,
-    text,
+    activeText,
     onTextChange,
+    headlessComposer,
   ]);
 
   // Voice recording: discard
@@ -245,10 +276,15 @@ export const ChatComposerToolbar = ({
       const transcribedText = res?.data?.text || res?.text || '';
 
       if (transcribedText.trim()) {
-        const updated = text && text.trim().length > 0
-          ? `${text} ${transcribedText.trim()}`
+        const currentVal = activeText;
+        const updated = currentVal && currentVal.trim().length > 0
+          ? `${currentVal} ${transcribedText.trim()}`
           : transcribedText.trim();
-        onTextChange?.(updated);
+        if (onTextChange) {
+          onTextChange(updated);
+        } else if (headlessComposer) {
+          headlessComposer.setValue(updated);
+        }
         toast.success('Voice transcribed successfully.');
         activeRecorder.clearCachedBlob();
       } else {
@@ -263,9 +299,19 @@ export const ChatComposerToolbar = ({
     currentSttEngine,
     currentLanguage,
     transcribeAudio,
-    text,
+    activeText,
     onTextChange,
+    headlessComposer,
   ]);
+
+  // Dispatches user message turn
+  const handleSend = useCallback(() => {
+    if (onSend) {
+      onSend();
+    } else if (headlessComposer) {
+      headlessComposer.submit();
+    }
+  }, [onSend, headlessComposer]);
 
   // Keyboard shortcut: Enter to submit, Shift+Enter for newline
   const handleKeyDown = useCallback(
@@ -273,17 +319,17 @@ export const ChatComposerToolbar = ({
       if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
         const hasContent =
-          (text && text.trim().length > 0) || (attachments && attachments.length > 0);
-        if (hasContent && !disabled && !isStreaming && !isTranscribing) {
-          onSend?.();
+          (activeText && activeText.trim().length > 0) || (activeAttachments && activeAttachments.length > 0);
+        if (hasContent && !disabled && !activeIsStreaming && !isTranscribing) {
+          handleSend();
         }
       }
     },
-    [text, attachments, disabled, isStreaming, isTranscribing, onSend]
+    [activeText, activeAttachments, disabled, activeIsStreaming, isTranscribing, handleSend]
   );
 
-  const hasText = Boolean(text && text.trim().length > 0);
-  const hasAttachments = Boolean(attachments && attachments.length > 0);
+  const hasText = Boolean(activeText && activeText.trim().length > 0);
+  const hasAttachments = Boolean(activeAttachments && activeAttachments.length > 0);
   const isSendDisabled =
     (!hasText && !hasAttachments) ||
     disabled ||
@@ -296,15 +342,17 @@ export const ChatComposerToolbar = ({
         width: '100%',
         display: 'flex',
         flexDirection: 'column',
-        borderRadius: 3,
-        border: '1px solid',
+        borderRadius: hideInput ? 0 : 3,
+        border: hideInput ? 'none' : '1px solid',
         borderColor: 'divider',
-        bgcolor: 'background.paper',
-        p: 1.25,
-        boxShadow: (themeMode) =>
-          themeMode.palette.mode === 'dark'
-            ? '0 2px 8px rgba(0,0,0,0.4)'
-            : '0 2px 8px rgba(0,0,0,0.04)',
+        bgcolor: hideInput ? 'transparent' : 'background.paper',
+        p: hideInput ? 0 : 1.25,
+        boxShadow: hideInput
+          ? 'none'
+          : (themeMode) =>
+              themeMode.palette.mode === 'dark'
+                ? '0 2px 8px rgba(0,0,0,0.4)'
+                : '0 2px 8px rgba(0,0,0,0.04)',
         ...sx,
       }}
     >
@@ -403,6 +451,8 @@ export const ChatComposerToolbar = ({
           {/* Hidden File Input */}
           <input
             ref={fileInputRef}
+            id="chat-composer-file-input"
+            name="chatComposerFileInput"
             type="file"
             multiple
             accept={ATTACHMENT_CONSTANTS.ALLOWED_EXTENSIONS.join(',')}
@@ -482,7 +532,7 @@ export const ChatComposerToolbar = ({
           )}
 
           {/* Send / Stop State Machine Button */}
-          {isStreaming ? (
+          {activeIsStreaming ? (
             <Tooltip title="Stop generation">
               <IconButton
                 size="small"
@@ -512,7 +562,7 @@ export const ChatComposerToolbar = ({
                 <IconButton
                   size="small"
                   color="primary"
-                  onClick={onSend}
+                  onClick={handleSend}
                   disabled={isSendDisabled}
                   aria-label="Send message"
                   sx={{

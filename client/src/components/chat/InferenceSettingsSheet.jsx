@@ -115,8 +115,13 @@ export const InferenceSettingsSheet = ({
   disablePortal = typeof window === 'undefined',
 }) => {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const dispatch = useDispatch();
+
+  const composerAnchorEl = useMemo(() => {
+    if (!anchorEl) return null;
+    return (typeof anchorEl.closest === 'function' ? anchorEl.closest('form') : null) || anchorEl;
+  }, [anchorEl]);
 
   const activeModel = useSelector(selectActiveModel);
   const thinkingBudget = useSelector(selectThinkingBudget);
@@ -151,7 +156,7 @@ export const InferenceSettingsSheet = ({
           thinkingBudget: targetConfig?.supportsThinking
             ? thinkingBudget
             : 0,
-        }).catch(() => {});
+        }).catch(() => { });
       }
     },
     [dispatch, thinkingBudget, chatId, updateChatConfig]
@@ -164,7 +169,7 @@ export const InferenceSettingsSheet = ({
       dispatch(setThinkingBudget(budgetValue));
 
       if (chatId) {
-        updateChatConfig({ chatId, thinkingBudget: budgetValue }).catch(() => {});
+        updateChatConfig({ chatId, thinkingBudget: budgetValue }).catch(() => { });
       }
     },
     [dispatch, chatId, updateChatConfig]
@@ -177,7 +182,7 @@ export const InferenceSettingsSheet = ({
       dispatch(setLanguage(nextLang));
 
       if (chatId) {
-        updateChatConfig({ chatId, language: nextLang }).catch(() => {});
+        updateChatConfig({ chatId, language: nextLang }).catch(() => { });
       }
     },
     [dispatch, chatId, updateChatConfig]
@@ -254,9 +259,9 @@ export const InferenceSettingsSheet = ({
                 borderColor: isSelected ? 'primary.main' : 'divider',
                 bgcolor: isSelected
                   ? (themeMode) =>
-                      themeMode.palette.mode === 'dark'
-                        ? 'rgba(33, 150, 243, 0.08)'
-                        : 'rgba(25, 118, 210, 0.04)'
+                    themeMode.palette.mode === 'dark'
+                      ? 'rgba(33, 150, 243, 0.08)'
+                      : 'rgba(25, 118, 210, 0.04)'
                   : 'background.paper',
                 transition: 'all 120ms ease-in-out',
                 '&:hover': {
@@ -316,6 +321,10 @@ export const InferenceSettingsSheet = ({
             disabled={!isThinkingSupported}
             onChange={handleBudgetChange}
             slotProps={{
+              input: {
+                id: 'thinking-budget-slider-input',
+                name: 'thinkingBudget',
+              },
               thumb: {
                 sx: {
                   '&:hover, &.Mui-focusVisible': {
@@ -412,8 +421,11 @@ export const InferenceSettingsSheet = ({
         anchor="bottom"
         open={open}
         onClose={onClose}
-        onOpen={() => {}}
+        onOpen={() => { }}
         disablePortal={disablePortal}
+        disableRestoreFocus
+        disableAutoFocus
+        disableEnforceFocus
         slotProps={{
           paper: {
             sx: {
@@ -434,16 +446,19 @@ export const InferenceSettingsSheet = ({
   return (
     <Popover
       open={open}
-      anchorEl={anchorEl}
-      anchorReference={anchorEl ? 'anchorEl' : 'none'}
+      anchorEl={composerAnchorEl}
+      anchorReference={composerAnchorEl ? 'anchorEl' : 'none'}
       onClose={onClose}
       disablePortal={disablePortal}
+      disableRestoreFocus
+      disableAutoFocus
+      disableEnforceFocus
       anchorOrigin={{
-        vertical: 'bottom',
+        vertical: 'top',
         horizontal: 'left',
       }}
       transformOrigin={{
-        vertical: 'top',
+        vertical: 'bottom',
         horizontal: 'left',
       }}
       slotProps={{
@@ -453,8 +468,14 @@ export const InferenceSettingsSheet = ({
             width: 380,
             maxWidth: '90vw',
             borderRadius: 2,
-            maxHeight: '80vh',
+            maxHeight: '75vh',
             overflowY: 'auto',
+            mb: 1,
+            backgroundImage: 'none',
+            boxShadow: (themeMode) =>
+              themeMode.palette.mode === 'dark'
+                ? '0 8px 32px rgba(0,0,0,0.6)'
+                : '0 8px 32px rgba(0,0,0,0.12)',
           },
         },
       }}
