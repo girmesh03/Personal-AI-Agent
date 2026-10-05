@@ -6,7 +6,6 @@
  */
 
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
-import { logout, setCredentials } from '../features/authSlice.js';
 
 /**
  * Normalizes API query and mutation responses and error envelopes so consumer
@@ -151,6 +150,7 @@ const baseQueryWithReauth = async (args, api, extraOptions) => {
     }
 
     const refreshResult = await activeRefreshPromise;
+    const { logout, setCredentials } = await import('../features/authSlice.js');
 
     if (refreshResult && refreshResult.data) {
       const refreshedUser = refreshResult.data?.data?.user || refreshResult.data?.user;

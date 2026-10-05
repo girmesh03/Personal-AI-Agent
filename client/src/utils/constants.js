@@ -261,19 +261,194 @@ export const REPORT_CONSTANTS = Object.freeze({
 });
 
 /**
+ * Audio domain constants, MIME whitelist, and file bounds.
+ * @constant
+ * @type {Readonly<{
+ *   PURPOSES: string[],
+ *   DEFAULT_PURPOSE: string,
+ *   STATUSES: string[],
+ *   DEFAULT_STATUS: string,
+ *   MAX_FILE_SIZE_BYTES: number,
+ *   MAX_BATCH_SIZE_BYTES: number,
+ *   MAX_FILES_COUNT: number,
+ *   MIN_DURATION_SECONDS: number,
+ *   MAX_DURATION_SECONDS: number,
+ *   ALLOWED_EXTENSIONS: string[],
+ *   ALLOWED_MIME_TYPES: string[],
+ * }>}
+ */
+export const AUDIO_CONSTANTS = Object.freeze({
+  PURPOSES: ['report_narration', 'chat_voice_input', 'general_memo'],
+  DEFAULT_PURPOSE: 'chat_voice_input',
+  STATUSES: ['uploaded', 'transcribing', 'transcribed', 'failed'],
+  DEFAULT_STATUS: 'uploaded',
+  MAX_FILE_SIZE_BYTES: 25 * 1024 * 1024, // 25MB single file limit
+  MAX_BATCH_SIZE_BYTES: 50 * 1024 * 1024, // 50MB batch upload limit
+  MAX_FILES_COUNT: 5,
+  MIN_DURATION_SECONDS: 1,
+  MAX_DURATION_SECONDS: 600, // 10 minutes maximum duration
+  ALLOWED_EXTENSIONS: ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.webm', '.mp4'],
+  ALLOWED_MIME_TYPES: [
+    'audio/mpeg',
+    'audio/mp3',
+    'audio/wav',
+    'audio/x-wav',
+    'audio/m4a',
+    'audio/x-m4a',
+    'audio/mp4',
+    'audio/aac',
+    'audio/x-aac',
+    'audio/webm',
+    'audio/ogg',
+  ],
+});
+
+/**
+ * Chat attachment and document upload constants, MIME whitelist, and file bounds.
+ * Supports multi-modal image inspection, operational documents, and audit spreadsheets.
+ * @constant
+ * @type {Readonly<{
+ *   MAX_FILE_SIZE_BYTES: number,
+ *   MAX_BATCH_SIZE_BYTES: number,
+ *   MAX_FILES_COUNT: number,
+ *   ALLOWED_IMAGE_EXTENSIONS: string[],
+ *   ALLOWED_IMAGE_MIME_TYPES: string[],
+ *   ALLOWED_DOCUMENT_EXTENSIONS: string[],
+ *   ALLOWED_DOCUMENT_MIME_TYPES: string[],
+ *   ALLOWED_EXTENSIONS: string[],
+ *   ALLOWED_MIME_TYPES: string[],
+ * }>}
+ */
+export const ATTACHMENT_CONSTANTS = Object.freeze({
+  MAX_FILE_SIZE_BYTES: 25 * 1024 * 1024, // 25MB single file limit
+  MAX_BATCH_SIZE_BYTES: 50 * 1024 * 1024, // 50MB batch upload limit
+  MAX_FILES_COUNT: 5,
+  ALLOWED_IMAGE_EXTENSIONS: ['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif'],
+  ALLOWED_IMAGE_MIME_TYPES: [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/heic',
+    'image/heif',
+  ],
+  ALLOWED_DOCUMENT_EXTENSIONS: [
+    '.pdf',
+    '.txt',
+    '.csv',
+    '.md',
+    '.xlsx',
+    '.xls',
+    '.docx',
+    '.doc',
+  ],
+  ALLOWED_DOCUMENT_MIME_TYPES: [
+    'application/pdf',
+    'text/plain',
+    'text/csv',
+    'text/markdown',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/msword',
+  ],
+  ALLOWED_EXTENSIONS: [
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.webp',
+    '.heic',
+    '.heif',
+    '.pdf',
+    '.txt',
+    '.csv',
+    '.md',
+    '.xlsx',
+    '.xls',
+    '.docx',
+    '.doc',
+  ],
+  ALLOWED_MIME_TYPES: [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/heic',
+    'image/heif',
+    'application/pdf',
+    'text/plain',
+    'text/csv',
+    'text/markdown',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/msword',
+  ],
+});
+
+/**
+ * Single source of truth for supported Google Gemini AI models and STT engines.
+ * @constant
+ * @type {Readonly<{
+ *   DEFAULT: string,
+ *   FALLBACK: string,
+ *   PRO: string,
+ *   SUPPORTED: string[],
+ *   STT_ENGINES: string[],
+ *   DEFAULT_STT_ENGINE: string,
+ * }>}
+ */
+export const AI_MODELS = Object.freeze({
+  DEFAULT: 'gemini-2.5-flash',
+  FALLBACK: 'gemini-2.5-flash-lite',
+  PRO: 'gemini-2.5-pro',
+  SUPPORTED: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'],
+  STT_ENGINES: ['addis_ai', 'gemini-2.5-flash'],
+  DEFAULT_STT_ENGINE: 'addis_ai',
+});
+
+/**
  * Chat session and AI agent engine constants.
  * @constant
  * @type {Readonly<{
  *   DEFAULT_PERSONA: string,
  *   DEFAULT_MODEL: string,
+ *   SUPPORTED_MODELS: string[],
+ *   DEFAULT_THINKING_BUDGET: number,
+ *   MIN_THINKING_BUDGET: number,
+ *   MAX_THINKING_BUDGET: number,
  *   DEFAULT_LANGUAGE: string,
+ *   SUPPORTED_LANGUAGES: string[],
+ *   DEFAULT_TEMPERATURE: number,
+ *   STT_ENGINES: string[],
+ *   DEFAULT_STT_ENGINE: string,
+ *   TITLE_MAX_LENGTH: number,
+ *   MAX_MESSAGE_LENGTH: number,
+ *   ATTACHMENTS: typeof ATTACHMENT_CONSTANTS,
+ *   AUDIO: typeof AUDIO_CONSTANTS,
+ *   PAGE_LIMIT_DEFAULT: number,
+ *   PAGE_LIMIT_MIN: number,
+ *   PAGE_LIMIT_MAX: number,
  * }>}
  */
 export const CHAT_CONSTANTS = Object.freeze({
   DEFAULT_PERSONA:
     'Personal AI Agent and Executive Operations Partner for multi-branch restaurant operations, professional leadership, and personal productivity in Ethiopia',
-  DEFAULT_MODEL: 'gemini-2.5-flash',
+  DEFAULT_MODEL: AI_MODELS.DEFAULT,
+  SUPPORTED_MODELS: AI_MODELS.SUPPORTED,
+  DEFAULT_THINKING_BUDGET: 2048,
+  MIN_THINKING_BUDGET: 0,
+  MAX_THINKING_BUDGET: 8192,
   DEFAULT_LANGUAGE: 'am',
+  SUPPORTED_LANGUAGES: ['am', 'en', 'auto'],
+  DEFAULT_TEMPERATURE: 0.2,
+  STT_ENGINES: AI_MODELS.STT_ENGINES,
+  DEFAULT_STT_ENGINE: AI_MODELS.DEFAULT_STT_ENGINE,
+  TITLE_MAX_LENGTH: 100,
+  MAX_MESSAGE_LENGTH: 10000,
+  ATTACHMENTS: ATTACHMENT_CONSTANTS,
+  AUDIO: AUDIO_CONSTANTS,
+  PAGE_LIMIT_DEFAULT: 20,
+  PAGE_LIMIT_MIN: 1,
+  PAGE_LIMIT_MAX: 100,
 });
 
 export default {
@@ -307,5 +482,9 @@ export default {
   LANDING_FEATURES,
   BRANCH_CONSTANTS,
   REPORT_CONSTANTS,
+  AUDIO_CONSTANTS,
+  ATTACHMENT_CONSTANTS,
+  AI_MODELS,
   CHAT_CONSTANTS,
 };
+

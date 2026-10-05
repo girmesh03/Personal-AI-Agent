@@ -16,6 +16,7 @@ import {
 } from 'redux-persist';
 
 import authReducer from '../features/authSlice.js';
+import chatReducer from '../features/chatSlice.js';
 import { apiSlice } from './apiSlice.js';
 
 /**
@@ -77,6 +78,7 @@ const authPersistConfig = {
  */
 const rootReducer = combineReducers({
   auth: persistReducer(authPersistConfig, authReducer),
+  chat: chatReducer,
   [apiSlice.reducerPath]: apiSlice.reducer,
 });
 
