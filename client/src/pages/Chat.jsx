@@ -9,7 +9,6 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router';
 import { useDispatch, useSelector } from 'react-redux';
-import Box from '@mui/material/Box';
 import { ChatBox } from '@mui/x-chat';
 
 import { selectCurrentUser } from '../redux/features/authSlice.js';
@@ -18,13 +17,12 @@ import { MuiChatAdapter } from '../adapters/MuiChatAdapter.js';
 import {
   MuiChatEmptyState,
   MuiComposerInput,
-  MuiComposerActions,
+  MuiComposerBottomToolbar,
 } from '../components/chat/index.js';
-import { ATTACHMENT_CONSTANTS } from '../utils/constants.js';
 
 /**
- * Built-in feature toggles: thread-only mode (sidebar and header supplied by AppShell)
- * with native attachment validation support (max 5 files, 25MB).
+ * Built-in feature toggles: thread-only mode (sidebar and header supplied by AppShell).
+ * In Step 1 baseline, attachments are disabled until Step 2 multi-modal wiring.
  * @constant
  */
 const FEATURES = Object.freeze({
@@ -33,27 +31,24 @@ const FEATURES = Object.freeze({
   suggestions: false,
   scrollToBottom: true,
   autoScroll: true,
-  attachments: {
-    acceptedMimeTypes: ATTACHMENT_CONSTANTS.ALLOWED_MIME_TYPES,
-    maxFileCount: ATTACHMENT_CONSTANTS.MAX_FILES_PER_UPLOAD,
-    maxFileSize: ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES,
-  },
+  attachments: false,
 });
 
 /**
  * Slot component overrides:
  * - personalized empty state
  * - zero-lag MuiComposerInput overriding native textarea
- * - dual-cluster MuiComposerActions overriding toolbar
- * - null overrides for default buttons so MuiComposerActions has single ownership
+ * - MuiComposerBottomToolbar housing send button docked right
+ * - null overrides for default buttons and attachment list to ensure single ownership
  * @constant
  */
 const SLOTS = Object.freeze({
   emptyState: MuiChatEmptyState,
   composerInput: MuiComposerInput,
-  composerToolbar: MuiComposerActions,
+  composerToolbar: MuiComposerBottomToolbar,
   composerAttachButton: null,
   composerSendButton: null,
+  composerAttachmentList: null,
 });
 
 /**
@@ -64,8 +59,10 @@ const SLOTS = Object.freeze({
 const SLOT_PROPS = Object.freeze({
   composerRoot: {
     sx: {
-      maxWidth: 850,
+      maxWidth: 760,
       mx: 'auto',
+      mb: 2,
+      p: 1,
       width: '100%',
       borderRadius: 2,
       border: '1px solid',
@@ -110,6 +107,7 @@ const CHATBOX_SX = Object.freeze({
   border: 'none',
   borderRadius: 0,
   bgcolor: 'transparent',
+  px: 0.5,
   '& .MuiChatMessage-roleUser .MuiChatMessage-bubble, & .MuiChatMessage-roleUser .MuiChatMessageContent-root, & [data-is-own-message="true"] .MuiChatMessage-bubble': {
     bgcolor: 'background.paper !important',
     color: 'text.primary !important',
@@ -206,32 +204,19 @@ export const Chat = () => {
   }, [adapter, chatId, currentUser, activeModel]);
 
   return (
-    <Box
-      sx={{
-        width: '100%',
-        height: '100%',
-        flexGrow: 1,
-        minHeight: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        bgcolor: 'background.default',
-      }}
-    >
-      <ChatBox
-        key={sessionKey}
-        adapter={adapter}
-        layoutMode="standard"
-        activeConversationId={chatId || undefined}
-        onActiveConversationChange={handleActiveConversationChange}
-        currentUser={currentUser}
-        getMessageAuthorId={getMessageAuthorId}
-        features={FEATURES}
-        slots={SLOTS}
-        slotProps={SLOT_PROPS}
-        sx={CHATBOX_SX}
-      />
-    </Box>
+    <ChatBox
+      key={sessionKey}
+      adapter={adapter}
+      layoutMode="standard"
+      activeConversationId={chatId || undefined}
+      onActiveConversationChange={handleActiveConversationChange}
+      currentUser={currentUser}
+      getMessageAuthorId={getMessageAuthorId}
+      features={FEATURES}
+      slots={SLOTS}
+      slotProps={SLOT_PROPS}
+      sx={CHATBOX_SX}
+    />
   );
 };
 
