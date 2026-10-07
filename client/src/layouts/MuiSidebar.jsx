@@ -32,6 +32,7 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import useLogout from "../hooks/useLogout.js";
 import { useSelector } from "react-redux";
 import { selectAuthUser } from "../redux/features/authSlice.js";
+import { MuiRecentChat } from "../components/chat/index.js";
 import Logo from "./Logo.jsx";
 import {
   APPBAR_MIN_HEIGHT,
@@ -167,9 +168,18 @@ const MuiSidebar = ({ mode, onToggleMode, mobileOpen, onMobileClose }) => {
         {headerContent}
       </Box>
 
-      {/* Navigation */}
-      <Box sx={{ flexGrow: 1, overflowY: "auto", py: 1 }}>
-        <List dense disablePadding aria-label="Main navigation">
+      {/* Navigation & Recent Chats Container */}
+      <Box
+        sx={{
+          flexGrow: 1,
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
+          overflow: "hidden",
+          py: 1,
+        }}
+      >
+        <List dense disablePadding aria-label="Main navigation" sx={{ flexShrink: 0 }}>
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const labelNode = (
@@ -204,7 +214,13 @@ const MuiSidebar = ({ mode, onToggleMode, mobileOpen, onMobileClose }) => {
                       bgcolor: "action.hover",
                     },
                   }}
-                  onClick={() => isMobile && onMobileClose()}
+                  onClick={(e) => {
+                    if (item.path === ROUTES.CHAT) {
+                      e.preventDefault();
+                      navigate(ROUTES.CHAT, { state: { newChatAt: Date.now() } });
+                    }
+                    if (isMobile) onMobileClose();
+                  }}
                 >
                   <ListItemIcon
                     sx={{
@@ -220,6 +236,9 @@ const MuiSidebar = ({ mode, onToggleMode, mobileOpen, onMobileClose }) => {
             );
           })}
         </List>
+
+        {/* Encapsulated Recent Chats Section */}
+        <MuiRecentChat isMini={isMini} onMobileClose={onMobileClose} />
       </Box>
 
       <Divider />
@@ -346,6 +365,7 @@ const MuiSidebar = ({ mode, onToggleMode, mobileOpen, onMobileClose }) => {
           Logout
         </MenuItem>
       </Menu>
+
     </Box>
   );
 

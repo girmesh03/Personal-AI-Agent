@@ -141,28 +141,32 @@ const baseQueryWithReauth = async (args, api, extraOptions) => {
           return await baseQuery(
             { url: '/auth/refresh', method: 'POST' },
             api,
-            extraOptions
+            {}
           );
         } finally {
-          activeRefreshPromise = null;
+          // Release mutex on next tick so pending microtasks share the single in-flight promise
+          Promise.resolve().then(() => {
+            activeRefreshPromise = null;
+          });
         }
       })();
     }
 
     const refreshResult = await activeRefreshPromise;
-    const { logout, setCredentials } = await import('../features/authSlice.js');
 
     if (refreshResult && refreshResult.data) {
       const refreshedUser = refreshResult.data?.data?.user || refreshResult.data?.user;
       if (refreshedUser) {
-        api.dispatch(setCredentials({ user: refreshedUser }));
+        api.dispatch({ type: 'auth/setCredentials', payload: { user: refreshedUser } });
       }
       // Re-run original query with refreshed session credentials
       result = await baseQuery(args, api, extraOptions);
     } else {
-      // Refresh failed silently: cleanly clear state without throwing unhandled exceptions
-      api.dispatch(logout());
-      api.dispatch(apiSlice.util.resetApiState());
+      // Only clear session state if refresh token was actually unauthenticated / rejected (401)
+      if (refreshResult?.error?.status === 401) {
+        api.dispatch({ type: 'auth/logout' });
+        api.dispatch(apiSlice.util.resetApiState());
+      }
     }
   }
 

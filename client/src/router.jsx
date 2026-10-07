@@ -47,13 +47,12 @@ export const router = createBrowserRouter([
       {
         Component: ProtectedRoute,
         children: [
-          // Dedicated Fullscreen Chat Canvas (Pure 100dvh Viewport Isolation - Sibling to AppShell)
-          { path: 'chat', lazy: async () => ({ Component: (await import('./pages/Chat.jsx')).default }) },
-          { path: 'chat/:chatId', lazy: async () => ({ Component: (await import('./pages/Chat.jsx')).default }) },
           {
             Component: AppShell,
             children: [
               { path: 'dashboard', lazy: async () => ({ Component: (await import('./pages/Dashboard.jsx')).default }) },
+              { path: 'chat', lazy: async () => ({ Component: (await import('./pages/Chat.jsx')).default }) },
+              { path: 'chat/:chatId', lazy: async () => ({ Component: (await import('./pages/Chat.jsx')).default }) },
               { path: 'reports', lazy: async () => ({ Component: (await import('./pages/Reports.jsx')).default }) },
               { path: 'reports/:reportId/details', lazy: async () => ({ Component: (await import('./pages/ReportDetail.jsx')).default }) },
               { path: 'reports/:reportId/edit', lazy: async () => ({ Component: (await import('./pages/ReportEdit.jsx')).default }) },

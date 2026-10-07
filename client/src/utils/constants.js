@@ -385,6 +385,21 @@ export const ATTACHMENT_CONSTANTS = Object.freeze({
 });
 
 /**
+ * Unified accept string for HTML file input elements covering images, audios, and documents.
+ * Ensures operating systems (Windows Explorer, macOS Finder, mobile pickers) accurately filter allowed files.
+ * @constant
+ * @type {string}
+ */
+export const CHAT_FILE_ACCEPT = [
+  'image/*',
+  'audio/*',
+  ...ATTACHMENT_CONSTANTS.ALLOWED_MIME_TYPES,
+  ...AUDIO_CONSTANTS.ALLOWED_MIME_TYPES,
+  ...ATTACHMENT_CONSTANTS.ALLOWED_EXTENSIONS,
+  ...AUDIO_CONSTANTS.ALLOWED_EXTENSIONS,
+].join(',');
+
+/**
  * Single source of truth for supported Google Gemini AI models and STT engines.
  * @constant
  * @type {Readonly<{
@@ -397,11 +412,11 @@ export const ATTACHMENT_CONSTANTS = Object.freeze({
  * }>}
  */
 export const AI_MODELS = Object.freeze({
-  DEFAULT: 'gemini-2.5-flash',
-  FALLBACK: 'gemini-2.5-flash-lite',
-  PRO: 'gemini-2.5-pro',
-  SUPPORTED: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'],
-  STT_ENGINES: ['addis_ai', 'gemini-2.5-flash'],
+  DEFAULT: 'gemini-3.1-flash-lite',
+  FALLBACK: 'gemini-3-flash-preview',
+  PRO: 'gemini-3.8-flash',
+  SUPPORTED: ['gemini-3.1-flash-lite', 'gemini-3-flash-preview', 'gemini-3.8-flash'],
+  STT_ENGINES: ['addis_ai', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'],
   DEFAULT_STT_ENGINE: 'addis_ai',
 });
 

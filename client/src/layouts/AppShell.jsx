@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useState } from 'react';
-import { Outlet, useNavigation } from 'react-router';
+import { Outlet, useLocation, useNavigation } from 'react-router';
 import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -22,13 +22,28 @@ import AvatarMenu from './AvatarMenu.jsx';
  * @returns {JSX.Element} Rendered protected application shell.
  */
 export const AppShell = () => {
+  const location = useLocation();
   const navigation = useNavigation();
-  const [mode, setMode] = useState('mini');
+  const isChatRoute = location.pathname.startsWith('/chat');
+  const [mode, setMode] = useState(() => {
+    try {
+      return localStorage.getItem('operon_sidebar_mode') || 'full';
+    } catch {
+      return 'full';
+    }
+  });
   const [mobileOpen, setMobileOpen] = useState(false);
-  const toggleMode = useCallback(
-    () => setMode((m) => (m === 'mini' ? 'full' : 'mini')),
-    [],
-  );
+  const toggleMode = useCallback(() => {
+    setMode((prev) => {
+      const next = prev === 'mini' ? 'full' : 'mini';
+      try {
+        localStorage.setItem('operon_sidebar_mode', next);
+      } catch {
+        // Ignore storage errors
+      }
+      return next;
+    });
+  }, []);
   const closeMobile = useCallback(() => setMobileOpen(false), []);
 
   return (
@@ -78,8 +93,10 @@ export const AppShell = () => {
             flexGrow: 1,
             minHeight: 0,
             height: '100%',
-            overflowY: 'auto',
+            overflowY: isChatRoute ? 'hidden' : 'auto',
             overflowX: 'hidden',
+            display: isChatRoute ? 'flex' : 'block',
+            flexDirection: isChatRoute ? 'column' : undefined,
           }}
         >
           {navigation.state === 'loading' ? (
