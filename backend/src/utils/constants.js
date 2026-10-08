@@ -28,27 +28,21 @@ export const UPLOADS_CONFIG = Object.freeze({
  */
 export const AI_MODELS = Object.freeze({
   DEFAULT: 'gemini-3.1-flash-lite',
-  FALLBACK: 'gemini-flash-lite-latest',
+  FALLBACK: 'gemini-3-flash-preview',
+  PRO: 'gemini-3.8-flash',
   SUPPORTED: Object.freeze([
     'gemini-3.1-flash-lite',
-    'gemini-flash-lite-latest',
+    'gemini-3-flash-preview',
     'gemini-3.8-flash',
-    'gemini-3.5-flash',
-    'gemini-flash-latest',
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-2.5-pro',
   ]),
   QUOTA_RETRY_MAP: Object.freeze({
-    'gemini-2.5-flash': 'gemini-3.1-flash-lite',
-    'gemini-3.5-flash': 'gemini-3.1-flash-lite',
     'gemini-3.8-flash': 'gemini-3.1-flash-lite',
-    'gemini-flash-latest': 'gemini-flash-lite-latest',
-    'gemini-3.1-flash-lite': 'gemini-flash-lite-latest',
+    'gemini-3.1-flash-lite': 'gemini-3-flash-preview',
+    'gemini-3-flash-preview': 'gemini-3.1-flash-lite',
   }),
-  STT_ENGINES: Object.freeze(['addis_ai', 'gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-2.5-flash']),
+  STT_ENGINES: Object.freeze(['addis_ai', 'gemini-3.8-flash', 'gemini-3.1-flash-lite']),
   DEFAULT_STT_ENGINE: 'addis_ai',
-  DEFAULT_AUDIO_CHUNKER_MODEL: 'gemini-3.8-flash',
+  DEFAULT_AUDIO_CHUNKER_MODEL: 'gemini-3.1-flash-lite',
 });
 
 /**
@@ -240,13 +234,21 @@ export const AUDIO_CONSTANTS = Object.freeze({
     'audio/mp3',
     'audio/wav',
     'audio/x-wav',
+    'audio/wave',
+    'audio/x-pn-wav',
     'audio/m4a',
     'audio/x-m4a',
     'audio/mp4',
+    'video/mp4',
     'audio/aac',
     'audio/x-aac',
     'audio/webm',
+    'video/webm',
+    'audio/webm;codecs=opus',
+    'video/webm;codecs=opus',
     'audio/ogg',
+    'audio/ogg;codecs=opus',
+    'application/ogg',
   ],
 });
 

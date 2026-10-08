@@ -17,6 +17,7 @@ import {
   renameChat,
   deleteChat,
   uploadChatAttachments,
+  transcribeAudio,
 } from '../controllers/chatController.js';
 
 import { uploadReportAudios } from '../controllers/reportController.js';
@@ -32,6 +33,7 @@ import {
 
 import {
   uploadReportAudiosMiddleware,
+  uploadSingleAudioMiddleware,
   uploadChatAttachmentsMiddleware,
 } from '../middleware/uploadMiddleware.js';
 
@@ -42,6 +44,13 @@ const router = express.Router();
 
 // Enforce authentication across all chat endpoints
 router.use(verifyToken);
+
+/**
+ * @route POST /api/v1/chat/transcribe-audio
+ * @desc Transcribe single voice recording for in-composer live dictation
+ * @access Protected (Area Supervisor)
+ */
+router.post('/transcribe-audio', uploadSingleAudioMiddleware, transcribeAudio);
 
 /**
  * @route POST /api/v1/chat/upload-audio

@@ -9,7 +9,7 @@
 
 import { apiSlice } from '../redux/app/apiSlice.js';
 import { chatApi } from '../redux/features/chatSlice.js';
-import { AUDIO_CONSTANTS, ATTACHMENT_CONSTANTS } from '../utils/constants.js';
+import { AUDIO_CONSTANTS } from '../utils/constants.js';
 
 /**
  * Default API base URL from client environment configuration.
@@ -249,9 +249,19 @@ export class MuiChatAdapter {
       attachments.forEach((att) => {
         const file = att.file;
         if (!file) return;
+        const fileType = (file.type || '').toLowerCase();
+        const cleanType = fileType.split(';')[0].trim();
+        const fileName = (file.name || '').toLowerCase();
+
         const isAudio =
-          (file.type && AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(file.type.toLowerCase())) ||
-          AUDIO_CONSTANTS.ALLOWED_EXTENSIONS.some((ext) => (file.name || '').toLowerCase().endsWith(ext));
+          (fileType && (
+            AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(fileType) ||
+            AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(cleanType) ||
+            cleanType.startsWith('audio/') ||
+            cleanType === 'video/webm' ||
+            cleanType === 'application/ogg'
+          )) ||
+          AUDIO_CONSTANTS.ALLOWED_EXTENSIONS.some((ext) => fileName.endsWith(ext));
 
         if (isAudio) {
           audioFiles.push(file);
@@ -262,43 +272,39 @@ export class MuiChatAdapter {
 
       // 1.1 Upload audio files to /chat/upload-audio under field 'audios'
       if (audioFiles.length > 0) {
-        try {
-          const audioFormData = new FormData();
-          audioFiles.forEach((f) => audioFormData.append('audios', f));
-          const audioRes = await fetch(`${this.baseUrl}/chat/upload-audio`, {
-            method: 'POST',
-            credentials: 'include',
-            body: audioFormData,
-            signal,
-          });
-          if (audioRes.ok) {
-            const audioData = await audioRes.json();
-            const rawAudios = audioData?.data?.audios || audioData?.audios || [];
-            uploadedAudioIds = rawAudios.map((a) => a._id || a.id).filter(Boolean);
-          }
-        } catch (audioErr) {
-          console.warn('[MuiChatAdapter] Failed to pre-upload audio attachments:', audioErr);
+        const audioFormData = new FormData();
+        audioFiles.forEach((f) => audioFormData.append('audios', f));
+        const audioRes = await fetch(`${this.baseUrl}/chat/upload-audio`, {
+          method: 'POST',
+          credentials: 'include',
+          body: audioFormData,
+          signal,
+        });
+        if (!audioRes.ok) {
+          const errData = await audioRes.json().catch(() => ({}));
+          throw new Error(errData?.message || `Failed to upload audio recordings (${audioRes.status})`);
         }
+        const audioData = await audioRes.json();
+        const rawAudios = audioData?.data?.audios || audioData?.audios || [];
+        uploadedAudioIds = rawAudios.map((a) => a._id || a.id).filter(Boolean);
       }
 
       // 1.2 Upload document and image files to /chat/upload-attachments under field 'attachments'
       if (docFiles.length > 0) {
-        try {
-          const docFormData = new FormData();
-          docFiles.forEach((f) => docFormData.append('attachments', f));
-          const uploadRes = await fetch(`${this.baseUrl}/chat/upload-attachments`, {
-            method: 'POST',
-            credentials: 'include',
-            body: docFormData,
-            signal,
-          });
-          if (uploadRes.ok) {
-            const uploadData = await uploadRes.json();
-            uploadedAttachments = uploadData?.data?.attachments || uploadData?.attachments || [];
-          }
-        } catch (attErr) {
-          console.warn('[MuiChatAdapter] Failed to pre-upload document attachments:', attErr);
+        const docFormData = new FormData();
+        docFiles.forEach((f) => docFormData.append('attachments', f));
+        const uploadRes = await fetch(`${this.baseUrl}/chat/upload-attachments`, {
+          method: 'POST',
+          credentials: 'include',
+          body: docFormData,
+          signal,
+        });
+        if (!uploadRes.ok) {
+          const errData = await uploadRes.json().catch(() => ({}));
+          throw new Error(errData?.message || `Failed to upload file attachments (${uploadRes.status})`);
         }
+        const uploadData = await uploadRes.json();
+        uploadedAttachments = uploadData?.data?.attachments || uploadData?.attachments || [];
       }
     }
 

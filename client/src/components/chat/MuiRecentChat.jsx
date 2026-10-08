@@ -6,7 +6,6 @@
  */
 
 import { useState, useRef, useEffect, useMemo } from 'react';
-import PropTypes from 'prop-types';
 import { NavLink, useLocation, useNavigate } from 'react-router';
 import { useSelector } from 'react-redux';
 import Box from '@mui/material/Box';
@@ -585,9 +584,6 @@ export const MuiRecentChat = ({ isMini = false, onMobileClose }) => {
   );
 };
 
-MuiRecentChat.propTypes = {
-  isMini: PropTypes.bool,
-  onMobileClose: PropTypes.func,
-};
+MuiRecentChat.displayName = 'MuiRecentChat';
 
 export default MuiRecentChat;

@@ -11,3 +11,4 @@ export { default as MuiSendButton } from './MuiSendButton.jsx';
 export { default as MuiAttachButton } from './MuiAttachButton.jsx';
 export { default as MuiComposerTopToolbar } from './MuiComposerTopToolbar.jsx';
 export { default as MuiComposerBottomToolbar } from './MuiComposerBottomToolbar.jsx';
+export { default as MuiAudioRecorder } from './MuiAudioRecorder.jsx';

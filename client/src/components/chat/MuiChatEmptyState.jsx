@@ -109,4 +109,6 @@ export const MuiChatEmptyState = () => {
   );
 };
 
+MuiChatEmptyState.displayName = 'MuiChatEmptyState';
+
 export default MuiChatEmptyState;

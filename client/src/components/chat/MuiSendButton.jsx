@@ -75,12 +75,11 @@ export const MuiSendButton = (props) => {
             width: 34,
             height: 34,
             borderRadius: '50%',
-            bgcolor: 'text.primary',
-            color: 'background.paper',
+            bgcolor: 'error.main',
+            color: 'error.contrastText',
             transition: 'none !important',
-            animation: 'none !important',
             '&:hover': {
-              bgcolor: 'error.main',
+              bgcolor: 'error.dark',
               color: 'error.contrastText',
             },
             boxShadow: 1,
@@ -111,7 +110,6 @@ export const MuiSendButton = (props) => {
             bgcolor: canSend ? 'primary.main' : 'action.disabledBackground',
             color: canSend ? 'primary.contrastText' : 'action.disabled',
             transition: 'none !important',
-            animation: 'none !important',
             cursor: canSend ? 'pointer' : 'not-allowed',
             '&:hover': canSend
               ? {
@@ -128,5 +126,7 @@ export const MuiSendButton = (props) => {
     </Tooltip>
   );
 };
+
+MuiSendButton.displayName = 'MuiSendButton';
 
 export default React.memo(MuiSendButton);

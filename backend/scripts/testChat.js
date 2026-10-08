@@ -621,12 +621,12 @@ const runChatSuite = async () => {
     const patchConfigRes = await postmanRequest(`/chat/${mathChatId}/config`, {
       method: 'PATCH',
       body: {
-        model: 'gemini-flash-lite-latest',
+        model: 'gemini-3-flash-preview',
         thinkingBudget: 1024,
       },
     });
     assert(patchConfigRes.status === 200, 'PATCH /chat/:chatId/config returns HTTP 200');
-    assert(patchConfigRes.body?.data?.chat?.config?.model === 'gemini-flash-lite-latest', 'Chat model updated in config');
+    assert(patchConfigRes.body?.data?.chat?.config?.model === 'gemini-3-flash-preview', 'Chat model updated in config');
 
     // 14.5 Pin toggle
     const pinRes1 = await postmanRequest(`/chat/${mathChatId}/pin`, { method: 'PATCH' });

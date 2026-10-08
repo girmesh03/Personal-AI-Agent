@@ -293,4 +293,6 @@ export const MuiComposerInput = React.forwardRef(function MuiComposerInput(props
   );
 });
 
+MuiComposerInput.displayName = 'MuiComposerInput';
+
 export default React.memo(MuiComposerInput);

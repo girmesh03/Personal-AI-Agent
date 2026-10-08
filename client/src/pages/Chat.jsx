@@ -80,9 +80,8 @@ const SLOT_PROPS = Object.freeze({
         borderColor: 'primary.main',
         boxShadow: (theme) => `0 0 0 1px ${theme.palette.primary.main}`,
       },
-      '&, & *, & *::before, & *::after': {
+      '& .MuiInputBase-root, & .MuiInputBase-input': {
         transition: 'none !important',
-        animation: 'none !important',
       },
     },
   },

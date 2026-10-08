@@ -661,16 +661,22 @@ export const uploadReportAudios = asyncHandler(async (req, res) => {
     let createdAudios;
 
     await session.withTransaction(async () => {
-      const audioPayloads = files.map((file) => ({
-        user: req.user._id,
-        fileName: file.filename,
-        originalName: file.originalname,
-        mimeType: file.mimetype,
-        size: file.size,
-        path: file.path.replace(/\\/g, '/'),
-        purpose: 'report_narration',
-        status: 'uploaded',
-      }));
+      const audioPayloads = files.map((file) => {
+        let cleanMime = (file.mimetype || '').split(';')[0].trim().toLowerCase();
+        if (cleanMime === 'video/webm' || (file.originalname && file.originalname.toLowerCase().endsWith('.webm'))) {
+          cleanMime = 'audio/webm';
+        }
+        return {
+          user: req.user._id,
+          fileName: file.filename,
+          originalName: file.originalname,
+          mimeType: cleanMime || 'audio/webm',
+          size: file.size,
+          path: file.path.replace(/\\/g, '/'),
+          purpose: 'report_narration',
+          status: 'uploaded',
+        };
+      });
 
       createdAudios = await Audio.create(audioPayloads, { session });
     });

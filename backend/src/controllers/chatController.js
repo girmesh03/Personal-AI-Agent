@@ -22,7 +22,7 @@ import { NotFoundError, BadRequestError } from '../errors/CustomError.js';
 import { assembleSystemPrompt } from '../utils/promptAssembler.js';
 import { agentToolDeclarations, executeAgentTool } from '../tools/agentTools.js';
 import { processAttachments } from '../utils/attachmentProcessor.js';
-import { transcribeAudioDocument } from '../utils/audioChunker.js';
+import { transcribeAudioDocument, transcribeAudio as transcribeAudioUtil } from '../utils/audioChunker.js';
 
 /**
  * Helper to emit a formatted Server-Sent Event frame.
@@ -46,6 +46,8 @@ export const streamChat = asyncHandler(async (req, res) => {
   const b = req.validated?.body || req.body || {};
   const requestedChatId = req.validated?.params?.chatId || req.params.chatId || b.chatId;
 
+  console.log('b', b)
+
   // 1. Resolve or initialize Chat document
   let chat;
   if (requestedChatId) {
@@ -63,9 +65,10 @@ export const streamChat = asyncHandler(async (req, res) => {
       title: null,
       config: {
         model:
-          b.model ||
-          req.user.settings?.agentConfig?.defaultModel ||
-          AI_MODELS.DEFAULT,
+          (b.model && AI_MODELS.SUPPORTED.includes(b.model) ? b.model : null) ||
+          (AI_MODELS.SUPPORTED.includes(req.user.settings?.agentConfig?.defaultModel)
+            ? req.user.settings.agentConfig.defaultModel
+            : AI_MODELS.DEFAULT),
         thinkingBudget:
           b.thinkingBudget ??
           req.user.settings?.agentConfig?.defaultThinkingBudget ??
@@ -78,9 +81,12 @@ export const streamChat = asyncHandler(async (req, res) => {
     });
   }
 
-  // Apply per-turn config overrides to session if provided
-  if (b.model) {
+  // Apply per-turn config overrides to session if provided and supported
+  if (b.model && AI_MODELS.SUPPORTED.includes(b.model)) {
     chat.config.model = b.model;
+  }
+  if (!AI_MODELS.SUPPORTED.includes(chat.config.model)) {
+    chat.config.model = AI_MODELS.DEFAULT;
   }
   if (b.thinkingBudget !== undefined) {
     chat.config.thinkingBudget = b.thinkingBudget;
@@ -88,6 +94,8 @@ export const streamChat = asyncHandler(async (req, res) => {
   if (b.language) {
     chat.config.language = b.language;
   }
+
+    console.log('chat', chat)
 
   // 2. Setup Server-Sent Events (SSE) Stream Headers
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -110,11 +118,11 @@ export const streamChat = asyncHandler(async (req, res) => {
               const updated = await transcribeAudioDocument(audioDoc._id, {
                 sttEngine: req.user.settings?.sttEngine,
               });
-              if (updated.transcription) {
-                audioTranscriptions.push(updated.transcription);
+              if (updated.transcription && updated.transcription.trim()) {
+                audioTranscriptions.push(updated.transcription.trim());
               }
-            } else {
-              audioTranscriptions.push(audioDoc.transcription);
+            } else if (audioDoc.transcription && audioDoc.transcription.trim()) {
+              audioTranscriptions.push(audioDoc.transcription.trim());
             }
           }
         } catch (audioErr) {
@@ -122,6 +130,8 @@ export const streamChat = asyncHandler(async (req, res) => {
         }
       }
     }
+
+      console.log('audioTranscriptions', audioTranscriptions)
 
     // 4. Attachment Ingestion & Grounding (Pillar 1 / Composites)
     let attachmentTextContext = '';
@@ -150,6 +160,8 @@ export const streamChat = asyncHandler(async (req, res) => {
 
     const compiledUserMessageText = partsForPrompt.join('\n\n');
 
+      console.log('compiledUserMessageText', compiledUserMessageText)
+
     // 6. Handle Linear Pruning for Message Edits or Retries
     const isRetry = typeof b.retryTurnIndex === 'number' && b.retryTurnIndex >= 0;
     const isEdit = typeof b.editTurnIndex === 'number' && b.editTurnIndex >= 0;
@@ -158,6 +170,10 @@ export const streamChat = asyncHandler(async (req, res) => {
       chat.messages = chat.messages.slice(0, b.editTurnIndex);
     } else if (isRetry) {
       chat.messages = chat.messages.slice(0, b.retryTurnIndex);
+    }
+
+    if (!compiledUserMessageText.trim() && inlineParts.length === 0 && !isRetry) {
+      throw new BadRequestError('No speech, text, or valid attachment content detected in message.');
     }
 
     const hasNewUserInput =
@@ -185,6 +201,16 @@ export const streamChat = asyncHandler(async (req, res) => {
       };
       chat.messages.push(userTurn);
     }
+
+    // Persist user turn immediately and emit session event so client locks onto session ID before stream completes
+    await chat.save();
+    sendSSE(res, 'session', {
+      chatId: chat._id.toString(),
+      title: chat.title || 'New Chat',
+    });
+
+    console.log('userTurn', userTurn)
+    console.log('chat', chat)
 
     // 8. Assemble Dynamic 6-Block System Prompt
     const systemPrompt = await assembleSystemPrompt({
@@ -237,9 +263,9 @@ export const streamChat = asyncHandler(async (req, res) => {
       AI_MODELS.DEFAULT;
 
     const modelName =
-      rawModel === 'gemini-2.5-flash' || rawModel === 'gemini-2.5-flash-lite' || rawModel === 'gemini-3.5-flash'
-        ? 'gemini-3.1-flash-lite'
-        : rawModel;
+      rawModel && AI_MODELS.SUPPORTED.includes(rawModel)
+        ? rawModel
+        : AI_MODELS.DEFAULT;
 
     const thinkingBudget =
       b.thinkingBudget ??
@@ -334,7 +360,9 @@ export const streamChat = asyncHandler(async (req, res) => {
             streamErr.cause?.code === 'ECONNRESET' ||
             streamErr.code === 'ECONNRESET' ||
             streamErr.status === 503 ||
-            streamErr.message?.includes('503');
+            streamErr.message?.includes('503') ||
+            streamErr.message?.includes('Incomplete JSON') ||
+            streamErr.message?.includes('JSON segment');
 
           if (isQuota) {
             const mappedFallback = AI_MODELS.QUOTA_RETRY_MAP[activeModel] || AI_MODELS.FALLBACK;
@@ -530,27 +558,53 @@ export const getChats = asyncHandler(async (req, res) => {
  * @access Private
  */
 export const getChatById = asyncHandler(async (req, res) => {
-  const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
-  let chatQuery = Chat.findOne({
+  const limit = req.query.limit ? parseInt(req.query.limit, 10) : 30;
+  const beforeParam = req.query.before;
+
+  const rawChat = await Chat.findOne({
     _id: req.params.chatId,
     user: req.user._id,
     isArchived: false,
-  });
+  }).select('messages._id');
 
-  if (limit && limit > 0) {
-    chatQuery = chatQuery.slice('messages', -limit);
-  }
-
-  const chat = await chatQuery.populate('messages.audios');
-
-  if (!chat) {
+  if (!rawChat) {
     throw new NotFoundError('Chat session not found.');
   }
+
+  const totalMessages = rawChat.messages ? rawChat.messages.length : 0;
+  let startIndex = 0;
+  let count = limit;
+
+  if (beforeParam !== undefined && beforeParam !== null) {
+    const beforeIdx = parseInt(beforeParam, 10);
+    if (!isNaN(beforeIdx) && beforeIdx > 0) {
+      startIndex = Math.max(0, beforeIdx - limit);
+      count = beforeIdx - startIndex;
+    }
+  } else {
+    // Initial fetch: newest messages
+    startIndex = Math.max(0, totalMessages - limit);
+    count = totalMessages - startIndex;
+  }
+
+  const chat = await Chat.findOne({
+    _id: req.params.chatId,
+    user: req.user._id,
+    isArchived: false,
+  })
+    .slice('messages', [startIndex, count])
+    .populate('messages.audios');
+
+  const hasMore = startIndex > 0;
+  const cursor = hasMore ? String(startIndex) : null;
 
   res.status(HTTP_STATUS.OK).json({
     success: true,
     data: {
       chat,
+      totalMessages,
+      hasMore,
+      cursor,
     },
   });
 });
@@ -575,7 +629,7 @@ export const updateChatConfig = asyncHandler(async (req, res) => {
     throw new NotFoundError('Chat session not found.');
   }
 
-  if (b.model) chat.config.model = b.model;
+  if (b.model && AI_MODELS.SUPPORTED.includes(b.model)) chat.config.model = b.model;
   if (b.thinkingBudget !== undefined) chat.config.thinkingBudget = b.thinkingBudget;
   if (b.language) chat.config.language = b.language;
   if (b.prompt !== undefined) chat.config.prompt = b.prompt;
@@ -730,6 +784,70 @@ export const uploadChatAttachments = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * Ingests a single voice recording and returns the transcribed text.
+ * Used for live voice dictation into the composer without persisting a message turn.
+ *
+ * @route POST /api/v1/chat/transcribe-audio
+ * @access Private
+ */
+export const transcribeAudio = asyncHandler(async (req, res) => {
+  const file =
+    req.file ||
+    req.files?.audio?.[0] ||
+    req.files?.audios?.[0] ||
+    req.files?.file?.[0] ||
+    null;
+
+  if (!file) {
+    throw new BadRequestError('No audio recording uploaded for transcription.');
+  }
+
+  const engine = req.body?.engine || req.body?.sttEngine || AI_MODELS.DEFAULT_STT_ENGINE;
+  const language = req.body?.language || 'am';
+
+  if (file.size === 0) {
+    fs.promises.unlink(file.path).catch(() => {});
+    return res.status(HTTP_STATUS.OK).json({
+      success: true,
+      data: {
+        text: '',
+        duration: 0,
+        engine,
+        noAudioDetected: true,
+      },
+    });
+  }
+
+  try {
+    const result = await transcribeAudioUtil(file.path, {
+      sttEngine: engine,
+      language,
+      mimeType: file.mimetype,
+    });
+
+    const text = (result.text || '').trim();
+    const noAudioDetected = !text || result.noAudioDetected === true;
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      data: {
+        text,
+        duration: result.duration || 0,
+        engine: result.engine,
+        noAudioDetected,
+      },
+    });
+  } finally {
+    // Defensively clean up the temporary dictation audio file from disk
+    fs.promises.unlink(file.path).catch((unlinkErr) => {
+      logger.warn(
+        `[chatController] Could not unlink temp dictation audio ${file.path}: ${unlinkErr.message}`
+      );
+    });
+  }
+});
+
 export default {
   streamChat,
   getChats,
@@ -739,4 +857,5 @@ export default {
   renameChat,
   deleteChat,
   uploadChatAttachments,
+  transcribeAudio,
 };

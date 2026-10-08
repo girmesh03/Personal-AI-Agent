@@ -47,8 +47,15 @@ const audioDiskStorage = multer.diskStorage({
  */
 const audioFileFilter = (_req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase();
-  const isValidMime = AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(file.mimetype);
+  const rawMime = (file.mimetype || '').toLowerCase();
+  const cleanMime = rawMime.split(';')[0].trim();
+
   const isValidExt = AUDIO_CONSTANTS.ALLOWED_EXTENSIONS.includes(ext);
+  const isValidMime =
+    AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(rawMime) ||
+    AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(cleanMime) ||
+    cleanMime.startsWith('audio/') ||
+    (ext === '.webm' && (cleanMime === 'video/webm' || cleanMime === 'audio/webm'));
 
   if (!isValidMime || !isValidExt) {
     return cb(
@@ -87,6 +94,14 @@ export const uploadReportAudiosMiddleware = (req, res, next) => {
 
   uploader(req, res, (err) => {
     if (!err) {
+      const files = req.files || [];
+      const emptyFile = files.find((f) => f.size === 0);
+      if (emptyFile) {
+        for (const f of files) {
+          try { fs.unlinkSync(f.path); } catch (_) {}
+        }
+        return next(new BadRequestError('Empty audio recording (0 bytes) detected.'));
+      }
       return next();
     }
 
@@ -116,6 +131,53 @@ export const uploadReportAudiosMiddleware = (req, res, next) => {
     }
 
     // Pass custom errors or other exceptions
+    next(err);
+  });
+};
+
+/**
+ * Multer middleware handling single audio uploads for live voice dictation transcription.
+ * Accepts fields 'audio', 'audios', or 'file'.
+ *
+ * @function uploadSingleAudioMiddleware
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ * @param {import('express').NextFunction} next - Express next function.
+ */
+export const uploadSingleAudioMiddleware = (req, res, next) => {
+  const uploader = multerAudioUpload.fields([
+    { name: 'audio', maxCount: 1 },
+    { name: 'audios', maxCount: 1 },
+    { name: 'file', maxCount: 1 },
+  ]);
+
+  uploader(req, res, (err) => {
+    if (!err) {
+      if (req.files) {
+        req.file =
+          req.files.audio?.[0] ||
+          req.files.audios?.[0] ||
+          req.files.file?.[0] ||
+          null;
+      }
+      if (req.file && req.file.size === 0) {
+        try { fs.unlinkSync(req.file.path); } catch (_) {}
+        return next(new BadRequestError('Empty audio recording (0 bytes) detected.'));
+      }
+      return next();
+    }
+
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return next(
+          new BadRequestError(
+            `Audio file exceeds the ${AUDIO_CONSTANTS.MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB maximum file limit.`
+          )
+        );
+      }
+      return next(new BadRequestError(`Audio upload error: ${err.message}`));
+    }
+
     next(err);
   });
 };

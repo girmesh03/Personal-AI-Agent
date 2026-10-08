@@ -7,10 +7,10 @@
  */
 
 import { forwardRef } from 'react';
-import PropTypes from 'prop-types';
 import Box from '@mui/material/Box';
 import MuiSendButton from './MuiSendButton.jsx';
 import MuiAttachButton from './MuiAttachButton.jsx';
+import MuiAudioRecorder from './MuiAudioRecorder.jsx';
 
 /**
  * MuiComposerBottomToolbar component.
@@ -35,6 +35,7 @@ export const MuiComposerBottomToolbar = forwardRef((props, ref) => {
 
       {/* Right Cluster: Audio Dictation & Send / Stop Actions */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <MuiAudioRecorder disabled={props?.disabled} />
         <MuiSendButton disabled={props?.disabled} />
       </Box>
     </Box>
@@ -42,9 +43,5 @@ export const MuiComposerBottomToolbar = forwardRef((props, ref) => {
 });
 
 MuiComposerBottomToolbar.displayName = 'MuiComposerBottomToolbar';
-
-MuiComposerBottomToolbar.propTypes = {
-  disabled: PropTypes.bool,
-};
 
 export default MuiComposerBottomToolbar;

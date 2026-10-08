@@ -8,7 +8,6 @@
  */
 
 import { useRef, useCallback } from 'react';
-import PropTypes from 'prop-types';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
@@ -96,8 +95,6 @@ export const MuiAttachButton = ({ disabled = false }) => {
   );
 };
 
-MuiAttachButton.propTypes = {
-  disabled: PropTypes.bool,
-};
+MuiAttachButton.displayName = 'MuiAttachButton';
 
 export default MuiAttachButton;
