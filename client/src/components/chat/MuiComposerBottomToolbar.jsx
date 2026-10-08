@@ -1,39 +1,50 @@
 /**
  * @module components/chat/MuiComposerBottomToolbar
- * @description Bottom toolbar for MUI X Chat composer.
- * In Step 1 baseline, cleanly houses strictly MuiSendButton docked to the right.
- * Additional controls (Attach, Model Selector, Audio Recorder) will be added
- * sequentially in subsequent subtasks after isolated testing.
+ * @description Ergonomic bottom toolbar for the chat composer (Row 3).
+ * Dual-cluster layout:
+ * - Left Cluster: MuiAttachButton (and in subsequent steps: Model Selector)
+ * - Right Cluster: MuiSendButton (and in subsequent steps: Audio Recorder)
  */
 
-import React from 'react';
+import { forwardRef } from 'react';
+import PropTypes from 'prop-types';
 import Box from '@mui/material/Box';
 import MuiSendButton from './MuiSendButton.jsx';
+import MuiAttachButton from './MuiAttachButton.jsx';
 
 /**
  * MuiComposerBottomToolbar component.
- * @param {object} props - Component props passed from ChatComposer slot.
- * @returns {React.ReactElement}
  */
-export const MuiComposerBottomToolbar = (props) => {
+export const MuiComposerBottomToolbar = forwardRef((props, ref) => {
   return (
     <Box
+      ref={ref}
       sx={{
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'flex-end',
-        px: 1,
-        pb: 0.75,
-        pt: 0.25,
+        justifyContent: 'space-between',
         width: '100%',
-        boxSizing: 'border-box',
-        transition: 'none !important',
-        animation: 'none !important',
+        pt: 0.5,
+        px: 0.5,
       }}
     >
-      <MuiSendButton disabled={props?.disabled} />
+      {/* Left Cluster: Attachments & Inference Settings */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <MuiAttachButton disabled={props?.disabled} />
+      </Box>
+
+      {/* Right Cluster: Audio Dictation & Send / Stop Actions */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <MuiSendButton disabled={props?.disabled} />
+      </Box>
     </Box>
   );
+});
+
+MuiComposerBottomToolbar.displayName = 'MuiComposerBottomToolbar';
+
+MuiComposerBottomToolbar.propTypes = {
+  disabled: PropTypes.bool,
 };
 
-export default React.memo(MuiComposerBottomToolbar);
+export default MuiComposerBottomToolbar;

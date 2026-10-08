@@ -17,12 +17,14 @@ import { MuiChatAdapter } from '../adapters/MuiChatAdapter.js';
 import {
   MuiChatEmptyState,
   MuiComposerInput,
+  MuiComposerTopToolbar,
   MuiComposerBottomToolbar,
 } from '../components/chat/index.js';
+import { ATTACHMENT_CONSTANTS } from '../utils/constants.js';
 
 /**
  * Built-in feature toggles: thread-only mode (sidebar and header supplied by AppShell).
- * In Step 1 baseline, attachments are disabled until Step 2 multi-modal wiring.
+ * Multi-modal attachments enabled with native validation boundaries from ATTACHMENT_CONSTANTS.
  * @constant
  */
 const FEATURES = Object.freeze({
@@ -31,24 +33,28 @@ const FEATURES = Object.freeze({
   suggestions: false,
   scrollToBottom: true,
   autoScroll: true,
-  attachments: false,
+  attachments: {
+    maxFileCount: ATTACHMENT_CONSTANTS.MAX_FILES_COUNT,
+    maxFileSize: ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES,
+  },
 });
 
 /**
  * Slot component overrides:
  * - personalized empty state
  * - zero-lag MuiComposerInput overriding native textarea
- * - MuiComposerBottomToolbar housing send button docked right
- * - null overrides for default buttons and attachment list to ensure single ownership
+ * - MuiComposerTopToolbar for horizontal attachment cards preview
+ * - MuiComposerBottomToolbar housing attach button (left) and send button (right)
+ * - null overrides for default buttons to ensure single ownership
  * @constant
  */
 const SLOTS = Object.freeze({
   emptyState: MuiChatEmptyState,
   composerInput: MuiComposerInput,
   composerToolbar: MuiComposerBottomToolbar,
+  composerAttachmentList: MuiComposerTopToolbar,
   composerAttachButton: null,
   composerSendButton: null,
-  composerAttachmentList: null,
 });
 
 /**

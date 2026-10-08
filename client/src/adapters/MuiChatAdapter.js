@@ -9,6 +9,7 @@
 
 import { apiSlice } from '../redux/app/apiSlice.js';
 import { chatApi } from '../redux/features/chatSlice.js';
+import { AUDIO_CONSTANTS, ATTACHMENT_CONSTANTS } from '../utils/constants.js';
 
 /**
  * Default API base URL from client environment configuration.
@@ -238,28 +239,66 @@ export class MuiChatAdapter {
       ? `${this.baseUrl}/chat/${targetChatId}/stream`
       : `${this.baseUrl}/chat/stream`;
 
-    // 1. Pre-upload file attachments if present
+    // 1. Pre-upload file attachments if present (differentiating audio notes vs document/image attachments)
     let uploadedAttachments = [];
+    let uploadedAudioIds = [];
     if (Array.isArray(attachments) && attachments.length > 0) {
-      try {
-        const formData = new FormData();
-        attachments.forEach((att) => {
-          if (att.file) {
-            formData.append('files', att.file);
-          }
-        });
-        const uploadRes = await fetch(`${this.baseUrl}/chat/upload-attachments`, {
-          method: 'POST',
-          credentials: 'include',
-          body: formData,
-          signal,
-        });
-        if (uploadRes.ok) {
-          const uploadData = await uploadRes.json();
-          uploadedAttachments = uploadData?.data?.attachments || uploadData?.attachments || [];
+      const audioFiles = [];
+      const docFiles = [];
+
+      attachments.forEach((att) => {
+        const file = att.file;
+        if (!file) return;
+        const isAudio =
+          (file.type && AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(file.type.toLowerCase())) ||
+          AUDIO_CONSTANTS.ALLOWED_EXTENSIONS.some((ext) => (file.name || '').toLowerCase().endsWith(ext));
+
+        if (isAudio) {
+          audioFiles.push(file);
+        } else {
+          docFiles.push(file);
         }
-      } catch (attErr) {
-        console.warn('[MuiChatAdapter] Failed to pre-upload attachments:', attErr);
+      });
+
+      // 1.1 Upload audio files to /chat/upload-audio under field 'audios'
+      if (audioFiles.length > 0) {
+        try {
+          const audioFormData = new FormData();
+          audioFiles.forEach((f) => audioFormData.append('audios', f));
+          const audioRes = await fetch(`${this.baseUrl}/chat/upload-audio`, {
+            method: 'POST',
+            credentials: 'include',
+            body: audioFormData,
+            signal,
+          });
+          if (audioRes.ok) {
+            const audioData = await audioRes.json();
+            const rawAudios = audioData?.data?.audios || audioData?.audios || [];
+            uploadedAudioIds = rawAudios.map((a) => a._id || a.id).filter(Boolean);
+          }
+        } catch (audioErr) {
+          console.warn('[MuiChatAdapter] Failed to pre-upload audio attachments:', audioErr);
+        }
+      }
+
+      // 1.2 Upload document and image files to /chat/upload-attachments under field 'attachments'
+      if (docFiles.length > 0) {
+        try {
+          const docFormData = new FormData();
+          docFiles.forEach((f) => docFormData.append('attachments', f));
+          const uploadRes = await fetch(`${this.baseUrl}/chat/upload-attachments`, {
+            method: 'POST',
+            credentials: 'include',
+            body: docFormData,
+            signal,
+          });
+          if (uploadRes.ok) {
+            const uploadData = await uploadRes.json();
+            uploadedAttachments = uploadData?.data?.attachments || uploadData?.attachments || [];
+          }
+        } catch (attErr) {
+          console.warn('[MuiChatAdapter] Failed to pre-upload document attachments:', attErr);
+        }
       }
     }
 
@@ -270,6 +309,7 @@ export class MuiChatAdapter {
       model:
         (typeof this.getModel === 'function' ? this.getModel() : undefined) ||
         this.activeModel,
+      audios: uploadedAudioIds.length > 0 ? uploadedAudioIds : undefined,
       attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
     };
 

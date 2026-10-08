@@ -154,7 +154,8 @@ export const MuiComposerInput = React.forwardRef(function MuiComposerInput(props
       ) {
         e.preventDefault();
         const currentVal = textareaRef.current?.value || '';
-        if (currentVal.trim().length > 0) {
+        const hasAttachments = Boolean(composer?.attachments && composer.attachments.length > 0);
+        if (currentVal.trim().length > 0 || hasAttachments) {
           // Synchronously flush full text to store right before submission
           lastSyncedComposerValueRef.current = currentVal;
           if (typeof composer?.setValue === 'function') {
