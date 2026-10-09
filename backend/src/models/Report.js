@@ -228,6 +228,20 @@ const reportSchema = new mongoose.Schema(
       type: [commentSchema],
       default: [],
     },
+    customSections: {
+      type: [
+        {
+          heading: { type: String, required: true, trim: true },
+          items: [{ type: String, trim: true }],
+        },
+      ],
+      default: [],
+    },
+    metadata: {
+      type: Map,
+      of: mongoose.Schema.Types.Mixed,
+      default: () => new Map(),
+    },
     isArchived: {
       type: Boolean,
       default: false,

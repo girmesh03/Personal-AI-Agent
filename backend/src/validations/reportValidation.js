@@ -452,13 +452,16 @@ export const validateReportPayload = (payload) => {
     });
   }
 
-  // 5. Activities
-  if (!Array.isArray(payload.activities) || payload.activities.length === 0) {
+  // 5. Activities (Optional if customSections are provided)
+  const hasCustomSections =
+    Array.isArray(payload.customSections) && payload.customSections.length > 0;
+
+  if (!hasCustomSections && (!Array.isArray(payload.activities) || payload.activities.length === 0)) {
     errors.push({
       field: 'activities',
-      message: 'Report must contain at least one operational activity.',
+      message: 'Report must contain at least one operational activity or custom template section.',
     });
-  } else {
+  } else if (Array.isArray(payload.activities) && payload.activities.length > 0) {
     payload.activities.forEach((a, idx) => {
       if (!a || typeof a !== 'object') {
         errors.push({ field: `activities[${idx}]`, message: 'Activity must be an object.' });
@@ -482,6 +485,32 @@ export const validateReportPayload = (payload) => {
         });
       }
     });
+  }
+
+  // 5b. Custom Template Sections (Optional)
+  if (payload.customSections !== undefined) {
+    if (!Array.isArray(payload.customSections)) {
+      errors.push({ field: 'customSections', message: 'customSections must be an array.' });
+    } else {
+      payload.customSections.forEach((cs, idx) => {
+        if (!cs || typeof cs !== 'object') {
+          errors.push({ field: `customSections[${idx}]`, message: 'Custom section must be an object.' });
+          return;
+        }
+        if (!cs.heading || typeof cs.heading !== 'string' || !cs.heading.trim()) {
+          errors.push({
+            field: `customSections[${idx}].heading`,
+            message: 'Custom section heading is required.',
+          });
+        }
+        if (cs.items !== undefined && !Array.isArray(cs.items)) {
+          errors.push({
+            field: `customSections[${idx}].items`,
+            message: 'Custom section items must be an array.',
+          });
+        }
+      });
+    }
   }
 
   // 6. Issues (Optional)

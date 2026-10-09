@@ -28,6 +28,17 @@ export const HTTP_STATUS = Object.freeze({
 });
 
 /**
+ * Canonical client API base URL derived from Vite environment variables.
+ * @constant
+ * @type {string}
+ */
+export const API_BASE_URL =
+  (typeof import.meta !== 'undefined' &&
+    import.meta.env &&
+    import.meta.env.VITE_API_BASE_URL) ||
+  'http://localhost:4000/api/v1';
+
+/**
  * Password validation regex enforcing at least 8 characters,
  * 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character.
  * @constant

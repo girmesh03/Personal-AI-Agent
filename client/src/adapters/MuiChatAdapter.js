@@ -8,6 +8,7 @@
  */
 
 import { apiSlice } from '../redux/app/apiSlice.js';
+import { executeWithReauth } from '../redux/app/authClient.js';
 import { chatApi, setActiveChatId } from '../redux/features/chatSlice.js';
 import { AUDIO_CONSTANTS } from '../utils/constants.js';
 
@@ -305,16 +306,20 @@ export class MuiChatAdapter {
         }
       });
 
-      // 1.1 Upload audio files to /chat/upload-audio under field 'audios'
+      // 1.1 Upload audio files to /chat/upload-audio under field 'audios' with re-auth protection
       if (audioFiles.length > 0) {
         const audioFormData = new FormData();
         audioFiles.forEach((f) => audioFormData.append('audios', f));
-        const audioRes = await fetch(`${this.baseUrl}/chat/upload-audio`, {
-          method: 'POST',
-          credentials: 'include',
-          body: audioFormData,
-          signal,
-        });
+        const audioRes = await executeWithReauth(
+          () =>
+            fetch(`${this.baseUrl}/chat/upload-audio`, {
+              method: 'POST',
+              credentials: 'include',
+              body: audioFormData,
+              signal,
+            }),
+          { dispatch: this.dispatch, baseUrl: this.baseUrl }
+        );
         if (!audioRes.ok) {
           const errData = await audioRes.json().catch(() => ({}));
           throw new Error(errData?.message || `Failed to upload audio recordings (${audioRes.status})`);
@@ -324,16 +329,20 @@ export class MuiChatAdapter {
         uploadedAudioIds = rawAudios.map((a) => a._id || a.id).filter(Boolean);
       }
 
-      // 1.2 Upload document and image files to /chat/upload-attachments under field 'attachments'
+      // 1.2 Upload document and image files to /chat/upload-attachments under field 'attachments' with re-auth protection
       if (docFiles.length > 0) {
         const docFormData = new FormData();
         docFiles.forEach((f) => docFormData.append('attachments', f));
-        const uploadRes = await fetch(`${this.baseUrl}/chat/upload-attachments`, {
-          method: 'POST',
-          credentials: 'include',
-          body: docFormData,
-          signal,
-        });
+        const uploadRes = await executeWithReauth(
+          () =>
+            fetch(`${this.baseUrl}/chat/upload-attachments`, {
+              method: 'POST',
+              credentials: 'include',
+              body: docFormData,
+              signal,
+            }),
+          { dispatch: this.dispatch, baseUrl: this.baseUrl }
+        );
         if (!uploadRes.ok) {
           const errData = await uploadRes.json().catch(() => ({}));
           throw new Error(errData?.message || `Failed to upload file attachments (${uploadRes.status})`);
@@ -343,10 +352,16 @@ export class MuiChatAdapter {
       }
     }
 
+    const retryTurnIndex =
+      typeof message?.retryTurnIndex === 'number'
+        ? message.retryTurnIndex
+        : undefined;
+
     const payload = {
       id: message?.id,
       text: userText,
       chatId: targetChatId,
+      retryTurnIndex,
       model:
         (typeof this.getModel === 'function' ? this.getModel() : undefined) ||
         this.activeModel,
@@ -388,45 +403,20 @@ export class MuiChatAdapter {
         let hasReasoningEnded = false;
 
         try {
-          let response = await fetch(streamUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Accept: 'text/event-stream',
-            },
-            credentials: 'include',
-            body: JSON.stringify(payload),
-            signal: abortController.signal,
-          });
-
-          // Concurrency-safe silent 401 re-authentication
-          if (response.status === 401) {
-            try {
-              const refreshRes = await fetch(`${adapterInstance.baseUrl}/auth/refresh`, {
+          const response = await executeWithReauth(
+            () =>
+              fetch(streamUrl, {
                 method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Accept: 'text/event-stream',
+                },
                 credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-              });
-              if (refreshRes.ok) {
-                response = await fetch(streamUrl, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    Accept: 'text/event-stream',
-                  },
-                  credentials: 'include',
-                  body: JSON.stringify(payload),
-                  signal: abortController.signal,
-                });
-              } else {
-                adapterInstance.dispatch?.({ type: 'auth/logout' });
-                throw new Error('Session expired. Please log in again.');
-              }
-            } catch (refreshErr) {
-              adapterInstance.dispatch?.({ type: 'auth/logout' });
-              throw refreshErr;
-            }
-          }
+                body: JSON.stringify(payload),
+                signal: abortController.signal,
+              }),
+            { dispatch: adapterInstance.dispatch, baseUrl: adapterInstance.baseUrl }
+          );
 
           if (!response.ok) {
             const errorText = await response.text();
@@ -597,21 +587,36 @@ export class MuiChatAdapter {
                     });
                     hasReasoningEnded = true;
                   }
-                  if (hasTextStarted && !hasTextEnded) {
+                  if (!hasTextStarted) {
                     controller.enqueue({
-                      type: 'text-end',
+                      type: 'text-start',
                       id: textPartId,
                     });
-                    hasTextEnded = true;
+                    hasTextStarted = true;
                   }
                   controller.enqueue({
-                    type: 'abort',
+                    type: 'text-delta',
+                    id: textPartId,
+                    delta: `\n\n> ⚠️ **Error**: ${data.message || 'Streaming failed.'}`,
+                  });
+                  controller.enqueue({
+                    type: 'text-end',
+                    id: textPartId,
+                  });
+                  hasTextEnded = true;
+                  controller.enqueue({
+                    type: 'finish',
                     messageId: assistantMessageId,
+                    finishReason: data.reason || 'error',
                   });
                   controller.close();
-                  adapterInstance.onError?.(
-                    new Error(data.message || 'Streaming failed.')
-                  );
+                  adapterInstance.onError?.({
+                    message: data.message || 'Streaming failed.',
+                    reason: data.reason,
+                    failedModel: data.failedModel,
+                    suggestedModels: data.suggestedModels,
+                    messageId: assistantMessageId,
+                  });
                   return;
                 }
 
@@ -640,14 +645,49 @@ export class MuiChatAdapter {
           controller.close();
         } catch (streamErr) {
           if (abortController.signal.aborted) {
+            if (hasReasoningStarted && !hasReasoningEnded) {
+              controller.enqueue({
+                type: 'reasoning-end',
+                id: reasoningPartId,
+              });
+            }
+            if (hasTextStarted && !hasTextEnded) {
+              controller.enqueue({
+                type: 'text-end',
+                id: textPartId,
+              });
+            }
             controller.enqueue({
-              type: 'abort',
+              type: 'finish',
               messageId: assistantMessageId,
+              finishReason: 'stop',
             });
           } else {
+            if (hasReasoningStarted && !hasReasoningEnded) {
+              controller.enqueue({
+                type: 'reasoning-end',
+                id: reasoningPartId,
+              });
+            }
+            if (!hasTextStarted) {
+              controller.enqueue({
+                type: 'text-start',
+                id: textPartId,
+              });
+            }
             controller.enqueue({
-              type: 'abort',
+              type: 'text-delta',
+              id: textPartId,
+              delta: `\n\n> ⚠️ **Connection Error**: ${streamErr.message || 'Stream connection failed.'}`,
+            });
+            controller.enqueue({
+              type: 'text-end',
+              id: textPartId,
+            });
+            controller.enqueue({
+              type: 'finish',
               messageId: assistantMessageId,
+              finishReason: 'error',
             });
             adapterInstance.onError?.(streamErr);
           }

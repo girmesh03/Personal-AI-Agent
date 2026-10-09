@@ -33,8 +33,19 @@ import { logger } from '../config/logger.js';
  * @returns {Promise<import('../models/Report.js').ReportDocument>} The persisted Report document.
  */
 export const createReportRecord = async ({ userId, payload, existingSession = null }) => {
-  const { date, clockIn, clockOut, visits, activities, issues, comments, transcription, audios } =
-    payload;
+  const {
+    date,
+    clockIn,
+    clockOut,
+    visits,
+    activities,
+    issues,
+    comments,
+    customSections,
+    metadata,
+    transcription,
+    audios,
+  } = payload;
 
   const session = existingSession || (await mongoose.startSession());
   const ownsSession = !existingSession;
@@ -89,6 +100,8 @@ export const createReportRecord = async ({ userId, payload, existingSession = nu
             activities: activities || [],
             issues: issues || [],
             comments: comments || [],
+            customSections: customSections || [],
+            metadata: metadata || new Map(),
             transcription,
             audios: audios || [],
             isArchived: false,
@@ -316,6 +329,8 @@ export const updateReport = asyncHandler(async (req, res) => {
       if (updates.activities !== undefined) report.activities = updates.activities;
       if (updates.issues !== undefined) report.issues = updates.issues;
       if (updates.comments !== undefined) report.comments = updates.comments;
+      if (updates.customSections !== undefined) report.customSections = updates.customSections;
+      if (updates.metadata !== undefined) report.metadata = updates.metadata;
       if (updates.transcription !== undefined) report.transcription = updates.transcription;
       if (updates.audios !== undefined) {
         if (Array.isArray(updates.audios) && updates.audios.length > 0) {

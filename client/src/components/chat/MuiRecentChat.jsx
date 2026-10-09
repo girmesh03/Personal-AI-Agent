@@ -182,7 +182,7 @@ export const MuiRecentChat = ({ isMini = false, onMobileClose }) => {
   if (isMini) {
     const currentPath = typeof window !== 'undefined' ? window.location.pathname : location.pathname;
     return (
-      <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', flexGrow: 1, minHeight: 0, overflow: 'hidden' }}>
+      <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', flexGrow: 0, flexShrink: 0, minHeight: 0, overflow: 'hidden', justifyContent: 'flex-start' }}>
         <Divider sx={{ my: 1, mx: 1, flexShrink: 0 }} />
         <Tooltip title="New Chat" placement="right" arrow>
           <IconButton
@@ -199,11 +199,16 @@ export const MuiRecentChat = ({ isMini = false, onMobileClose }) => {
           disablePadding
           aria-label="Recent chats mini"
           sx={{
-            flexGrow: 1,
-            minHeight: 0,
+            flexGrow: 0,
+            flexShrink: 0,
+            maxHeight: 220,
             overflowY: 'auto',
             scrollbarWidth: 'none',
             '&::-webkit-scrollbar': { display: 'none' },
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 0.5,
+            justifyContent: 'flex-start',
           }}
         >
           {chats.slice(0, 5).map((chat) => {
@@ -221,12 +226,15 @@ export const MuiRecentChat = ({ isMini = false, onMobileClose }) => {
                   to={chatPath}
                   selected={isChatSelected}
                   sx={{
+                    minHeight: 36,
+                    height: 36,
                     mx: 1,
                     my: 0.25,
                     borderRadius: 1,
                     justifyContent: 'center',
                     px: 0,
-                    py: 0.5,
+                    py: 0,
+                    flexShrink: 0,
                   }}
                 >
                   <ListItemIcon

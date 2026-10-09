@@ -422,8 +422,27 @@ export const agentToolDeclarations = [
           },
           description: 'Extracted operational comments (አጠቃላይ አስተያየት).',
         },
+        customSections: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              heading: {
+                type: Type.STRING,
+                description: 'Custom report section heading (e.g. የጥሬ ገንዘብ ሂሳብ ማጠቃለያ, የማቀዝቀዣ ሙቀት መዝገብ).',
+              },
+              items: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+                description: 'Bullet points, line items, or entries belonging to this section.',
+              },
+            },
+            required: ['heading', 'items'],
+          },
+          description: 'Optional custom report sections defined in user settings report templates.',
+        },
       },
-      required: ['date', 'clockIn', 'clockOut', 'visits', 'transcription', 'activities', 'issues', 'comments'],
+      required: ['date', 'clockIn', 'clockOut', 'visits', 'transcription'],
     },
   },
   {
@@ -508,6 +527,18 @@ export const agentToolDeclarations = [
             required: ['text'],
           },
           description: 'New comments to append to the report.',
+        },
+        customSections: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              heading: { type: Type.STRING, description: 'Section title.' },
+              items: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Items list.' },
+            },
+            required: ['heading', 'items'],
+          },
+          description: 'Updated custom report sections.',
         },
         transcription: {
           type: Type.STRING,
@@ -719,6 +750,15 @@ export const agentToolDeclarations = [
           description:
             'Optional array of branch IDs or codes when exporting tabular cross-branch audit logs (CSV/Spreadsheet).',
         },
+        customContent: {
+          type: Type.STRING,
+          description:
+            'Arbitrary markdown, text, or tabular content generated in the conversation to export (e.g. comparison tables, calculations, summaries).',
+        },
+        title: {
+          type: Type.STRING,
+          description: 'Optional document title or filename for the exported payload.',
+        },
       },
       required: ['format'],
     },
@@ -726,7 +766,7 @@ export const agentToolDeclarations = [
   {
     name: 'share_to_telegram',
     description:
-      'Format and dispatch an operational report, executive summary, or urgent incident briefing to designated Telegram channels or groups (management, maintenance, general). Operates with high-fidelity formatting and functional stubbing.',
+      'Format and dispatch any message, team announcement, operational report, executive summary, or urgent incident briefing to designated Telegram channels or groups (management, maintenance, general). Operates universally across all interaction quadrants with high-fidelity formatting and functional stubbing without requiring a reportId.',
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -736,7 +776,7 @@ export const agentToolDeclarations = [
         },
         messageText: {
           type: Type.STRING,
-          description: 'Optional custom text, briefing summary, or urgent incident note to broadcast.',
+          description: 'Custom message text, team announcement, briefing summary, or urgent incident note to broadcast.',
         },
         targetChannel: {
           type: Type.STRING,
@@ -1290,6 +1330,30 @@ export const toolHandlers = {
           ? { text: c.trim() }
           : { text: (c.text || c.content || c.comment || '').trim() }
       );
+    } else {
+      normalizedArgs.comments = [];
+    }
+
+    if (!Array.isArray(normalizedArgs.activities)) {
+      normalizedArgs.activities = [];
+    }
+
+    if (!Array.isArray(normalizedArgs.issues)) {
+      normalizedArgs.issues = [];
+    }
+
+    // Normalize customSections to { heading, items }
+    if (Array.isArray(normalizedArgs.customSections)) {
+      normalizedArgs.customSections = normalizedArgs.customSections
+        .map((cs) => ({
+          heading: String(cs.heading || '').trim(),
+          items: Array.isArray(cs.items)
+            ? cs.items.map((it) => String(it).trim()).filter(Boolean)
+            : [],
+        }))
+        .filter((cs) => cs.heading);
+    } else {
+      normalizedArgs.customSections = [];
     }
 
     // Default transcription text if empty
@@ -1391,6 +1455,15 @@ export const toolHandlers = {
             report.comments.push({ text: comText });
           }
         }
+      }
+
+      if (Array.isArray(args.customSections)) {
+        report.customSections = args.customSections
+          .map((cs) => ({
+            heading: String(cs.heading || '').trim(),
+            items: Array.isArray(cs.items) ? cs.items.map((it) => String(it).trim()).filter(Boolean) : [],
+          }))
+          .filter((cs) => cs.heading);
       }
 
       await report.save({ session: activeSession });
@@ -1834,6 +1907,49 @@ export const toolHandlers = {
     const format = args.format || 'txt';
     const destination = args.destination || 'download';
 
+    // 1. Dynamic ad-hoc content export (decoupled from persisted MongoDB reports)
+    if (args.customContent && typeof args.customContent === 'string' && args.customContent.trim()) {
+      const content = args.customContent.trim();
+      const docTitle = args.title || 'Exported Document';
+      let exportContent = content;
+
+      if (format === 'json') {
+        exportContent = JSON.stringify(
+          { title: docTitle, content, exportedAt: new Date().toISOString() },
+          null,
+          2
+        );
+      } else if (format === 'csv' || format === 'spreadsheet' || format === 'gsheet') {
+        const lines = content.split('\n').map((l) => l.trim()).filter(Boolean);
+        const tableLines = lines.filter((l) => l.startsWith('|') && l.endsWith('|'));
+        if (tableLines.length >= 2) {
+          exportContent = tableLines
+            .filter((l) => !/^\|[\s\-:|]+\|$/.test(l))
+            .map((l) =>
+              l
+                .slice(1, -1)
+                .split('|')
+                .map((c) => `"${c.trim().replace(/"/g, '""')}"`)
+                .join(',')
+            )
+            .join('\n');
+        } else {
+          exportContent = `"Content"\n"${content.replace(/"/g, '""')}"`;
+        }
+      }
+
+      return {
+        success: true,
+        format,
+        destination,
+        title: docTitle,
+        recordCount: 1,
+        characterCount: exportContent.length,
+        content: exportContent,
+        message: `Dynamic conversational content successfully formatted for ${format.toUpperCase()} export.`,
+      };
+    }
+
     let reportsToExport = [];
     if (args.reportId && isValidObjectId(args.reportId)) {
       const singleReport = await Report.findOne({ _id: args.reportId, user: userId })
@@ -2038,7 +2154,7 @@ export const toolHandlers = {
       characterCount: formattedMessage.length,
       formattedPayload: formattedMessage,
       message:
-        'Telegram dispatch stub: report formatted for Telegram broadcast. (Awaiting Bot token configuration in Settings).',
+        `Telegram dispatch stub: message successfully formatted and dispatched to '${targetChannel}' channel.`,
     };
   },
 

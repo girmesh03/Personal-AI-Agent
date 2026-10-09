@@ -182,6 +182,10 @@ const messageTurnSchema = new mongoose.Schema(
       candidatesTokens: { type: Number, default: null },
       totalTokens: { type: Number, default: null },
     },
+    isStopped: {
+      type: Boolean,
+      default: false,
+    },
     createdAt: {
       type: Date,
       default: Date.now,

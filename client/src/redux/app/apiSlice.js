@@ -96,13 +96,12 @@ const baseQuery = fetchBaseQuery({
   },
 });
 
-/** Concurrency lock promise preventing refresh token rotation race condition */
-let activeRefreshPromise = null;
+import { refreshSession } from './authClient.js';
 
 /**
  * Custom base query wrapper intercepting 401 UNAUTHENTICATED errors to refresh session cookies.
  * Strictly attempts token refresh only for logged-in users with active session state.
- * Uses a concurrency lock so parallel queries share a single refresh request.
+ * Uses a shared singleton concurrency lock so parallel queries and chat adapters share a single refresh request.
  * Dispatches session logout when refresh token rotation fails.
  *
  * @function baseQueryWithReauth
@@ -134,39 +133,17 @@ const baseQueryWithReauth = async (args, api, extraOptions) => {
       return normalizeResult(result);
     }
 
-    // Mutex concurrency lock: Only execute a single /auth/refresh at any time
-    if (!activeRefreshPromise) {
-      activeRefreshPromise = (async () => {
-        try {
-          return await baseQuery(
-            { url: '/auth/refresh', method: 'POST' },
-            api,
-            {}
-          );
-        } finally {
-          // Release mutex on next tick so pending microtasks share the single in-flight promise
-          Promise.resolve().then(() => {
-            activeRefreshPromise = null;
-          });
-        }
-      })();
-    }
+    // Delegate to shared singleton refresh mutex
+    const refreshResult = await refreshSession({
+      dispatch: api.dispatch,
+      getState: api.getState,
+    });
 
-    const refreshResult = await activeRefreshPromise;
-
-    if (refreshResult && refreshResult.data) {
-      const refreshedUser = refreshResult.data?.data?.user || refreshResult.data?.user;
-      if (refreshedUser) {
-        api.dispatch({ type: 'auth/setCredentials', payload: { user: refreshedUser } });
-      }
+    if (refreshResult.ok) {
       // Re-run original query with refreshed session credentials
       result = await baseQuery(args, api, extraOptions);
-    } else {
-      // Only clear session state if refresh token was actually unauthenticated / rejected (401)
-      if (refreshResult?.error?.status === 401) {
-        api.dispatch({ type: 'auth/logout' });
-        api.dispatch(apiSlice.util.resetApiState());
-      }
+    } else if (refreshResult.status === 401) {
+      api.dispatch(apiSlice.util.resetApiState());
     }
   }
 

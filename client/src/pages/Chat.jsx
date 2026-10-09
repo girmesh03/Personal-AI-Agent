@@ -6,7 +6,7 @@
  * Enforces zero-lag composer typing, side-by-side message alignment, and seamless Turn 1 lifecycle.
  */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router';
 import { useDispatch, useSelector } from 'react-redux';
 import { ChatBox } from '@mui/x-chat';
@@ -196,28 +196,6 @@ export const Chat = () => {
   // or unique new-chat token if user requested a fresh canvas via sidebar "+" or nav item.
   const sessionKey = chatId || (location.state?.newChatAt ? `new-${location.state.newChatAt}` : `new-${location.key}`);
 
-  // Maintain active references for adapter getters to avoid unnecessary adapter recreation
-  const activeChatIdRef = useRef(chatId || reduxActiveChatId || null);
-  const activeModelRef = useRef(activeModel);
-  const thinkingBudgetRef = useRef(thinkingBudget);
-  const languageRef = useRef(language);
-
-  useEffect(() => {
-    activeChatIdRef.current = chatId || reduxActiveChatId || null;
-  }, [chatId, reduxActiveChatId]);
-
-  useEffect(() => {
-    activeModelRef.current = activeModel;
-  }, [activeModel]);
-
-  useEffect(() => {
-    thinkingBudgetRef.current = thinkingBudget;
-  }, [thinkingBudget]);
-
-  useEffect(() => {
-    languageRef.current = language;
-  }, [language]);
-
   // Derive current user identity for MUI X Chat
   const currentUser = useMemo(() => {
     if (!user) {
@@ -259,10 +237,6 @@ export const Chat = () => {
   const adapter = useMemo(() => {
     return new MuiChatAdapter({
       dispatch,
-      getActiveChatId: () => activeChatIdRef.current,
-      getModel: () => activeModelRef.current,
-      getThinkingBudget: () => thinkingBudgetRef.current,
-      getLanguage: () => languageRef.current,
       onTurnCompleted: () => {
         // Stream completed: messages stay rendered in store without being wiped by route navigation.
         // The browser URL was already synchronized via replaceState on session creation.

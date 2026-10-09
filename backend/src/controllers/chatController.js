@@ -32,8 +32,12 @@ import { transcribeAudioDocument, transcribeAudio as transcribeAudioUtil } from 
  * @param {object} data - Payload data.
  */
 function sendSSE(res, event, data) {
-  if (res.writableEnded) return;
-  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  if (res.writableEnded || res.destroyed) return;
+  try {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  } catch (_e) {
+    // Socket already closed
+  }
 }
 
 /**
@@ -105,6 +109,14 @@ export const streamChat = asyncHandler(async (req, res) => {
   if (typeof res.flushHeaders === 'function') {
     res.flushHeaders();
   }
+
+  let isClientAborted = false;
+  req.on('close', () => {
+    if (!res.writableEnded) {
+      isClientAborted = true;
+      logger.info(`[chatController] Client socket closed / aborted by user for chat: ${requestedChatId || chat?._id}`);
+    }
+  });
 
   try {
     // 3. Audio Ingestion & Transcription (Pillar 2 / Composites)
@@ -315,6 +327,10 @@ export const streamChat = asyncHandler(async (req, res) => {
           });
 
           for await (const chunk of responseStream) {
+            if (isClientAborted) {
+              break;
+            }
+
             if (chunk.usageMetadata) {
               tokenUsage = {
                 promptTokens: chunk.usageMetadata.promptTokenCount || tokenUsage.promptTokens,
@@ -328,6 +344,7 @@ export const streamChat = asyncHandler(async (req, res) => {
 
             const parts = candidate.content?.parts || [];
             for (const part of parts) {
+              if (isClientAborted) break;
               if (part.thought) {
                 const delta = part.text || '';
                 stepThought += delta;
@@ -345,8 +362,15 @@ export const streamChat = asyncHandler(async (req, res) => {
             }
           }
 
+          if (isClientAborted) {
+            break;
+          }
+
           streamSuccess = true;
         } catch (streamErr) {
+          if (isClientAborted) {
+            break;
+          }
           fullText = textBeforeAttempt;
           fullThought = thoughtBeforeAttempt;
 
@@ -393,6 +417,10 @@ export const streamChat = asyncHandler(async (req, res) => {
         }
       }
 
+      if (isClientAborted) {
+        break;
+      }
+
       // If no tools were invoked, response is complete
       if (functionCalls.length === 0) {
         break;
@@ -401,6 +429,9 @@ export const streamChat = asyncHandler(async (req, res) => {
       // Execute autonomous tools inside Mongoose ACID sessions
       const functionResponses = [];
       for (const fc of functionCalls) {
+        if (isClientAborted) {
+          break;
+        }
         sendSSE(res, 'tool_call', { name: fc.name, args: fc.args });
 
         const session = await mongoose.startSession();
@@ -425,6 +456,10 @@ export const streamChat = asyncHandler(async (req, res) => {
         });
       }
 
+      if (isClientAborted) {
+        break;
+      }
+
       // Append tool invocations and results to conversation for next reasoning step
       geminiContents.push({
         role: 'model',
@@ -434,6 +469,28 @@ export const streamChat = asyncHandler(async (req, res) => {
         role: 'user',
         parts: functionResponses,
       });
+    }
+
+    // Handle user stop / abort interruption before turn completion
+    if (isClientAborted) {
+      logger.info(`[chatController] Stream stopped by user for chat ${chat._id}. Persisting partial turn.`);
+      const assistantTurn = {
+        id: new mongoose.Types.ObjectId().toString(),
+        role: 'assistant',
+        text: fullText ? `${fullText} [Generation stopped by user]` : '[Generation stopped by user]',
+        thought: fullThought || null,
+        toolCalls: toolsCalled,
+        model: activeModel,
+        usage: tokenUsage,
+        isStopped: true,
+        createdAt: new Date(),
+      };
+      chat.messages.push(assistantTurn);
+      await chat.save();
+      if (!res.writableEnded) {
+        res.end();
+      }
+      return;
     }
 
     // 11. First-Turn Auto-Titling (Turn 1 only)
@@ -477,6 +534,14 @@ export const streamChat = asyncHandler(async (req, res) => {
     });
     res.end();
   } catch (err) {
+    if (isClientAborted) {
+      logger.info(`[chatController] Error caught after client abort; ignoring for chat: ${chat?._id}`);
+      if (!res.writableEnded) {
+        res.end();
+      }
+      return;
+    }
+
     logger.error(`[chatController] Stream error: ${err.message}`, { stack: err.stack, cause: err.cause });
     console.error('[chatController] Full Stream Error:', err, 'cause:', err.cause);
 
