@@ -12,7 +12,17 @@ import { useDispatch, useSelector } from 'react-redux';
 import { ChatBox } from '@mui/x-chat';
 
 import { selectCurrentUser } from '../redux/features/authSlice.js';
-import { selectActiveModel } from '../redux/features/chatSlice.js';
+import {
+  selectActiveModel,
+  selectThinkingBudget,
+  selectLanguage,
+  setActiveChatId,
+  setActiveModel,
+  setThinkingBudget,
+  setLanguage,
+  setSttEngine,
+  useGetChatByIdQuery,
+} from '../redux/features/chatSlice.js';
 import { MuiChatAdapter } from '../adapters/MuiChatAdapter.js';
 import {
   MuiChatEmptyState,
@@ -143,6 +153,39 @@ export const Chat = () => {
   const dispatch = useDispatch();
   const user = useSelector(selectCurrentUser);
   const activeModel = useSelector(selectActiveModel);
+  const thinkingBudget = useSelector(selectThinkingBudget);
+  const language = useSelector(selectLanguage);
+
+  // Synchronize activeChatId in Redux
+  useEffect(() => {
+    dispatch(setActiveChatId(chatId || null));
+  }, [dispatch, chatId]);
+
+  // Hydrate config if opening an existing chat thread
+  const { data: chatData } = useGetChatByIdQuery({ chatId }, { skip: !chatId });
+
+  useEffect(() => {
+    if (chatId && chatData?.chat?.config) {
+      const cfg = chatData.chat.config;
+      if (cfg.model) dispatch(setActiveModel(cfg.model));
+      if (cfg.thinkingBudget !== undefined) dispatch(setThinkingBudget(cfg.thinkingBudget));
+      if (cfg.language) dispatch(setLanguage(cfg.language));
+    } else if (!chatId && user?.settings) {
+      // Pristine /chat session: initialize from user account defaults
+      if (user.settings.agentConfig?.defaultModel) {
+        dispatch(setActiveModel(user.settings.agentConfig.defaultModel));
+      }
+      if (user.settings.agentConfig?.defaultThinkingBudget !== undefined) {
+        dispatch(setThinkingBudget(user.settings.agentConfig.defaultThinkingBudget));
+      }
+      if (user.settings.agentConfig?.defaultLanguage) {
+        dispatch(setLanguage(user.settings.agentConfig.defaultLanguage));
+      }
+      if (user.settings.sttEngine) {
+        dispatch(setSttEngine(user.settings.sttEngine));
+      }
+    }
+  }, [chatId, chatData, user, dispatch]);
 
   // Derive stable session key: matches conversation ID if viewing existing thread,
   // or unique new-chat token if user requested a fresh canvas via sidebar "+" or nav item.
@@ -201,12 +244,14 @@ export const Chat = () => {
     });
   }, [dispatch]);
 
-  // Keep active chat ID, current user, and model synchronized on state changes
+  // Keep active chat ID, current user, model, thinkingBudget, and language synchronized on state changes
   useEffect(() => {
     adapter.setActiveChatId(chatId || null);
     adapter.setCurrentUser(currentUser);
     adapter.setModel(activeModel);
-  }, [adapter, chatId, currentUser, activeModel]);
+    adapter.setThinkingBudget(thinkingBudget);
+    adapter.setLanguage(language);
+  }, [adapter, chatId, currentUser, activeModel, thinkingBudget, language]);
 
   return (
     <ChatBox

@@ -803,7 +803,11 @@ export const transcribeAudio = asyncHandler(async (req, res) => {
     throw new BadRequestError('No audio recording uploaded for transcription.');
   }
 
-  const engine = req.body?.engine || req.body?.sttEngine || AI_MODELS.DEFAULT_STT_ENGINE;
+  const engine =
+    req.body?.engine ||
+    req.body?.sttEngine ||
+    req.user?.settings?.sttEngine ||
+    AI_MODELS.DEFAULT_STT_ENGINE;
   const language = req.body?.language || 'am';
 
   if (file.size === 0) {

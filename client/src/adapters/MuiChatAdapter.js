@@ -50,6 +50,8 @@ export class MuiChatAdapter {
     onTurnCompleted,
     onError,
     getModel,
+    getThinkingBudget,
+    getLanguage,
     getActiveChatId,
   } = {}) {
     this.dispatch = dispatch;
@@ -60,9 +62,14 @@ export class MuiChatAdapter {
     this.onTurnCompleted = onTurnCompleted;
     this.onError = onError;
     this.getModel = getModel;
+    this.getThinkingBudget = getThinkingBudget;
+    this.getLanguage = getLanguage;
     this.getActiveChatId = getActiveChatId;
     this.activeAbortController = null;
     this.currentChatId = null;
+    this.activeModel = null;
+    this.activeThinkingBudget = undefined;
+    this.activeLanguage = undefined;
   }
 
   /**
@@ -87,6 +94,22 @@ export class MuiChatAdapter {
    */
   setModel(model) {
     this.activeModel = model || null;
+  }
+
+  /**
+   * Sets or synchronizes thinking budget.
+   * @param {number|undefined} budget - Token budget.
+   */
+  setThinkingBudget(budget) {
+    this.activeThinkingBudget = budget;
+  }
+
+  /**
+   * Sets or synchronizes synthesis language.
+   * @param {string|undefined} lang - Language code.
+   */
+  setLanguage(lang) {
+    this.activeLanguage = lang;
   }
 
   /**
@@ -315,6 +338,12 @@ export class MuiChatAdapter {
       model:
         (typeof this.getModel === 'function' ? this.getModel() : undefined) ||
         this.activeModel,
+      thinkingBudget:
+        (typeof this.getThinkingBudget === 'function' ? this.getThinkingBudget() : undefined) ??
+        this.activeThinkingBudget,
+      language:
+        (typeof this.getLanguage === 'function' ? this.getLanguage() : undefined) ??
+        this.activeLanguage,
       audios: uploadedAudioIds.length > 0 ? uploadedAudioIds : undefined,
       attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
     };

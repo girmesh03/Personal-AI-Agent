@@ -93,6 +93,39 @@ export const userSlice = apiSlice.injectEndpoints({
         body: passwordData,
       }),
     }),
+    updateAgentConfig: builder.mutation({
+      query: (configData) => ({
+        url: '/users/agent-config',
+        method: 'PATCH',
+        body: configData,
+      }),
+      invalidatesTags: ['User'],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled, getState }) {
+        try {
+          const { data } = await queryFulfilled;
+          const resData = data?.data || data;
+          if (resData) {
+            const currentUser = getState().auth.user;
+            if (currentUser) {
+              const updatedUser = {
+                ...currentUser,
+                settings: {
+                  ...(currentUser.settings || {}),
+                  sttEngine: resData.sttEngine || currentUser.settings?.sttEngine,
+                  agentConfig: {
+                    ...(currentUser.settings?.agentConfig || {}),
+                    ...(resData.agentConfig || {}),
+                  },
+                },
+              };
+              dispatch(updateUserProfile({ user: updatedUser }));
+            }
+          }
+        } catch {
+          // Handled by caller UI
+        }
+      },
+    }),
   }),
   overrideExisting: false,
 });
@@ -106,6 +139,7 @@ export const {
   useUpdateAvatarMutation,
   useRemoveAvatarMutation,
   useUpdatePasswordMutation,
+  useUpdateAgentConfigMutation,
 } = userSlice;
 
 export default userSlice;

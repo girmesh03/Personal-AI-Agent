@@ -11,6 +11,7 @@ import Box from '@mui/material/Box';
 import MuiSendButton from './MuiSendButton.jsx';
 import MuiAttachButton from './MuiAttachButton.jsx';
 import MuiAudioRecorder from './MuiAudioRecorder.jsx';
+import MuiModelSelector from './MuiModelSelector.jsx';
 
 /**
  * MuiComposerBottomToolbar component.
@@ -31,6 +32,7 @@ export const MuiComposerBottomToolbar = forwardRef((props, ref) => {
       {/* Left Cluster: Attachments & Inference Settings */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
         <MuiAttachButton disabled={props?.disabled} />
+        <MuiModelSelector disabled={props?.disabled} />
       </Box>
 
       {/* Right Cluster: Audio Dictation & Send / Stop Actions */}

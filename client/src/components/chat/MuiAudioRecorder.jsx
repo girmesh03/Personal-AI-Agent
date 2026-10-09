@@ -22,10 +22,15 @@ import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
 import ReplayIcon from '@mui/icons-material/Replay';
+import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { useChatComposer, useChatStatus } from '@mui/x-chat-headless';
 import { useAudioRecorder } from '../../hooks/useAudioRecorder.js';
-import { useTranscribeAudioMutation } from '../../redux/features/chatSlice.js';
+import {
+  useTranscribeAudioMutation,
+  selectSttEngine,
+  selectLanguage,
+} from '../../redux/features/chatSlice.js';
 
 /**
  * MuiAudioRecorder component.
@@ -37,6 +42,8 @@ export const MuiAudioRecorder = forwardRef((props, ref) => {
   const { isStreaming } = useChatStatus();
   const [transcribeAudio, { isLoading: isTranscribing }] = useTranscribeAudioMutation();
   const [hasTranscriptionError, setHasTranscriptionError] = useState(false);
+  const sttEngine = useSelector(selectSttEngine);
+  const language = useSelector(selectLanguage);
 
   const {
     isRecording,
@@ -74,7 +81,10 @@ export const MuiAudioRecorder = forwardRef((props, ref) => {
         type: blobToTranscribe.type || 'audio/webm',
       });
       formData.append('audio', file);
-      formData.append('language', 'am');
+      if (sttEngine) {
+        formData.append('engine', sttEngine);
+      }
+      formData.append('language', language || 'am');
 
       try {
         const res = await transcribeAudio(formData).unwrap();
@@ -111,7 +121,7 @@ export const MuiAudioRecorder = forwardRef((props, ref) => {
         setHasTranscriptionError(true);
       }
     },
-    [clearCachedBlob, composer, transcribeAudio]
+    [clearCachedBlob, composer, transcribeAudio, sttEngine, language]
   );
 
   /**
