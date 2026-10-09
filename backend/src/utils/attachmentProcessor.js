@@ -8,7 +8,11 @@
 
 import fs from 'fs';
 import path from 'path';
+import mammoth from 'mammoth';
+import * as xlsxModule from 'xlsx';
 import logger from '../config/logger.js';
+
+const XLSX = xlsxModule.default || xlsxModule;
 
 /**
  * Resolves absolute filesystem storage path for an attachment.
@@ -59,10 +63,60 @@ export async function processAttachment(attachment) {
       const textContent = await fs.promises.readFile(filePath, 'utf8');
       return {
         type: 'text',
-        content: `<attachment name="${originalName}" type="${mimeType}">\n${textContent}\n</attachment>`,
+        content: `<attachment name="${originalName}" type="${mimeType || 'text/plain'}">\n${textContent}\n</attachment>`,
       };
     } catch (err) {
       logger.error(`[attachmentProcessor] Failed to read text attachment ${filePath}: ${err.message}`);
+      return { type: 'text', content: '' };
+    }
+  }
+
+  // 2. Microsoft Word Documents (.docx, .doc)
+  if (
+    mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    mimeType === 'application/msword' ||
+    filePath.endsWith('.docx') ||
+    filePath.endsWith('.doc')
+  ) {
+    try {
+      const docResult = await mammoth.extractRawText({ path: filePath });
+      const textContent = (docResult.value || '').trim();
+      return {
+        type: 'text',
+        content: `<attachment name="${originalName}" type="docx">\n${textContent}\n</attachment>`,
+      };
+    } catch (err) {
+      logger.error(`[attachmentProcessor] Failed to extract docx attachment ${filePath}: ${err.message}`);
+      return { type: 'text', content: '' };
+    }
+  }
+
+  // 3. Microsoft Excel & Spreadsheets (.xlsx, .xls)
+  if (
+    mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    mimeType === 'application/vnd.ms-excel' ||
+    filePath.endsWith('.xlsx') ||
+    filePath.endsWith('.xls')
+  ) {
+    try {
+      const workbook = XLSX.readFile(filePath);
+      const sheetsText = [];
+      for (const sheetName of workbook.SheetNames || []) {
+        const sheet = workbook.Sheets[sheetName];
+        if (sheet) {
+          const csv = XLSX.utils.sheet_to_csv(sheet);
+          if (csv && csv.trim()) {
+            sheetsText.push(`--- Sheet: ${sheetName} ---\n${csv.trim()}`);
+          }
+        }
+      }
+      const textContent = sheetsText.join('\n\n');
+      return {
+        type: 'text',
+        content: `<attachment name="${originalName}" type="spreadsheet">\n${textContent}\n</attachment>`,
+      };
+    } catch (err) {
+      logger.error(`[attachmentProcessor] Failed to extract spreadsheet attachment ${filePath}: ${err.message}`);
       return { type: 'text', content: '' };
     }
   }

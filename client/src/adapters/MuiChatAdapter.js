@@ -8,7 +8,7 @@
  */
 
 import { apiSlice } from '../redux/app/apiSlice.js';
-import { chatApi } from '../redux/features/chatSlice.js';
+import { chatApi, setActiveChatId } from '../redux/features/chatSlice.js';
 import { AUDIO_CONSTANTS } from '../utils/constants.js';
 
 /**
@@ -74,10 +74,22 @@ export class MuiChatAdapter {
 
   /**
    * Sets or synchronizes active conversation ID on route navigation.
+   * Defensively preserves currentChatId if called with falsy while a session is already active.
    * @param {string|null} id - Target chat session ID.
    */
   setActiveChatId(id) {
-    this.currentChatId = id || null;
+    if (id) {
+      this.currentChatId = id;
+    } else if (id === null && !this.currentChatId) {
+      this.currentChatId = null;
+    }
+  }
+
+  /**
+   * Explicitly clears the active conversation ID when resetting to a fresh canvas.
+   */
+  clearActiveChatId() {
+    this.currentChatId = null;
   }
 
   /**
@@ -473,6 +485,8 @@ export class MuiChatAdapter {
                   if (!conversationId && typeof window !== 'undefined' && window.history?.replaceState) {
                     window.history.replaceState(null, '', `/chat/${data.chatId}`);
                   }
+                  // Synchronize active conversation ID with Redux store
+                  adapterInstance.dispatch?.(setActiveChatId(data.chatId));
                   // Invalidate recent chats list immediately so sidebar reflects the new session in real time
                   adapterInstance.dispatch?.(
                     apiSlice.util.invalidateTags([{ type: 'Chat', id: 'LIST' }])

@@ -6,7 +6,7 @@
  * Enforces zero-lag composer typing, side-by-side message alignment, and seamless Turn 1 lifecycle.
  */
 
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router';
 import { useDispatch, useSelector } from 'react-redux';
 import { ChatBox } from '@mui/x-chat';
@@ -155,11 +155,16 @@ export const Chat = () => {
   const activeModel = useSelector(selectActiveModel);
   const thinkingBudget = useSelector(selectThinkingBudget);
   const language = useSelector(selectLanguage);
+  const reduxActiveChatId = useSelector((state) => state.chat.activeChatId);
 
-  // Synchronize activeChatId in Redux
+  // Synchronize activeChatId in Redux on route param changes
   useEffect(() => {
-    dispatch(setActiveChatId(chatId || null));
-  }, [dispatch, chatId]);
+    if (chatId) {
+      dispatch(setActiveChatId(chatId));
+    } else if (location.state?.newChatAt) {
+      dispatch(setActiveChatId(null));
+    }
+  }, [dispatch, chatId, location.state?.newChatAt]);
 
   // Hydrate config if opening an existing chat thread
   const { data: chatData } = useGetChatByIdQuery({ chatId }, { skip: !chatId });
@@ -190,6 +195,28 @@ export const Chat = () => {
   // Derive stable session key: matches conversation ID if viewing existing thread,
   // or unique new-chat token if user requested a fresh canvas via sidebar "+" or nav item.
   const sessionKey = chatId || (location.state?.newChatAt ? `new-${location.state.newChatAt}` : `new-${location.key}`);
+
+  // Maintain active references for adapter getters to avoid unnecessary adapter recreation
+  const activeChatIdRef = useRef(chatId || reduxActiveChatId || null);
+  const activeModelRef = useRef(activeModel);
+  const thinkingBudgetRef = useRef(thinkingBudget);
+  const languageRef = useRef(language);
+
+  useEffect(() => {
+    activeChatIdRef.current = chatId || reduxActiveChatId || null;
+  }, [chatId, reduxActiveChatId]);
+
+  useEffect(() => {
+    activeModelRef.current = activeModel;
+  }, [activeModel]);
+
+  useEffect(() => {
+    thinkingBudgetRef.current = thinkingBudget;
+  }, [thinkingBudget]);
+
+  useEffect(() => {
+    languageRef.current = language;
+  }, [language]);
 
   // Derive current user identity for MUI X Chat
   const currentUser = useMemo(() => {
@@ -232,6 +259,10 @@ export const Chat = () => {
   const adapter = useMemo(() => {
     return new MuiChatAdapter({
       dispatch,
+      getActiveChatId: () => activeChatIdRef.current,
+      getModel: () => activeModelRef.current,
+      getThinkingBudget: () => thinkingBudgetRef.current,
+      getLanguage: () => languageRef.current,
       onTurnCompleted: () => {
         // Stream completed: messages stay rendered in store without being wiped by route navigation.
         // The browser URL was already synchronized via replaceState on session creation.
@@ -246,19 +277,24 @@ export const Chat = () => {
 
   // Keep active chat ID, current user, model, thinkingBudget, and language synchronized on state changes
   useEffect(() => {
-    adapter.setActiveChatId(chatId || null);
+    const effectiveChatId = chatId || reduxActiveChatId || null;
+    if (effectiveChatId) {
+      adapter.setActiveChatId(effectiveChatId);
+    } else if (location.state?.newChatAt) {
+      adapter.clearActiveChatId?.();
+    }
     adapter.setCurrentUser(currentUser);
     adapter.setModel(activeModel);
     adapter.setThinkingBudget(thinkingBudget);
     adapter.setLanguage(language);
-  }, [adapter, chatId, currentUser, activeModel, thinkingBudget, language]);
+  }, [adapter, chatId, reduxActiveChatId, location.state?.newChatAt, currentUser, activeModel, thinkingBudget, language]);
 
   return (
     <ChatBox
       key={sessionKey}
       adapter={adapter}
       layoutMode="standard"
-      activeConversationId={chatId || undefined}
+      activeConversationId={chatId || reduxActiveChatId || undefined}
       onActiveConversationChange={handleActiveConversationChange}
       currentUser={currentUser}
       getMessageAuthorId={getMessageAuthorId}

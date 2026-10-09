@@ -17,10 +17,9 @@ import {
   renameChat,
   deleteChat,
   uploadChatAttachments,
+  uploadChatAudios,
   transcribeAudio,
 } from '../controllers/chatController.js';
-
-import { uploadReportAudios } from '../controllers/reportController.js';
 
 import {
   chatIdValidation,
@@ -57,7 +56,7 @@ router.post('/transcribe-audio', uploadSingleAudioMiddleware, transcribeAudio);
  * @desc Ingest 1 to 5 audio recordings for chat turn grounding
  * @access Protected (Area Supervisor)
  */
-router.post('/upload-audio', uploadReportAudiosMiddleware, uploadReportAudios);
+router.post('/upload-audio', uploadReportAudiosMiddleware, uploadChatAudios);
 
 /**
  * @route POST /api/v1/chat/upload-attachments

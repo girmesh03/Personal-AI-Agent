@@ -13,7 +13,7 @@ import { Branch } from '../models/Branch.js';
 import { Report } from '../models/Report.js';
 import { User } from '../models/User.js';
 import { Audio } from '../models/Audio.js';
-import { REPORT_CONSTANTS, BRANCH_CONSTANTS } from '../utils/constants.js';
+import { REPORT_CONSTANTS, BRANCH_CONSTANTS, CHAT_CONSTANTS, AI_MODELS } from '../utils/constants.js';
 import { toEthiopianDateString } from '../utils/ethiopianCalendar.js';
 import { isValidObjectId, validateReportPayload } from '../validations/reportValidation.js';
 import { createReportRecord } from '../controllers/reportController.js';
@@ -767,8 +767,16 @@ export const agentToolDeclarations = [
           description: 'Forbidden words to unban and remove from negative vocabulary.',
         },
         phraseMappingsToAdd: {
-          type: Type.OBJECT,
-          description: 'Key-value dictionary mapping colloquial terms to corporate replacements.',
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              key: { type: Type.STRING, description: 'Shorthand or colloquial term.' },
+              value: { type: Type.STRING, description: 'Authoritative corporate replacement term.' },
+            },
+            required: ['key', 'value'],
+          },
+          description: 'Key-value replacement mappings to add or update.',
         },
         phraseMappingsToRemove: {
           type: Type.ARRAY,
@@ -794,6 +802,112 @@ export const agentToolDeclarations = [
           type: Type.STRING,
           description:
             'Optional custom Amharic corporate template text for Multi-Branch reports (persisted to User.settings.reportTemplates.multiBranch; pass empty string or null to reset to default).',
+        },
+      },
+    },
+  },
+  {
+    name: 'get_user_settings',
+    description:
+      'Retrieve current user configuration, STT engine, report templates, or directives from MongoDB inside an ACID transaction or read path.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        section: {
+          type: Type.STRING,
+          description:
+            "Specific section to inspect: 'all' (default), 'directives', 'agentConfig', 'reportTemplates', or 'sttEngine'.",
+        },
+      },
+    },
+  },
+  {
+    name: 'update_user_settings',
+    description:
+      'Persist updates to User.settings (directives, agentConfig, sttEngine, reportTemplates) in MongoDB inside an ACID transaction.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        negativeVocabularyToAdd: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Words or terms to strictly ban and exclude from generated reports or responses.',
+        },
+        negativeVocabularyToRemove: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Forbidden words to unban and remove from negative vocabulary.',
+        },
+        phraseMappingsToAdd: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              key: { type: Type.STRING, description: 'Shorthand or colloquial term to replace.' },
+              value: { type: Type.STRING, description: 'Authoritative corporate or preferred replacement term.' },
+            },
+            required: ['key', 'value'],
+          },
+          description: 'Array of key-value replacement mappings to add or update.',
+        },
+        phraseMappingsToRemove: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Keys of phrase mappings to remove.',
+        },
+        customInstructionsToAdd: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Discrete operational or personal rules/instructions to add to user profile.',
+        },
+        customInstructionsToRemove: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Discrete operational or personal rules/instructions to remove.',
+        },
+        clearDirectives: {
+          type: Type.BOOLEAN,
+          description: 'Set to true to clear all negative vocabulary, phrase mappings, and custom instructions.',
+        },
+        persona: {
+          type: Type.STRING,
+          description: 'Update the user AI operational/personal persona lens.',
+        },
+        defaultModel: {
+          type: Type.STRING,
+          description: 'Update default AI model: gemini-3.1-flash-lite, gemini-3.8-flash, or gemini-3-flash-preview.',
+        },
+        defaultThinkingBudget: {
+          type: Type.INTEGER,
+          description: 'Update default reasoning budget (0 to 8192 tokens).',
+        },
+        defaultLanguage: {
+          type: Type.STRING,
+          description: "Update default working language: 'am', 'en', or 'auto'.",
+        },
+        resetAgentConfig: {
+          type: Type.BOOLEAN,
+          description: 'Set to true to reset agentConfig (persona, model, budget, language) to system factory defaults.',
+        },
+        sttEngine: {
+          type: Type.STRING,
+          description: "Update speech-to-text engine: 'addis_ai', 'gemini-3.8-flash', or 'gemini-3.1-flash-lite'.",
+        },
+        singleBranchTemplate: {
+          type: Type.STRING,
+          description: 'Custom Single-Branch Amharic template text.',
+        },
+        multiBranchTemplate: {
+          type: Type.STRING,
+          description: 'Custom Multi-Branch Amharic template text.',
+        },
+        resetSingleBranchTemplate: {
+          type: Type.BOOLEAN,
+          description: 'Reset single branch report template to system default.',
+        },
+        resetMultiBranchTemplate: {
+          type: Type.BOOLEAN,
+          description: 'Reset multi-branch report template to system default.',
         },
       },
     },
@@ -1929,9 +2043,72 @@ export const toolHandlers = {
   },
 
   /**
-   * 17. save_supervisor_directive
+   * 17. save_supervisor_directive (Backwards-compatible wrapper targeting User.settings.directives)
    */
   save_supervisor_directive: async ({ args = {}, userId, session = null }) => {
+    return await toolHandlers.update_user_settings({ args, userId, session });
+  },
+
+  /**
+   * 18. get_user_settings
+   */
+  get_user_settings: async ({ args = {}, userId, session = null }) => {
+    const user = await User.findById(userId).session(session || null).lean();
+    if (!user) {
+      throw new NotFoundError('User not found.');
+    }
+
+    const settings = user.settings || {};
+    const section = (args.section || 'all').toLowerCase();
+
+    const normalizedDirectives = {
+      negativeVocabulary: settings.directives?.negativeVocabulary || [],
+      phraseMappings:
+        settings.directives?.phraseMappings instanceof Map
+          ? Object.fromEntries(settings.directives.phraseMappings)
+          : settings.directives?.phraseMappings || {},
+      customInstructions: settings.directives?.customInstructions || [],
+    };
+
+    const agentConfig = settings.agentConfig || {
+      persona: CHAT_CONSTANTS.DEFAULT_PERSONA,
+      defaultModel: CHAT_CONSTANTS.DEFAULT_MODEL,
+      defaultThinkingBudget: CHAT_CONSTANTS.DEFAULT_THINKING_BUDGET,
+      defaultLanguage: CHAT_CONSTANTS.DEFAULT_LANGUAGE,
+    };
+
+    const reportTemplates = settings.reportTemplates || {
+      singleBranch: null,
+      multiBranch: null,
+    };
+
+    const sttEngine = settings.sttEngine || CHAT_CONSTANTS.DEFAULT_STT_ENGINE;
+
+    if (section === 'directives') {
+      return { directives: normalizedDirectives };
+    }
+    if (section === 'agentconfig') {
+      return { agentConfig };
+    }
+    if (section === 'reporttemplates') {
+      return { reportTemplates };
+    }
+    if (section === 'sttengine') {
+      return { sttEngine };
+    }
+
+    return {
+      directives: normalizedDirectives,
+      agentConfig,
+      reportTemplates,
+      sttEngine,
+    };
+  },
+
+  /**
+   * 19. update_user_settings
+   */
+  update_user_settings: async ({ args = {}, userId, session = null }) => {
     return await runInTransaction(session, async (activeSession) => {
       const user = await User.findById(userId).session(activeSession);
       if (!user) {
@@ -1946,8 +2123,30 @@ export const toolHandlers = {
           customInstructions: [],
         };
       }
+      if (!user.settings.agentConfig) {
+        user.settings.agentConfig = {
+          persona: CHAT_CONSTANTS.DEFAULT_PERSONA,
+          defaultModel: CHAT_CONSTANTS.DEFAULT_MODEL,
+          defaultThinkingBudget: CHAT_CONSTANTS.DEFAULT_THINKING_BUDGET,
+          defaultLanguage: CHAT_CONSTANTS.DEFAULT_LANGUAGE,
+        };
+      }
+      if (!user.settings.reportTemplates) {
+        user.settings.reportTemplates = {
+          singleBranch: null,
+          multiBranch: null,
+        };
+      }
 
       let changed = false;
+
+      // --- Directives ---
+      if (args.clearDirectives === true) {
+        user.settings.directives.negativeVocabulary = [];
+        user.settings.directives.phraseMappings = new Map();
+        user.settings.directives.customInstructions = [];
+        changed = true;
+      }
 
       // 1. Negative vocabulary add
       if (Array.isArray(args.negativeVocabularyToAdd)) {
@@ -1971,14 +2170,23 @@ export const toolHandlers = {
       }
 
       // 3. Phrase mappings add
-      if (args.phraseMappingsToAdd && typeof args.phraseMappingsToAdd === 'object') {
+      if (args.phraseMappingsToAdd) {
         if (!user.settings.directives.phraseMappings) {
           user.settings.directives.phraseMappings = new Map();
         }
-        for (const [key, value] of Object.entries(args.phraseMappingsToAdd)) {
-          if (key && value && typeof key === 'string' && typeof value === 'string') {
-            user.settings.directives.phraseMappings.set(key.trim(), value.trim());
-            changed = true;
+        if (Array.isArray(args.phraseMappingsToAdd)) {
+          for (const item of args.phraseMappingsToAdd) {
+            if (item && typeof item === 'object' && item.key && item.value) {
+              user.settings.directives.phraseMappings.set(String(item.key).trim(), String(item.value).trim());
+              changed = true;
+            }
+          }
+        } else if (typeof args.phraseMappingsToAdd === 'object') {
+          for (const [key, value] of Object.entries(args.phraseMappingsToAdd)) {
+            if (key && value && typeof key === 'string' && typeof value === 'string') {
+              user.settings.directives.phraseMappings.set(key.trim(), value.trim());
+              changed = true;
+            }
           }
         }
       }
@@ -2014,17 +2222,69 @@ export const toolHandlers = {
         changed = true;
       }
 
-      // 7. Custom report templates update
-      if (args.singleBranchTemplate !== undefined) {
-        if (!user.settings.reportTemplates) user.settings.reportTemplates = {};
+      // --- Agent Config ---
+      if (args.resetAgentConfig === true) {
+        user.settings.agentConfig = {
+          persona: CHAT_CONSTANTS.DEFAULT_PERSONA,
+          defaultModel: CHAT_CONSTANTS.DEFAULT_MODEL,
+          defaultThinkingBudget: CHAT_CONSTANTS.DEFAULT_THINKING_BUDGET,
+          defaultLanguage: CHAT_CONSTANTS.DEFAULT_LANGUAGE,
+        };
+        changed = true;
+      } else {
+        if (args.persona !== undefined && typeof args.persona === 'string' && args.persona.trim()) {
+          user.settings.agentConfig.persona = args.persona.trim();
+          changed = true;
+        }
+        if (args.defaultModel !== undefined && typeof args.defaultModel === 'string' && args.defaultModel.trim()) {
+          const modelVal = args.defaultModel.trim();
+          if (CHAT_CONSTANTS.SUPPORTED_MODELS.includes(modelVal)) {
+            user.settings.agentConfig.defaultModel = modelVal;
+            changed = true;
+          }
+        }
+        if (args.defaultThinkingBudget !== undefined && typeof args.defaultThinkingBudget === 'number') {
+          const budget = Math.max(
+            CHAT_CONSTANTS.MIN_THINKING_BUDGET,
+            Math.min(CHAT_CONSTANTS.MAX_THINKING_BUDGET, Math.round(args.defaultThinkingBudget))
+          );
+          user.settings.agentConfig.defaultThinkingBudget = budget;
+          changed = true;
+        }
+        if (args.defaultLanguage !== undefined && typeof args.defaultLanguage === 'string' && args.defaultLanguage.trim()) {
+          const langVal = args.defaultLanguage.trim().toLowerCase();
+          if (CHAT_CONSTANTS.SUPPORTED_LANGUAGES.includes(langVal)) {
+            user.settings.agentConfig.defaultLanguage = langVal;
+            changed = true;
+          }
+        }
+      }
+
+      // --- STT Engine ---
+      if (args.sttEngine !== undefined && typeof args.sttEngine === 'string' && args.sttEngine.trim()) {
+        const engineVal = args.sttEngine.trim();
+        if (CHAT_CONSTANTS.STT_ENGINES.includes(engineVal)) {
+          user.settings.sttEngine = engineVal;
+          changed = true;
+        }
+      }
+
+      // --- Report Templates ---
+      if (args.resetSingleBranchTemplate === true) {
+        user.settings.reportTemplates.singleBranch = null;
+        changed = true;
+      } else if (args.singleBranchTemplate !== undefined) {
         user.settings.reportTemplates.singleBranch =
           args.singleBranchTemplate && typeof args.singleBranchTemplate === 'string' && args.singleBranchTemplate.trim()
             ? args.singleBranchTemplate.trim()
             : null;
         changed = true;
       }
-      if (args.multiBranchTemplate !== undefined) {
-        if (!user.settings.reportTemplates) user.settings.reportTemplates = {};
+
+      if (args.resetMultiBranchTemplate === true) {
+        user.settings.reportTemplates.multiBranch = null;
+        changed = true;
+      } else if (args.multiBranchTemplate !== undefined) {
         user.settings.reportTemplates.multiBranch =
           args.multiBranchTemplate && typeof args.multiBranchTemplate === 'string' && args.multiBranchTemplate.trim()
             ? args.multiBranchTemplate.trim()
@@ -2042,11 +2302,15 @@ export const toolHandlers = {
           : user.settings.directives.phraseMappings || {};
 
       return {
-        negativeVocabulary: user.settings.directives.negativeVocabulary,
-        phraseMappings: normalizedMappings,
-        customInstructions: user.settings.directives.customInstructions,
+        directives: {
+          negativeVocabulary: user.settings.directives.negativeVocabulary || [],
+          phraseMappings: normalizedMappings,
+          customInstructions: user.settings.directives.customInstructions || [],
+        },
+        agentConfig: user.settings.agentConfig,
+        sttEngine: user.settings.sttEngine,
         reportTemplates: user.settings.reportTemplates || {},
-        message: 'Supervisor directives successfully updated in user settings.',
+        message: 'User settings successfully updated in MongoDB Single Source of Truth.',
       };
     });
   },

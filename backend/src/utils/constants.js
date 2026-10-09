@@ -220,7 +220,7 @@ export const BRANCH_CONSTANTS = Object.freeze({
  */
 export const AUDIO_CONSTANTS = Object.freeze({
   PURPOSES: ['report_narration', 'chat_voice_input', 'general_memo'],
-  DEFAULT_PURPOSE: 'report_narration',
+  DEFAULT_PURPOSE: 'chat_voice_input',
   STATUSES: ['uploaded', 'transcribing', 'transcribed', 'failed'],
   DEFAULT_STATUS: 'uploaded',
   MAX_FILE_SIZE_BYTES: 25 * 1024 * 1024, // 25MB single file limit

@@ -33,13 +33,15 @@
     "express-validator": "^7.3.2",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
+    "mammoth": "^1.13.0",
     "mongoose": "^9.10.2",
     "mongoose-paginate-v2": "^1.9.5",
     "multer": "^2.4.0",
     "node-cron": "^4.6.0",
     "sharp": "^0.35.4",
     "winston": "^3.19.0",
-    "winston-daily-rotate-file": "^5.0.0"
+    "winston-daily-rotate-file": "^5.0.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "morgan": "^1.12.1",

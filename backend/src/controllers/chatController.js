@@ -17,7 +17,7 @@ import env from '../config/env.js';
 import logger from '../config/logger.js';
 import { Chat } from '../models/Chat.js';
 import { Audio } from '../models/Audio.js';
-import { HTTP_STATUS, CHAT_CONSTANTS, ATTACHMENT_CONSTANTS, AI_MODELS } from '../utils/constants.js';
+import { HTTP_STATUS, CHAT_CONSTANTS, ATTACHMENT_CONSTANTS, AUDIO_CONSTANTS, AI_MODELS } from '../utils/constants.js';
 import { NotFoundError, BadRequestError } from '../errors/CustomError.js';
 import { assembleSystemPrompt } from '../utils/promptAssembler.js';
 import { agentToolDeclarations, executeAgentTool } from '../tools/agentTools.js';
@@ -149,12 +149,12 @@ export const streamChat = asyncHandler(async (req, res) => {
     }
     if (audioTranscriptions.length > 0) {
       partsForPrompt.push(
-        `[Transcribed Audio Notes]:\n${audioTranscriptions.join('\n\n')}`
+        `[Transcribed Audio]:\n${audioTranscriptions.join('\n\n')}`
       );
     }
     if (attachmentTextContext) {
       partsForPrompt.push(
-        `[Attached Document Content]:\n${attachmentTextContext}`
+        `[Attached Document]:\n${attachmentTextContext}`
       );
     }
 
@@ -444,11 +444,11 @@ export const streamChat = asyncHandler(async (req, res) => {
           model: AI_MODELS.DEFAULT,
           contents: [{ text: titlePrompt }],
         });
-        const derivedTitle = (titleRes.text || 'Operational Discussion').trim().slice(0, 100);
+        const derivedTitle = (titleRes.text || 'New Conversation').trim().slice(0, 100);
         chat.title = derivedTitle;
         sendSSE(res, 'title', { title: derivedTitle });
       } catch (titleErr) {
-        chat.title = 'Operational Discussion';
+        chat.title = 'New Conversation';
         sendSSE(res, 'title', { title: chat.title });
       }
     }
@@ -741,6 +741,71 @@ export const deleteChat = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Uploads 1 to 5 voice recordings for conversational chat turn grounding.
+ * Validates cumulative batch size (<=50MB) and persists Audio documents with purpose 'chat_voice_input'.
+ * Executes within a Mongoose transaction session.
+ *
+ * @route POST /api/v1/chat/upload-audio
+ * @access Private
+ */
+export const uploadChatAudios = asyncHandler(async (req, res) => {
+  const files = req.files || [];
+
+  if (files.length === 0) {
+    throw new BadRequestError('At least one audio file is required.');
+  }
+
+  // Validate cumulative batch size cap (50MB)
+  const totalBatchBytes = files.reduce((sum, f) => sum + (f.size || 0), 0);
+  if (totalBatchBytes > AUDIO_CONSTANTS.MAX_BATCH_SIZE_BYTES) {
+    for (const file of files) {
+      try {
+        await fs.promises.unlink(file.path);
+      } catch (_) {}
+    }
+    throw new BadRequestError(
+      `Cumulative audio upload size exceeds the ${AUDIO_CONSTANTS.MAX_BATCH_SIZE_BYTES / (1024 * 1024)}MB batch limit.`
+    );
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    let createdAudios;
+
+    await session.withTransaction(async () => {
+      const audioPayloads = files.map((file) => {
+        let cleanMime = (file.mimetype || '').split(';')[0].trim().toLowerCase();
+        if (cleanMime === 'video/webm' || (file.originalname && file.originalname.toLowerCase().endsWith('.webm'))) {
+          cleanMime = 'audio/webm';
+        }
+        return {
+          user: req.user._id,
+          fileName: file.filename,
+          originalName: file.originalname,
+          mimeType: cleanMime || 'audio/webm',
+          size: file.size,
+          path: file.path.replace(/\\/g, '/'),
+          purpose: 'chat_voice_input',
+          status: 'uploaded',
+        };
+      });
+
+      createdAudios = await Audio.create(audioPayloads, { session });
+    });
+
+    res.status(HTTP_STATUS.CREATED).json({
+      success: true,
+      message: 'Audio files uploaded successfully',
+      data: {
+        audios: createdAudios,
+      },
+    });
+  } finally {
+    await session.endSession();
+  }
+});
+
+/**
  * Uploads 1 to 5 attachments for chat message turns.
  * Validates cumulative batch size (<=50MB) and returns attachment metadata.
  *
@@ -861,5 +926,6 @@ export default {
   renameChat,
   deleteChat,
   uploadChatAttachments,
+  uploadChatAudios,
   transcribeAudio,
 };
