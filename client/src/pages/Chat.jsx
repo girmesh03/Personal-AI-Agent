@@ -29,6 +29,7 @@ import {
   MuiComposerInput,
   MuiComposerTopToolbar,
   MuiComposerBottomToolbar,
+  MuiMessageContent,
 } from '../components/chat/index.js';
 import { ATTACHMENT_CONSTANTS } from '../utils/constants.js';
 
@@ -56,6 +57,8 @@ const FEATURES = Object.freeze({
  * - MuiComposerTopToolbar for horizontal attachment cards preview
  * - MuiComposerBottomToolbar housing attach button (left) and send button (right)
  * - null overrides for default buttons to ensure single ownership
+ * - MuiMessageContent for user message 3-row architecture & assistant delegation
+ * - null overrides for avatar, authorName, and external actions to ensure clean user card layout
  * @constant
  */
 const SLOTS = Object.freeze({
@@ -65,6 +68,10 @@ const SLOTS = Object.freeze({
   composerAttachmentList: MuiComposerTopToolbar,
   composerAttachButton: null,
   composerSendButton: null,
+  messageContent: MuiMessageContent,
+  messageAvatar: null,
+  messageAuthorName: null,
+  messageActions: null,
 });
 
 /**
@@ -106,7 +113,7 @@ const SLOT_PROPS = Object.freeze({
         maxWidth: 850,
         mx: 'auto',
         width: '100%',
-        px: { xs: 1.5, sm: 2 },
+        px: { xs: 0, sm: 2 },
       },
     },
   },
@@ -122,7 +129,6 @@ const CHATBOX_SX = Object.freeze({
   border: 'none',
   borderRadius: 0,
   bgcolor: 'transparent',
-  px: 0.5,
   '& .MuiChatMessage-roleUser .MuiChatMessage-bubble, & .MuiChatMessage-roleUser .MuiChatMessageContent-root, & [data-is-own-message="true"] .MuiChatMessage-bubble': {
     bgcolor: 'background.paper !important',
     color: 'text.primary !important',
@@ -268,7 +274,7 @@ export const Chat = () => {
       key={sessionKey}
       adapter={adapter}
       layoutMode="standard"
-      activeConversationId={chatId || reduxActiveChatId || undefined}
+      activeConversationId={chatId || undefined}
       onActiveConversationChange={handleActiveConversationChange}
       currentUser={currentUser}
       getMessageAuthorId={getMessageAuthorId}

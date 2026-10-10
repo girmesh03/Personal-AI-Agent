@@ -211,6 +211,7 @@ export const sendChatMessageValidation = [
     .trim()
     .notEmpty()
     .withMessage('Attachment path is required.')
+    .customSanitizer((filePath) => (typeof filePath === 'string' ? filePath.replace(/^\/+/, '') : filePath))
     .custom((filePath) => {
       if (typeof filePath === 'string' && (filePath.includes('..') || path.isAbsolute(filePath))) {
         throw new Error('Attachment path must be a safe relative storage path.');

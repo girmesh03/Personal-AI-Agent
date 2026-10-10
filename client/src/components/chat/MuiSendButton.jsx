@@ -107,14 +107,14 @@ export const MuiSendButton = (props) => {
             width: 34,
             height: 34,
             borderRadius: '50%',
-            bgcolor: canSend ? 'primary.main' : 'action.disabledBackground',
-            color: canSend ? 'primary.contrastText' : 'action.disabled',
+            bgcolor: canSend ? 'primary.main !important' : 'action.disabledBackground !important',
+            color: canSend ? 'primary.contrastText !important' : 'action.disabled !important',
             transition: 'none !important',
             cursor: canSend ? 'pointer' : 'not-allowed',
             '&:hover': canSend
               ? {
-                  bgcolor: 'primary.dark',
-                }
+                bgcolor: 'primary.dark !important',
+              }
               : {},
             boxShadow: canSend ? 1 : 0,
             flexShrink: 0,

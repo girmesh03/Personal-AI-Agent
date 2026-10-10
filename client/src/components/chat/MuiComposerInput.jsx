@@ -123,9 +123,9 @@ export const MuiComposerInput = React.forwardRef(function MuiComposerInput(props
       // 2. Only notify store when transitioning between empty and non-empty (to enable/disable Send button)
       if (!hadTextBefore && hasTextNow) {
         hasTextRef.current = true;
-        lastSyncedComposerValueRef.current = ' ';
+        lastSyncedComposerValueRef.current = val;
         if (typeof composer?.setValue === 'function') {
-          composer.setValue(' '); // Non-empty marker toggling Send button
+          composer.setValue(val);
         }
       } else if (hadTextBefore && !hasTextNow) {
         hasTextRef.current = false;
@@ -140,18 +140,19 @@ export const MuiComposerInput = React.forwardRef(function MuiComposerInput(props
     [formOnChange, composer]
   );
 
-  // Enter submission handler with synchronous pre-submit flush
+  // Key down handler: plain Enter creates a newline naturally; Ctrl+Enter or Cmd+Enter submits
   const handleKeyDown = useCallback(
     (e) => {
-      if (
+      const isKeyboardSubmit =
+        (e.ctrlKey || e.metaKey) &&
         e.key === 'Enter' &&
-        !e.shiftKey &&
         !e.nativeEvent.isComposing &&
         !isComposingRef.current &&
         !status?.isStreaming &&
         !composer?.disabled &&
-        !props.disabled
-      ) {
+        !props.disabled;
+
+      if (isKeyboardSubmit) {
         e.preventDefault();
         const currentVal = textareaRef.current?.value || '';
         const hasAttachments = Boolean(composer?.attachments && composer.attachments.length > 0);

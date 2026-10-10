@@ -203,8 +203,69 @@ export class MuiChatAdapter {
         const isUser = msg.role === 'user';
         const textContent =
           msg.text ||
-          (Array.isArray(msg.parts) ? msg.parts[0]?.text : '') ||
+          (Array.isArray(msg.parts) ? msg.parts.find((p) => p.type === 'text')?.text || msg.parts[0]?.text : '') ||
           '';
+
+        const parts = [{ type: 'text', text: textContent }];
+
+        const serverOrigin = this.baseUrl.replace(/\/api\/v1\/?$/, '');
+
+        const attachments = Array.isArray(msg.attachments) ? msg.attachments : [];
+        const hydratedAttachments = [];
+        attachments.forEach((att) => {
+          const cleanPath = att.path ? att.path.replace(/\\/g, '/') : null;
+          const relUrl = att.url || (cleanPath ? (cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`) : null);
+          const fullUrl = relUrl ? (relUrl.startsWith('http') || relUrl.startsWith('blob:') ? relUrl : `${serverOrigin}${relUrl}`) : null;
+
+          const attObj = {
+            id: String(att._id || att.fileName),
+            _id: String(att._id || att.fileName),
+            fileName: att.fileName,
+            filename: att.originalName || att.fileName,
+            name: att.originalName || att.fileName,
+            originalName: att.originalName || att.fileName,
+            mediaType: att.mimeType,
+            mimeType: att.mimeType,
+            size: att.size,
+            path: cleanPath,
+            url: fullUrl,
+          };
+          hydratedAttachments.push(attObj);
+
+          parts.push({
+            type: 'file',
+            ...attObj,
+          });
+        });
+
+        const audios = Array.isArray(msg.audios) ? msg.audios : [];
+        const hydratedAudios = [];
+        audios.forEach((aud) => {
+          const cleanPath = aud.path ? aud.path.replace(/\\/g, '/') : null;
+          const relUrl = aud.url || (cleanPath ? (cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`) : null);
+          const fullUrl = relUrl ? (relUrl.startsWith('http') || relUrl.startsWith('blob:') ? relUrl : `${serverOrigin}${relUrl}`) : null;
+
+          const audObj = {
+            id: String(aud._id || aud.fileName),
+            _id: String(aud._id || aud.fileName),
+            fileName: aud.fileName,
+            filename: aud.originalName || aud.fileName || 'Voice Recording',
+            name: aud.originalName || aud.fileName || 'Voice Recording',
+            originalName: aud.originalName || aud.fileName || 'Voice Recording',
+            mediaType: aud.mimeType || 'audio/webm',
+            mimeType: aud.mimeType || 'audio/webm',
+            size: aud.size,
+            duration: aud.duration,
+            path: cleanPath,
+            url: fullUrl,
+          };
+          hydratedAudios.push(audObj);
+
+          parts.push({
+            type: 'audio',
+            ...audObj,
+          });
+        });
 
         return {
           id: String(msg.id || msg._id),
@@ -221,7 +282,9 @@ export class MuiChatAdapter {
                 role: 'assistant',
                 displayName: 'Operon',
               },
-          parts: [{ type: 'text', text: textContent }],
+          parts,
+          attachments: hydratedAttachments,
+          audios: hydratedAudios,
           createdAt: msg.createdAt
             ? new Date(msg.createdAt).toISOString()
             : new Date().toISOString(),
@@ -278,28 +341,72 @@ export class MuiChatAdapter {
     // 1. Pre-upload file attachments if present (differentiating audio notes vs document/image attachments)
     let uploadedAttachments = [];
     let uploadedAudioIds = [];
-    if (Array.isArray(attachments) && attachments.length > 0) {
+
+    const activeAttachments = [
+      ...(Array.isArray(attachments) ? attachments : []),
+      ...(Array.isArray(message?.attachments) ? message.attachments : []),
+    ];
+
+    if (activeAttachments.length === 0 && Array.isArray(message?.parts)) {
+      message.parts.forEach((p) => {
+        if (p.type === 'file' || p.type === 'audio') {
+          activeAttachments.push({
+            id: p.id,
+            _id: p._id || p.id,
+            fileName: p.filename || p.name || p.fileName,
+            originalName: p.originalName || p.filename || p.name,
+            mimeType: p.mediaType || p.mimeType,
+            size: p.size,
+            path: p.path,
+            url: p.url,
+            file: p.file,
+          });
+        }
+      });
+    }
+
+    if (activeAttachments.length > 0) {
       const audioFiles = [];
       const docFiles = [];
 
-      attachments.forEach((att) => {
+      activeAttachments.forEach((att) => {
         const file = att.file;
-        if (!file) return;
-        const fileType = (file.type || '').toLowerCase();
-        const cleanType = fileType.split(';')[0].trim();
-        const fileName = (file.name || '').toLowerCase();
+        const mime = (att.mimeType || att.type || att.mediaType || (file && file.type) || '').toLowerCase();
+        const cleanType = mime.split(';')[0].trim();
+        const attName = (att.name || att.originalName || att.fileName || (file && file.name) || '').toLowerCase();
 
-        const isAudio =
-          (fileType && (
-            AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(fileType) ||
+        const isAudioItem =
+          (cleanType && (
             AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(cleanType) ||
             cleanType.startsWith('audio/') ||
             cleanType === 'video/webm' ||
             cleanType === 'application/ogg'
           )) ||
-          AUDIO_CONSTANTS.ALLOWED_EXTENSIONS.some((ext) => fileName.endsWith(ext));
+          AUDIO_CONSTANTS.ALLOWED_EXTENSIONS.some((ext) => attName.endsWith(ext));
 
-        if (isAudio) {
+        if (!file) {
+          // Pre-existing uploaded attachment or audio from an earlier turn
+          if (isAudioItem) {
+            const rawId = att._id || att.id;
+            if (rawId && /^[0-9a-fA-F]{24}$/.test(String(rawId))) {
+              uploadedAudioIds.push(String(rawId));
+            }
+          } else if (att.fileName && (att.path || att.url)) {
+            const rawPath = att.path || (att.url && att.url.replace(/^.*\/uploads\//, 'uploads/')) || att.url;
+            const cleanPath = (rawPath ? rawPath.replace(/\\/g, '/').replace(/^.*\/uploads\//, 'uploads/').replace(/^\/+/, '') : '');
+            uploadedAttachments.push({
+              fileName: att.fileName,
+              originalName: att.originalName || att.name || att.fileName,
+              mimeType: att.mimeType || att.type || 'application/octet-stream',
+              size: Number(att.size) || 1,
+              path: cleanPath,
+              url: att.url || (cleanPath ? `/${cleanPath}` : null),
+            });
+          }
+          return;
+        }
+
+        if (isAudioItem) {
           audioFiles.push(file);
         } else {
           docFiles.push(file);
@@ -326,7 +433,8 @@ export class MuiChatAdapter {
         }
         const audioData = await audioRes.json();
         const rawAudios = audioData?.data?.audios || audioData?.audios || [];
-        uploadedAudioIds = rawAudios.map((a) => a._id || a.id).filter(Boolean);
+        const newlyUploadedAudioIds = rawAudios.map((a) => a._id || a.id).filter(Boolean);
+        uploadedAudioIds.push(...newlyUploadedAudioIds);
       }
 
       // 1.2 Upload document and image files to /chat/upload-attachments under field 'attachments' with re-auth protection
@@ -348,20 +456,31 @@ export class MuiChatAdapter {
           throw new Error(errData?.message || `Failed to upload file attachments (${uploadRes.status})`);
         }
         const uploadData = await uploadRes.json();
-        uploadedAttachments = uploadData?.data?.attachments || uploadData?.attachments || [];
+        const newlyUploaded = uploadData?.data?.attachments || uploadData?.attachments || [];
+        uploadedAttachments.push(...newlyUploaded);
       }
     }
 
     const retryTurnIndex =
       typeof message?.retryTurnIndex === 'number'
         ? message.retryTurnIndex
-        : undefined;
+        : (typeof message?.metadata?.retryTurnIndex === 'number'
+          ? message.metadata.retryTurnIndex
+          : undefined);
+
+    const editTurnIndex =
+      typeof message?.editTurnIndex === 'number'
+        ? message.editTurnIndex
+        : (typeof message?.metadata?.editTurnIndex === 'number'
+          ? message.metadata.editTurnIndex
+          : undefined);
 
     const payload = {
       id: message?.id,
       text: userText,
       chatId: targetChatId,
       retryTurnIndex,
+      editTurnIndex,
       model:
         (typeof this.getModel === 'function' ? this.getModel() : undefined) ||
         this.activeModel,
@@ -475,8 +594,6 @@ export class MuiChatAdapter {
                   if (!conversationId && typeof window !== 'undefined' && window.history?.replaceState) {
                     window.history.replaceState(null, '', `/chat/${data.chatId}`);
                   }
-                  // Synchronize active conversation ID with Redux store
-                  adapterInstance.dispatch?.(setActiveChatId(data.chatId));
                   // Invalidate recent chats list immediately so sidebar reflects the new session in real time
                   adapterInstance.dispatch?.(
                     apiSlice.util.invalidateTags([{ type: 'Chat', id: 'LIST' }])
@@ -562,6 +679,10 @@ export class MuiChatAdapter {
                     messageId: assistantMessageId,
                   });
 
+                  if (adapterInstance.currentChatId) {
+                    adapterInstance.dispatch?.(setActiveChatId(adapterInstance.currentChatId));
+                  }
+
                   adapterInstance.dispatch?.(
                     apiSlice.util.invalidateTags([
                       { type: 'Chat', id: 'LIST' },
@@ -609,6 +730,9 @@ export class MuiChatAdapter {
                     messageId: assistantMessageId,
                     finishReason: data.reason || 'error',
                   });
+                  if (adapterInstance.currentChatId) {
+                    adapterInstance.dispatch?.(setActiveChatId(adapterInstance.currentChatId));
+                  }
                   controller.close();
                   adapterInstance.onError?.({
                     message: data.message || 'Streaming failed.',

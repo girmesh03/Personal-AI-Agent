@@ -50,8 +50,6 @@ export const streamChat = asyncHandler(async (req, res) => {
   const b = req.validated?.body || req.body || {};
   const requestedChatId = req.validated?.params?.chatId || req.params.chatId || b.chatId;
 
-  console.log('b', b)
-
   // 1. Resolve or initialize Chat document
   let chat;
   if (requestedChatId) {
@@ -99,8 +97,6 @@ export const streamChat = asyncHandler(async (req, res) => {
     chat.config.language = b.language;
   }
 
-    console.log('chat', chat)
-
   // 2. Setup Server-Sent Events (SSE) Stream Headers
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -143,8 +139,6 @@ export const streamChat = asyncHandler(async (req, res) => {
       }
     }
 
-      console.log('audioTranscriptions', audioTranscriptions)
-
     // 4. Attachment Ingestion & Grounding (Pillar 1 / Composites)
     let attachmentTextContext = '';
     let inlineParts = [];
@@ -171,8 +165,6 @@ export const streamChat = asyncHandler(async (req, res) => {
     }
 
     const compiledUserMessageText = partsForPrompt.join('\n\n');
-
-      console.log('compiledUserMessageText', compiledUserMessageText)
 
     // 6. Handle Linear Pruning for Message Edits or Retries
     const isRetry = typeof b.retryTurnIndex === 'number' && b.retryTurnIndex >= 0;
@@ -206,7 +198,7 @@ export const streamChat = asyncHandler(async (req, res) => {
       userTurn = {
         id: b.id || new mongoose.Types.ObjectId().toString(),
         role: 'user',
-        text: b.text || compiledUserMessageText,
+        text: (b.text && typeof b.text === 'string') ? b.text.trim() : '',
         audios: Array.isArray(b.audios) ? b.audios : [],
         attachments: Array.isArray(b.attachments) ? b.attachments : [],
         createdAt: new Date(),
@@ -221,9 +213,6 @@ export const streamChat = asyncHandler(async (req, res) => {
       title: chat.title || 'New Chat',
     });
 
-    console.log('userTurn', userTurn)
-    console.log('chat', chat)
-
     // 8. Assemble Dynamic 6-Block System Prompt
     const systemPrompt = await assembleSystemPrompt({
       user: req.user,
@@ -237,14 +226,24 @@ export const streamChat = asyncHandler(async (req, res) => {
     for (let i = 0; i < chat.messages.length - 1; i++) {
       const msg = chat.messages[i];
       if (msg.role === 'user') {
+        let userText = (msg.text || '').trim();
+        if (!userText) {
+          if (Array.isArray(msg.attachments) && msg.attachments.length > 0) {
+            userText = `[User sent attachments: ${msg.attachments.map((a) => a.name || a.originalName || a.fileName || 'file').join(', ')}]`;
+          } else if (Array.isArray(msg.audios) && msg.audios.length > 0) {
+            userText = '[User sent audio message]';
+          } else {
+            userText = '(empty message)';
+          }
+        }
         geminiContents.push({
           role: 'user',
-          parts: [{ text: msg.text || '' }],
+          parts: [{ text: userText }],
         });
       } else if (msg.role === 'assistant') {
         geminiContents.push({
           role: 'model',
-          parts: [{ text: msg.text || '' }],
+          parts: [{ text: msg.text || '(empty response)' }],
         });
       }
     }
@@ -252,7 +251,12 @@ export const streamChat = asyncHandler(async (req, res) => {
     // Append latest user turn with inline multimodal parts if any
     const latestUserMsg = chat.messages[chat.messages.length - 1];
     const latestUserText = (compiledUserMessageText || latestUserMsg?.text || '').trim();
-    const latestUserParts = [{ text: latestUserText }];
+    const latestUserParts = [];
+    if (latestUserText) {
+      latestUserParts.push({ text: latestUserText });
+    } else if (inlineParts.length === 0) {
+      latestUserParts.push({ text: '(empty message)' });
+    }
     if (inlineParts.length > 0) {
       latestUserParts.push(...inlineParts);
     }

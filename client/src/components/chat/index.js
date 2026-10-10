@@ -13,3 +13,8 @@ export { default as MuiComposerTopToolbar } from './MuiComposerTopToolbar.jsx';
 export { default as MuiComposerBottomToolbar } from './MuiComposerBottomToolbar.jsx';
 export { default as MuiAudioRecorder } from './MuiAudioRecorder.jsx';
 export { default as MuiModelSelector } from './MuiModelSelector.jsx';
+export { default as MuiUserMessage } from './MuiUserMessage.jsx';
+export { default as MuiUserAttachmentShelf } from './MuiUserAttachmentShelf.jsx';
+export { default as MuiUserMessageBody } from './MuiUserMessageBody.jsx';
+export { default as MuiUserMessageBottomBar } from './MuiUserMessageBottomBar.jsx';
+export { default as MuiMessageContent } from './MuiMessageContent.jsx';
