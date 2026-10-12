@@ -14,7 +14,7 @@ import { Report } from '../models/Report.js';
 import { User } from '../models/User.js';
 import { Audio } from '../models/Audio.js';
 import { REPORT_CONSTANTS, BRANCH_CONSTANTS, CHAT_CONSTANTS, AI_MODELS } from '../utils/constants.js';
-import { toEthiopianDateString } from '../utils/ethiopianCalendar.js';
+import { toEthiopianDateString, toGregorianDate } from '../utils/ethiopianCalendar.js';
 import { isValidObjectId, validateReportPayload } from '../validations/reportValidation.js';
 import { createReportRecord } from '../controllers/reportController.js';
 import {
@@ -327,7 +327,7 @@ export const agentToolDeclarations = [
       properties: {
         date: {
           type: Type.STRING,
-          description: 'ISO date string of the inspection date (YYYY-MM-DD or full ISO).',
+          description: 'Inspection date. Either a valid ISO date string (YYYY-MM-DD) or Ethiopian calendar date (DD-MM-YY or DD/MM/YYYY). Must be today or a past date, never in the future.',
         },
         clockIn: {
           type: Type.STRING,
@@ -344,7 +344,7 @@ export const agentToolDeclarations = [
             properties: {
               branch: {
                 type: Type.STRING,
-                description: '24-character hexadecimal MongoDB ObjectId of the visited branch.',
+                description: 'MongoDB ObjectId, operational branch code (e.g. BOLE-01), or exact registered branch name of the visited branch. Must correspond to an active registered branch in <branch_registry>. Never forge an arbitrary ID for an unregistered branch.',
               },
               clockIn: {
                 type: Type.STRING,
@@ -1284,15 +1284,57 @@ export const toolHandlers = {
   create_report: async ({ args, userId, session = null }) => {
     const normalizedArgs = { ...args };
 
+    // Normalize date: support ISO strings or Ethiopian date strings (DD-MM-YY, DD/MM/YYYY, etc.)
+    if (normalizedArgs.date && typeof normalizedArgs.date === 'string') {
+      const ethMatch = normalizedArgs.date.trim().match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/);
+      if (ethMatch) {
+        const day = parseInt(ethMatch[1], 10);
+        const month = parseInt(ethMatch[2], 10);
+        let year = parseInt(ethMatch[3], 10);
+        if (year < 100) year += 2000;
+        if (year >= 2000 && year <= 2100 && month >= 1 && month <= 13 && day >= 1 && day <= 30) {
+          const gregDate = toGregorianDate(year, month, day);
+          normalizedArgs.date = gregDate.toISOString().split('T')[0];
+        }
+      } else {
+        const candidate = new Date(normalizedArgs.date);
+        const now = new Date();
+        const maxAllowed = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        if (!isNaN(candidate.getTime()) && candidate > maxAllowed) {
+          const candDay = candidate.getUTCDate();
+          const prevMonthDate = new Date(candidate);
+          prevMonthDate.setUTCMonth(candidate.getUTCMonth() - 1);
+          if (prevMonthDate <= maxAllowed && prevMonthDate.getUTCDate() === candDay) {
+            normalizedArgs.date = prevMonthDate.toISOString().split('T')[0];
+          } else {
+            normalizedArgs.date = now.toISOString().split('T')[0];
+          }
+        }
+      }
+    }
+
     // Resolve branch identifiers if passed as codes or names
     if (Array.isArray(normalizedArgs.visits)) {
       normalizedArgs.visits = await Promise.all(
         normalizedArgs.visits.map(async (v) => {
           let branchId = v.branch || v.branchId;
-          if (branchId && !isValidObjectId(String(branchId))) {
+          if (branchId) {
             const resolved = await resolveBranchObjectIds([branchId], userId, session);
             if (resolved.length > 0) {
               branchId = resolved[0].toString();
+            } else if (isValidObjectId(String(branchId))) {
+              const exists = await Branch.findOne({ _id: branchId, user: userId })
+                .session(session || null)
+                .lean();
+              if (!exists) {
+                throw new ValidationError(
+                  `Branch identifier "${branchId}" does not exist in your registered branches. Please invoke create_branch to register it first.`
+                );
+              }
+            } else {
+              throw new ValidationError(
+                `Branch "${branchId}" is not registered in your active branches. Please invoke create_branch to register it first or ask the supervisor to clarify.`
+              );
             }
           }
           return {

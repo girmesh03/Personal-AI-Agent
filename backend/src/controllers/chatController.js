@@ -115,43 +115,164 @@ export const streamChat = asyncHandler(async (req, res) => {
   });
 
   try {
-    // 3. Audio Ingestion & Transcription (Pillar 2 / Composites)
+    // 3. Modality Ingestion & Preparation
     const audioTranscriptions = [];
-    if (Array.isArray(b.audios) && b.audios.length > 0) {
-      for (const audioId of b.audios) {
+    let attachmentTextContext = '';
+    let inlineParts = [];
+
+    // 4. Handle Turn Type: Retry vs Edit vs Fresh Send
+    const isRetry =
+      b.isRetry === true ||
+      b.isRetry === 'true' ||
+      (typeof b.retryTurnIndex === 'number' && b.retryTurnIndex >= 0);
+    const isEdit = typeof b.editTurnIndex === 'number' && b.editTurnIndex >= 0;
+
+    let userTurn = null;
+
+    if (isRetry) {
+      // RETRY CONTRACT: Never create a new user turn.
+      // Re-hydrate multi-modal context strictly from the persisted database record!
+      let anchorIdx = -1;
+      if (b.anchorUserMessageId) {
+        anchorIdx = chat.messages.findIndex(
+          (m) =>
+            String(m.id) === String(b.anchorUserMessageId) ||
+            String(m._id) === String(b.anchorUserMessageId)
+        );
+      }
+
+      if (anchorIdx === -1 && typeof b.retryTurnIndex === 'number' && b.retryTurnIndex > 0) {
+        // b.retryTurnIndex is 1-based assistant index in linear history (user message is at retryTurnIndex - 1)
+        const candidateIdx = b.retryTurnIndex - 1;
+        if (candidateIdx >= 0 && candidateIdx < chat.messages.length && chat.messages[candidateIdx].role === 'user') {
+          anchorIdx = candidateIdx;
+        }
+      }
+
+      if (anchorIdx === -1) {
+        // Fallback: If last message is assistant (the one being regenerated), prune it
+        const lastMsg = chat.messages[chat.messages.length - 1];
+        if (lastMsg && lastMsg.role === 'assistant') {
+          chat.messages.pop();
+        }
+        // Anchor user turn is now the latest user message in history
+        anchorIdx = chat.messages.findLastIndex((m) => m.role === 'user');
+      } else {
+        // Prune any assistant turns after the anchor user message
+        chat.messages = chat.messages.slice(0, anchorIdx + 1);
+      }
+
+      if (anchorIdx >= 0 && chat.messages[anchorIdx] && chat.messages[anchorIdx].role === 'user') {
+        userTurn = chat.messages[anchorIdx];
+      } else {
+        logger.warn(`[chatController] Could not find valid user turn for retry in chat: ${chat._id}`);
+        throw new BadRequestError('Cannot retry: corresponding user message not found in conversation.');
+      }
+
+      // Re-hydrate audio recordings from MongoDB
+      if (Array.isArray(userTurn.audios) && userTurn.audios.length > 0) {
         try {
-          const audioDoc = await Audio.findOne({ _id: audioId, user: req.user._id });
-          if (audioDoc) {
+          sendSSE(res, 'status', {
+            stage: 'transcribing',
+            message: 'Transcribing audio note with Addis AI...',
+          });
+          const existingAudios = await Audio.find({ _id: { $in: userTurn.audios }, user: req.user._id });
+          for (const audioDoc of existingAudios) {
             if (!audioDoc.transcription || audioDoc.status !== 'transcribed') {
               const updated = await transcribeAudioDocument(audioDoc._id, {
                 sttEngine: req.user.settings?.sttEngine,
               });
-              if (updated.transcription && updated.transcription.trim()) {
+              if (updated?.transcription && updated.transcription.trim()) {
                 audioTranscriptions.push(updated.transcription.trim());
               }
             } else if (audioDoc.transcription && audioDoc.transcription.trim()) {
               audioTranscriptions.push(audioDoc.transcription.trim());
             }
           }
-        } catch (audioErr) {
-          logger.warn(`[chatController] Failed to transcribe audio ${audioId}: ${audioErr.message}`);
+        } catch (audioHydrateErr) {
+          logger.warn(`[chatController] Failed to re-hydrate audio transcriptions: ${audioHydrateErr.message}`);
         }
       }
+
+      // Re-hydrate file attachments from verified disk files
+      if (Array.isArray(userTurn.attachments) && userTurn.attachments.length > 0) {
+        try {
+          sendSSE(res, 'status', {
+            stage: 'processing_attachments',
+            message: 'Extracting document text...',
+          });
+          const attResult = await processAttachments(userTurn.attachments);
+          if (attResult.textContext) {
+            attachmentTextContext = attResult.textContext;
+          }
+          if (Array.isArray(attResult.inlineParts) && attResult.inlineParts.length > 0) {
+            inlineParts.push(...attResult.inlineParts);
+          }
+        } catch (attHydrateErr) {
+          logger.warn(`[chatController] Failed to re-hydrate attachments: ${attHydrateErr.message}`);
+        }
+      }
+    } else {
+      // FRESH SEND OR EDIT: Process incoming live audios and attachments
+      if (Array.isArray(b.audios) && b.audios.length > 0) {
+        sendSSE(res, 'status', {
+          stage: 'transcribing',
+          message: 'Transcribing audio note with Addis AI...',
+        });
+        for (const audioId of b.audios) {
+          try {
+            const audioDoc = await Audio.findOne({ _id: audioId, user: req.user._id });
+            if (audioDoc) {
+              if (!audioDoc.transcription || audioDoc.status !== 'transcribed') {
+                const updated = await transcribeAudioDocument(audioDoc._id, {
+                  sttEngine: req.user.settings?.sttEngine,
+                });
+                if (updated.transcription && updated.transcription.trim()) {
+                  audioTranscriptions.push(updated.transcription.trim());
+                }
+              } else if (audioDoc.transcription && audioDoc.transcription.trim()) {
+                audioTranscriptions.push(audioDoc.transcription.trim());
+              }
+            }
+          } catch (audioErr) {
+            logger.warn(`[chatController] Failed to transcribe audio ${audioId}: ${audioErr.message}`);
+          }
+        }
+      }
+
+      if (Array.isArray(b.attachments) && b.attachments.length > 0) {
+        sendSSE(res, 'status', {
+          stage: 'processing_attachments',
+          message: 'Extracting document text...',
+        });
+        const attResult = await processAttachments(b.attachments);
+        attachmentTextContext = attResult.textContext;
+        inlineParts = attResult.inlineParts;
+      }
+
+      if (isEdit) {
+        chat.messages = chat.messages.slice(0, b.editTurnIndex);
+      }
+
+      userTurn = {
+        id: b.id || new mongoose.Types.ObjectId().toString(),
+        role: 'user',
+        text: (b.text && typeof b.text === 'string') ? b.text.trim() : '',
+        audios: Array.isArray(b.audios) ? b.audios : [],
+        attachments: Array.isArray(b.attachments) ? b.attachments : [],
+        createdAt: new Date(),
+      };
+      chat.messages.push(userTurn);
     }
 
-    // 4. Attachment Ingestion & Grounding (Pillar 1 / Composites)
-    let attachmentTextContext = '';
-    let inlineParts = [];
-    if (Array.isArray(b.attachments) && b.attachments.length > 0) {
-      const attResult = await processAttachments(b.attachments);
-      attachmentTextContext = attResult.textContext;
-      inlineParts = attResult.inlineParts;
-    }
-
-    // 5. Compose the User Prompt
+    // 7. Compose the User Prompt (incorporating live or reloaded multi-modal context)
     const partsForPrompt = [];
-    if (b.text && typeof b.text === 'string' && b.text.trim()) {
-      partsForPrompt.push(b.text.trim());
+    const promptText =
+      (userTurn?.text && typeof userTurn.text === 'string' && userTurn.text.trim()) ||
+      (b.text && typeof b.text === 'string' && b.text.trim()) ||
+      '';
+    if (promptText) {
+      partsForPrompt.push(promptText);
     }
     if (audioTranscriptions.length > 0) {
       partsForPrompt.push(
@@ -166,44 +287,8 @@ export const streamChat = asyncHandler(async (req, res) => {
 
     const compiledUserMessageText = partsForPrompt.join('\n\n');
 
-    // 6. Handle Linear Pruning for Message Edits or Retries
-    const isRetry = typeof b.retryTurnIndex === 'number' && b.retryTurnIndex >= 0;
-    const isEdit = typeof b.editTurnIndex === 'number' && b.editTurnIndex >= 0;
-
-    if (isEdit) {
-      chat.messages = chat.messages.slice(0, b.editTurnIndex);
-    } else if (isRetry) {
-      chat.messages = chat.messages.slice(0, b.retryTurnIndex);
-    }
-
     if (!compiledUserMessageText.trim() && inlineParts.length === 0 && !isRetry) {
       throw new BadRequestError('No speech, text, or valid attachment content detected in message.');
-    }
-
-    const hasNewUserInput =
-      (b.text && typeof b.text === 'string' && b.text.trim().length > 0) ||
-      (Array.isArray(b.audios) && b.audios.length > 0) ||
-      (Array.isArray(b.attachments) && b.attachments.length > 0);
-
-    // 7. Persist User Turn in Chat (or reuse preceding turn if retry without new inputs)
-    let userTurn = null;
-    if (isRetry && !hasNewUserInput) {
-      const lastMsg = chat.messages[chat.messages.length - 1];
-      if (lastMsg && lastMsg.role === 'user') {
-        userTurn = lastMsg;
-      }
-    }
-
-    if (!userTurn) {
-      userTurn = {
-        id: b.id || new mongoose.Types.ObjectId().toString(),
-        role: 'user',
-        text: (b.text && typeof b.text === 'string') ? b.text.trim() : '',
-        audios: Array.isArray(b.audios) ? b.audios : [],
-        attachments: Array.isArray(b.attachments) ? b.attachments : [],
-        createdAt: new Date(),
-      };
-      chat.messages.push(userTurn);
     }
 
     // Persist user turn immediately and emit session event so client locks onto session ID before stream completes
@@ -436,6 +521,10 @@ export const streamChat = asyncHandler(async (req, res) => {
         if (isClientAborted) {
           break;
         }
+        sendSSE(res, 'status', {
+          stage: 'running_tool',
+          message: `Executing ${fc.name}...`,
+        });
         sendSSE(res, 'tool_call', { name: fc.name, args: fc.args });
 
         const session = await mongoose.startSession();
@@ -481,7 +570,7 @@ export const streamChat = asyncHandler(async (req, res) => {
       const assistantTurn = {
         id: new mongoose.Types.ObjectId().toString(),
         role: 'assistant',
-        text: fullText ? `${fullText} [Generation stopped by user]` : '[Generation stopped by user]',
+        text: fullText || '',
         thought: fullThought || null,
         toolCalls: toolsCalled,
         model: activeModel,

@@ -173,8 +173,10 @@ export const MuiUserMessage = ({ messageId }) => {
 
   // Snapshot ref for restoring state on cancel
   const snapshotRef = useRef({ text: initialText, attachments: initialAttachments });
+  const [isModified, setIsModified] = useState(false);
   const contentRef = useRef(null);
   const inputRef = useRef(null);
+  const editContainerRef = useRef(null);
 
   // Measure content scrollHeight in View Mode to determine if auto-collapse clamping applies
   const measureHeight = useCallback(() => {
@@ -198,7 +200,10 @@ export const MuiUserMessage = ({ messageId }) => {
       hasDraftTextRef.current = hasNow;
       setHasDraftText(hasNow);
     }
-  }, []);
+    const textChanged = (val ?? '').trim() !== (snapshotRef.current.text ?? '').trim();
+    const attsChanged = draftAttachments.length !== snapshotRef.current.attachments.length;
+    setIsModified(textChanged || attsChanged);
+  }, [draftAttachments.length]);
 
   const handleStartEdit = useCallback(() => {
     draftTextRef.current = initialText;
@@ -209,6 +214,7 @@ export const MuiUserMessage = ({ messageId }) => {
       text: initialText,
       attachments: [...initialAttachments],
     };
+    setIsModified(false);
     setIsExpanded(true);
     setIsEditing(true);
   }, [initialText, initialAttachments]);
@@ -218,16 +224,40 @@ export const MuiUserMessage = ({ messageId }) => {
     hasDraftTextRef.current = Boolean(snapshotRef.current.text && snapshotRef.current.text.trim());
     setHasDraftText(Boolean(snapshotRef.current.text && snapshotRef.current.text.trim()));
     setDraftAttachments(snapshotRef.current.attachments);
+    setIsModified(false);
     setIsEditing(false);
   }, []);
+
+  // Click-outside listener on edit container to safely auto-collapse back to view mode on blur
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const handleClickOutside = (event) => {
+      if (editContainerRef.current && editContainerRef.current.contains(event.target)) {
+        return;
+      }
+      if (event.target && event.target.tagName === 'INPUT' && event.target.type === 'file') {
+        return;
+      }
+      handleCancelEdit();
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [isEditing, handleCancelEdit]);
 
   const handleToggleExpand = useCallback(() => {
     setIsExpanded((prev) => !prev);
   }, []);
 
   const handleRemoveAttachment = useCallback((idToRemove) => {
-    setDraftAttachments((prev) =>
-      prev.filter((att) => {
+    setDraftAttachments((prev) => {
+      const next = prev.filter((att) => {
         const id = att.id || att._id || att.fileName || att.name;
         return (
           id !== idToRemove &&
@@ -235,8 +265,12 @@ export const MuiUserMessage = ({ messageId }) => {
           att._id !== idToRemove &&
           att.fileName !== idToRemove
         );
-      })
-    );
+      });
+      const textChanged = (draftTextRef.current ?? '').trim() !== (snapshotRef.current.text ?? '').trim();
+      const attsChanged = next.length !== snapshotRef.current.attachments.length;
+      setIsModified(textChanged || attsChanged);
+      return next;
+    });
   }, []);
 
   const handleAttachFiles = useCallback((newFiles) => {
@@ -349,20 +383,34 @@ export const MuiUserMessage = ({ messageId }) => {
 
   // 3. RETRY HANDLER FOR FAILED TURNS
   const handleRetry = useCallback(async () => {
+    const currentIds = Array.isArray(messageIds) ? messageIds : store?.state?.messageIds || [];
+    const turnIndex = currentIds.findIndex((id) => String(id) === String(messageId));
+    const nextAssistantId = turnIndex >= 0 && turnIndex + 1 < currentIds.length ? currentIds[turnIndex + 1] : null;
+
+    if (nextAssistantId && actions && typeof actions.regenerate === 'function') {
+      try {
+        await actions.regenerate(nextAssistantId);
+        return;
+      } catch (err) {
+        console.warn('[MuiUserMessage] actions.regenerate fallback to retry:', err);
+      }
+    }
+
     if (actions && typeof actions.retry === 'function') {
       await actions.retry(messageId);
     }
-  }, [actions, messageId]);
+  }, [actions, messageId, messageIds, store]);
 
   if (!message) return null;
 
   const status = message.status || 'idle';
-  const disabledSubmit = !hasDraftText && draftAttachments.length === 0;
+  const disabledSubmit = !isModified || (!hasDraftText && draftAttachments.length === 0);
 
   // 1. EDIT MODE: Unified single outlined editor card ("Keep the UI on edit mode as it is")
   if (isEditing) {
     return (
       <Paper
+        ref={editContainerRef}
         variant="outlined"
         className="MuiUserMessage-root"
         sx={{
@@ -427,6 +475,13 @@ export const MuiUserMessage = ({ messageId }) => {
   // Row 2 (Middle): The ONLY outlined card (only text, with docked [⌵] chevron if clamped)
   // Row 3 (Bottom outside): Action buttons deck or inline error recovery strip
   const hasText = Boolean(initialText && initialText.trim());
+
+  // Defensive Guard for Empty/Ghost User Turns (Case 1):
+  // If a user turn contains neither text nor attachments, it possesses zero conversational payload
+  // and must strictly emit null to prevent rendering orphan floating timestamps and action buttons.
+  if (!hasText && initialAttachments.length === 0) {
+    return null;
+  }
 
   return (
     <Box

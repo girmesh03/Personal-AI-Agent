@@ -284,13 +284,19 @@ export const MuiUserMessageBottomBar = ({
       sx={{
         display: 'flex',
         alignItems: 'center',
-        justifyContent: timeString ? 'space-between' : 'flex-end',
+        justifyContent: 'flex-end',
+        gap: 0.75,
         width: '100%',
         mt: 0.5,
         minHeight: 26,
+        opacity: { xs: 1, sm: 0 },
+        transition: 'opacity 150ms ease',
+        '.MuiUserMessage-root:hover &': {
+          opacity: 1,
+        },
       }}
     >
-      {/* Left: Timestamp / Edited indicator */}
+      {/* Timestamp / Edited indicator */}
       {timeString && (
         <Typography
           variant="caption"
@@ -298,88 +304,36 @@ export const MuiUserMessageBottomBar = ({
             color: 'text.disabled',
             fontSize: '0.6875rem',
             userSelect: 'none',
+            mr: 0.5,
           }}
         >
           {timeString}
         </Typography>
       )}
 
-      {/* Right: Flat action deck (zero background color, transparent icons) */}
+      {/* Flat action deck (zero background color, transparent icons) */}
       <Box
         sx={{
           display: 'flex',
           alignItems: 'center',
-          gap: 0.5,
+          gap: 0.25,
           bgcolor: 'transparent',
         }}
       >
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 0.25,
-            opacity: { xs: 1, sm: 0 },
-            transition: 'opacity 150ms ease',
-            '.MuiUserMessage-root:hover &': {
-              opacity: 1,
-            },
-          }}
-        >
-          {/* Copy button (rendered only when message text is non-empty) */}
-          {Boolean(text && text.trim()) && (
-            <Tooltip title={copied ? 'Copied!' : 'Copy prompt'}>
-              <IconButton
-                size="small"
-                onClick={handleCopy}
-                aria-label="Copy prompt text"
-                sx={{
-                  p: 0.5,
-                  width: 26,
-                  height: 26,
-                  minWidth: 26,
-                  minHeight: 26,
-                  color: copied ? 'success.main' : 'text.secondary',
-                  bgcolor: 'transparent !important',
-                  backgroundColor: 'transparent !important',
-                  boxShadow: 'none !important',
-                  border: 'none !important',
-                  '&:hover': {
-                    color: 'text.primary',
-                    bgcolor: 'transparent !important',
-                    backgroundColor: 'transparent !important',
-                  },
-                  '&:active': {
-                    bgcolor: 'transparent !important',
-                    backgroundColor: 'transparent !important',
-                  },
-                  '&:focus': {
-                    bgcolor: 'transparent !important',
-                    backgroundColor: 'transparent !important',
-                  },
-                }}
-              >
-                {copied ? (
-                  <CheckIcon sx={{ fontSize: 15 }} />
-                ) : (
-                  <ContentCopyIcon sx={{ fontSize: 15 }} />
-                )}
-              </IconButton>
-            </Tooltip>
-          )}
-
-          {/* Edit button */}
-          <Tooltip title="Edit prompt">
+        {/* Copy button (rendered only when message text is non-empty) */}
+        {Boolean(text && text.trim()) && (
+          <Tooltip title={copied ? 'Copied!' : 'Copy prompt'}>
             <IconButton
               size="small"
-              onClick={onStartEdit}
-              aria-label="Edit prompt text"
+              onClick={handleCopy}
+              aria-label="Copy prompt text"
               sx={{
                 p: 0.5,
                 width: 26,
                 height: 26,
                 minWidth: 26,
                 minHeight: 26,
-                color: 'text.secondary',
+                color: copied ? 'success.main' : 'text.secondary',
                 bgcolor: 'transparent !important',
                 backgroundColor: 'transparent !important',
                 boxShadow: 'none !important',
@@ -399,10 +353,50 @@ export const MuiUserMessageBottomBar = ({
                 },
               }}
             >
-              <EditOutlinedIcon sx={{ fontSize: 15 }} />
+              {copied ? (
+                <CheckIcon sx={{ fontSize: 15 }} />
+              ) : (
+                <ContentCopyIcon sx={{ fontSize: 15 }} />
+              )}
             </IconButton>
           </Tooltip>
-        </Box>
+        )}
+
+        {/* Edit button */}
+        <Tooltip title="Edit prompt">
+          <IconButton
+            size="small"
+            onClick={onStartEdit}
+            aria-label="Edit prompt text"
+            sx={{
+              p: 0.5,
+              width: 26,
+              height: 26,
+              minWidth: 26,
+              minHeight: 26,
+              color: 'text.secondary',
+              bgcolor: 'transparent !important',
+              backgroundColor: 'transparent !important',
+              boxShadow: 'none !important',
+              border: 'none !important',
+              '&:hover': {
+                color: 'text.primary',
+                bgcolor: 'transparent !important',
+                backgroundColor: 'transparent !important',
+              },
+              '&:active': {
+                bgcolor: 'transparent !important',
+                backgroundColor: 'transparent !important',
+              },
+              '&:focus': {
+                bgcolor: 'transparent !important',
+                backgroundColor: 'transparent !important',
+              },
+            }}
+          >
+            <EditOutlinedIcon sx={{ fontSize: 15 }} />
+          </IconButton>
+        </Tooltip>
       </Box>
     </Box>
   );

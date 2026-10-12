@@ -77,7 +77,7 @@ export const getChatByIdValidation = [
  * @type {import('express-validator').ValidationChain[]}
  */
 export const sendChatMessageValidation = [
-  // Multi-modal turn invariant: at least one of text, audios, attachments, or retryTurnIndex must be provided
+  // Multi-modal turn invariant: at least one of text, audios, attachments, or retryTurnIndex/isRetry must be provided
   body().custom((_, { req }) => {
     const b = req?.body || {};
     const hasText =
@@ -87,7 +87,10 @@ export const sendChatMessageValidation = [
     const hasAudios = Array.isArray(b.audios) && b.audios.length > 0;
     const hasAttachments =
       Array.isArray(b.attachments) && b.attachments.length > 0;
-    const hasRetry = b.retryTurnIndex !== undefined && b.retryTurnIndex !== null;
+    const hasRetry =
+      (b.retryTurnIndex !== undefined && b.retryTurnIndex !== null) ||
+      b.isRetry === true ||
+      b.isRetry === 'true';
 
     if (!hasText && !hasAudios && !hasAttachments && !hasRetry) {
       throw new Error(
@@ -143,6 +146,21 @@ export const sendChatMessageValidation = [
     .isInt({ min: 0 })
     .withMessage('retryTurnIndex must be a non-negative integer.')
     .toInt(),
+
+  body('isRetry')
+    .optional()
+    .isBoolean()
+    .toBoolean(),
+
+  body('anchorUserMessageId')
+    .optional()
+    .trim()
+    .isString(),
+
+  body('targetAssistantMessageId')
+    .optional()
+    .trim()
+    .isString(),
 
   body('text')
     .optional({ nullable: true })

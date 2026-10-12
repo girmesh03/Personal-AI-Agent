@@ -32,6 +32,7 @@ const initialState = {
   sttEngine: CHAT_CONSTANTS.DEFAULT_STT_ENGINE,
   isStreaming: false,
   streamingStatus: 'idle',
+  pipelineStatus: '',
 };
 
 /**
@@ -140,6 +141,15 @@ export const chatSlice = createSlice({
     },
 
     /**
+     * Sets real-time dynamic pipeline status string for multi-modal ingestion and tool execution.
+     * @param {object} state - Current slice state.
+     * @param {{ payload: string }} action - Pipeline status string.
+     */
+    setPipelineStatus: (state, action) => {
+      state.pipelineStatus = action.payload || '';
+    },
+
+    /**
      * Resets canvas UI state to pristine defaults.
      * @param {object} state - Current slice state.
      */
@@ -147,6 +157,7 @@ export const chatSlice = createSlice({
       state.activeChatId = null;
       state.isStreaming = false;
       state.streamingStatus = 'idle';
+      state.pipelineStatus = '';
     },
   },
 });
@@ -161,6 +172,7 @@ export const {
   setSttEngine,
   setIsStreaming,
   setStreamingStatus,
+  setPipelineStatus,
   resetChatUiState,
 } = chatSlice.actions;
 
@@ -176,6 +188,7 @@ export const selectSttEngine = (state) =>
   state.chat?.sttEngine ?? CHAT_CONSTANTS.DEFAULT_STT_ENGINE;
 export const selectIsStreaming = (state) => state.chat?.isStreaming ?? false;
 export const selectStreamingStatus = (state) => state.chat?.streamingStatus ?? 'idle';
+export const selectPipelineStatus = (state) => state.chat?.pipelineStatus ?? '';
 
 /**
  * Chat API endpoints injected into central RTK Query apiSlice.

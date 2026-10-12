@@ -129,20 +129,41 @@ const CHATBOX_SX = Object.freeze({
   border: 'none',
   borderRadius: 0,
   bgcolor: 'transparent',
+  '& .MuiChatMessage-root': {
+    px: { xs: 1, sm: 2 },
+  },
   '& .MuiChatMessage-roleUser .MuiChatMessage-bubble, & .MuiChatMessage-roleUser .MuiChatMessageContent-root, & [data-is-own-message="true"] .MuiChatMessage-bubble': {
-    bgcolor: 'background.paper !important',
+    bgcolor: 'transparent !important',
     color: 'text.primary !important',
-    border: '1px solid',
-    borderColor: 'divider',
+    border: 'none !important',
   },
   '& .MuiChatMessage-roleAssistant .MuiChatMessage-bubble, & .MuiChatMessage-roleAssistant .MuiChatMessageContent-root': {
-    bgcolor: 'background.paper !important',
+    bgcolor: 'transparent !important',
     color: 'text.primary !important',
-    border: '1px solid',
-    borderColor: 'divider',
+    border: 'none !important',
   },
   '& .MuiChatMessage-roleUser .MuiChatMessageMeta-root, & [data-is-own-message="true"] .MuiChatMessageMeta-root': {
     color: 'text.secondary !important',
+  },
+  '& .MuiChatStreamingIndicator-bubble, & [class*="MuiChatStreamingIndicator-bubble"]': {
+    bgcolor: 'transparent !important',
+    backgroundColor: 'transparent !important',
+    boxShadow: 'none !important',
+    border: 'none !important',
+    padding: '0 !important',
+  },
+  '& .MuiChatStreamingIndicator-root, & [class*="MuiChatStreamingIndicator-root"]': {
+    bgcolor: 'transparent !important',
+    backgroundColor: 'transparent !important',
+    boxShadow: 'none !important',
+    border: 'none !important',
+  },
+  '& .MuiChatTypingIndicator-root, & [class*="MuiChatTypingIndicator-root"]': {
+    bgcolor: 'transparent !important',
+    backgroundColor: 'transparent !important',
+    boxShadow: 'none !important',
+    border: 'none !important',
+    padding: '0 !important',
   },
 });
 

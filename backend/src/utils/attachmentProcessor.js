@@ -21,7 +21,10 @@ const XLSX = xlsxModule.default || xlsxModule;
  * @returns {string} Absolute normalized file path.
  */
 function resolveFilePath(rawPath) {
-  if (!rawPath) return '';
+  if (!rawPath || typeof rawPath !== 'string') return '';
+  if (rawPath.startsWith('blob:') || rawPath.startsWith('http://') || rawPath.startsWith('https://')) {
+    return '';
+  }
   if (path.isAbsolute(rawPath)) return rawPath;
   const direct = path.resolve(process.cwd(), rawPath);
   if (fs.existsSync(direct)) return direct;
@@ -43,8 +46,20 @@ function resolveFilePath(rawPath) {
  * @returns {Promise<{ type: 'text'|'inline', content?: string, inlinePart?: object }>}
  */
 export async function processAttachment(attachment) {
-  const filePath = resolveFilePath(attachment.path || attachment.fileName);
-  if (!fs.existsSync(filePath)) {
+  const rawPath = attachment.path || attachment.fileName;
+  if (
+    !rawPath ||
+    typeof rawPath !== 'string' ||
+    rawPath.startsWith('blob:') ||
+    rawPath.startsWith('http://') ||
+    rawPath.startsWith('https://')
+  ) {
+    logger.warn(`[attachmentProcessor] Skipping invalid or non-disk attachment path: ${rawPath}`);
+    return { type: 'text', content: '' };
+  }
+
+  const filePath = resolveFilePath(rawPath);
+  if (!filePath || !fs.existsSync(filePath)) {
     logger.warn(`[attachmentProcessor] Attachment file not found on disk: ${filePath}`);
     return { type: 'text', content: '' };
   }

@@ -9,7 +9,7 @@
 import PropTypes from 'prop-types';
 import Box from '@mui/material/Box';
 import { useMessageContext } from '@mui/x-chat-headless';
-import { ChatMessageContent } from '@mui/x-chat';
+import MuiAgentMessage from './MuiAgentMessage.jsx';
 import MuiUserMessage from './MuiUserMessage.jsx';
 
 /**
@@ -19,7 +19,7 @@ import MuiUserMessage from './MuiUserMessage.jsx';
  * @param {object} props - Props forwarded by MUI X Chat.
  * @returns {import('react').JSX.Element} Rendered user or assistant message content.
  */
-export const MuiMessageContent = (props) => {
+export const MuiMessageContent = () => {
   const context = useMessageContext();
   const isUser = context.role === 'user' || context.isOwnMessage === true;
 
@@ -40,8 +40,20 @@ export const MuiMessageContent = (props) => {
     );
   }
 
-  // Assistant messages delegate to standard ChatMessageContent until Task 8.11
-  return <ChatMessageContent {...props} />;
+  return (
+    <Box
+      sx={{
+        gridArea: 'content',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        width: '100%',
+        minWidth: 0,
+      }}
+    >
+      <MuiAgentMessage messageId={context.messageId} />
+    </Box>
+  );
 };
 
 MuiMessageContent.propTypes = {

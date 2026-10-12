@@ -433,7 +433,7 @@ const runChatSuite = async () => {
     console.log('\n[8/16] Testing Multi-Modal Turn with transcription-sample-1.txt (Quadrant 2 Report Synthesis)');
     const reportSseRes = await postmanSSEStream('/chat/stream', {
       body: {
-        text: 'እባክህ ከዚህ የተያያዘ ፋይል የዕለቱን የስራ እንቅስቃሴ ሪፖርት አዘጋጅተህ መዝግብልኝ።',
+        text: 'እባክህ ከዚህ የተያያዘ ፋይል የዕለቱን የስራ እንቅስቃሴ ሪፖርት ለብስራተ ገብርኤል ቅርንጫፍ አዘጋጅተህ በcreate_report መዝግብልኝ።',
         attachments: [
           {
             fileName: 'transcription-sample-1.txt',

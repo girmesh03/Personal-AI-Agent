@@ -439,6 +439,18 @@ export const CHAT_CONSTANTS = Object.freeze({
   PAGE_LIMIT_MAX: 100,
 });
 
+/**
+ * Centralized Chat Pagination governance constants.
+ * Eliminates all hardcoded limit numbers from controllers, queries, and adapters.
+ * @constant
+ */
+export const CHAT_PAGINATION = Object.freeze({
+  DEFAULT_MESSAGES_LIMIT: 30,
+  MAX_MESSAGES_LIMIT: 100,
+  DEFAULT_RECENT_CHATS_LIMIT: 20,
+  MAX_RECENT_CHATS_LIMIT: 50,
+});
+
 export default {
   HTTP_STATUS,
   PASSWORD_REGEX,
@@ -456,6 +468,7 @@ export default {
   BRANCH_CONSTANTS,
   REPORT_CONSTANTS,
   CHAT_CONSTANTS,
+  CHAT_PAGINATION,
   AUDIO_CONSTANTS,
   ATTACHMENT_CONSTANTS,
   AVATAR_CONSTANTS,

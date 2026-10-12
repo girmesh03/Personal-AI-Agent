@@ -18,3 +18,11 @@ export { default as MuiUserAttachmentShelf } from './MuiUserAttachmentShelf.jsx'
 export { default as MuiUserMessageBody } from './MuiUserMessageBody.jsx';
 export { default as MuiUserMessageBottomBar } from './MuiUserMessageBottomBar.jsx';
 export { default as MuiMessageContent } from './MuiMessageContent.jsx';
+export { default as MuiReasoningAccordion } from './MuiReasoningAccordion.jsx';
+export { default as MuiToolCallPart } from './MuiToolCallPart.jsx';
+export { default as MuiAgentMessageBody } from './MuiAgentMessageBody.jsx';
+export { default as MuiAgentMessageBottomBar } from './MuiAgentMessageBottomBar.jsx';
+export { default as MuiErrorNotice } from './MuiErrorNotice.jsx';
+export { default as MuiAgentMessage } from './MuiAgentMessage.jsx';
+export { default as MuiAgentExecutionTimeline } from './MuiAgentExecutionTimeline.jsx';
+

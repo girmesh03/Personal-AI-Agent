@@ -9,8 +9,8 @@
 
 import { apiSlice } from '../redux/app/apiSlice.js';
 import { executeWithReauth } from '../redux/app/authClient.js';
-import { chatApi, setActiveChatId } from '../redux/features/chatSlice.js';
-import { AUDIO_CONSTANTS } from '../utils/constants.js';
+import { chatApi, setActiveChatId, setPipelineStatus } from '../redux/features/chatSlice.js';
+import { AUDIO_CONSTANTS, CHAT_PAGINATION } from '../utils/constants.js';
 
 /**
  * Default API base URL from client environment configuration.
@@ -144,7 +144,7 @@ export class MuiChatAdapter {
       const page = input.cursor ? parseInt(input.cursor, 10) : 1;
       const result = await this.dispatch(
         chatApi.endpoints.getChats.initiate(
-          { page, limit: 50, search: input.query },
+          { page, limit: CHAT_PAGINATION.RECENT_CHATS_PAGE_SIZE, search: input.query },
           { forceRefetch: true }
         )
       ).unwrap();
@@ -188,25 +188,62 @@ export class MuiChatAdapter {
     try {
       const result = await this.dispatch(
         chatApi.endpoints.getChatById.initiate(
-          { chatId: conversationId, limit: 50, before: cursor },
+          { chatId: conversationId, limit: CHAT_PAGINATION.MESSAGES_PAGE_SIZE, before: cursor },
           { forceRefetch: Boolean(cursor) }
         )
       ).unwrap();
 
-      const rawMessages =
+      const rawMessages = (
         result?.chat?.messages ||
         result?.data?.chat?.messages ||
         result?.messages ||
-        [];
+        []
+      ).filter(
+        (msg) =>
+          msg.role !== 'user' ||
+          (msg.text && typeof msg.text === 'string' && msg.text.trim()) ||
+          (Array.isArray(msg.attachments) && msg.attachments.length > 0) ||
+          (Array.isArray(msg.audios) && msg.audios.length > 0)
+      );
 
       const formatted = rawMessages.map((msg) => {
         const isUser = msg.role === 'user';
+        const parts = [];
+
+        // For assistant turns: hydrate persisted thoughts and tool executions
+        if (!isUser) {
+          if (msg.thought && typeof msg.thought === 'string' && msg.thought.trim()) {
+            parts.push({
+              type: 'reasoning',
+              text: msg.thought.trim(),
+              state: 'done',
+            });
+          }
+
+          if (Array.isArray(msg.toolCalls) && msg.toolCalls.length > 0) {
+            msg.toolCalls.forEach((tc, idx) => {
+              parts.push({
+                type: 'tool',
+                toolInvocation: {
+                  toolCallId: tc.id || `hist-tc-${idx}`,
+                  toolName: tc.name || 'tool',
+                  state: 'output-available',
+                  input: tc.args || {},
+                  output: tc.result !== undefined ? tc.result : null,
+                },
+              });
+            });
+          }
+        }
+
         const textContent =
           msg.text ||
           (Array.isArray(msg.parts) ? msg.parts.find((p) => p.type === 'text')?.text || msg.parts[0]?.text : '') ||
           '';
 
-        const parts = [{ type: 'text', text: textContent }];
+        if (textContent || parts.length === 0) {
+          parts.push({ type: 'text', text: textContent });
+        }
 
         const serverOrigin = this.baseUrl.replace(/\/api\/v1\/?$/, '');
 
@@ -285,6 +322,12 @@ export class MuiChatAdapter {
           parts,
           attachments: hydratedAttachments,
           audios: hydratedAudios,
+          metadata: {
+            model: msg.model || null,
+            usage: msg.usage || null,
+            isStopped: Boolean(msg.isStopped),
+            thoughtDuration: msg.thoughtDuration || null,
+          },
           createdAt: msg.createdAt
             ? new Date(msg.createdAt).toISOString()
             : new Date().toISOString(),
@@ -313,17 +356,62 @@ export class MuiChatAdapter {
   }
 
   /**
+   * Transport refinement for assistant message regeneration.
+   * Called natively by @mui/x-chat-headless actions.regenerate(messageId).
+   * Re-runs the anchor user message through the SSE stream with retryTurnIndex,
+   * completely avoiding the creation of phantom user turns.
+   *
+   * @async
+   * @param {object} input
+   * @param {string} [input.conversationId] - Active conversation ID.
+   * @param {string} input.messageId - Assistant message ID being regenerated.
+   * @param {object} input.message - Anchor user message.
+   * @param {Array<object>} [input.messages] - Active message list in store.
+   * @param {AbortSignal} [input.signal] - Abort signal.
+   * @returns {Promise<ReadableStream>}
+   */
+  async regenerate({ conversationId, messageId, message, messages, signal }) {
+    const anchorIndex = Array.isArray(messages)
+      ? messages.findIndex((m) => String(m.id) === String(message?.id))
+      : -1;
+    const assistantIndex = Array.isArray(messages)
+      ? messages.findIndex((m) => String(m.id) === String(messageId))
+      : -1;
+    const retryTurnIndex =
+      anchorIndex >= 0
+        ? anchorIndex + 1
+        : (assistantIndex >= 0 ? assistantIndex : undefined);
+
+    return this.sendMessage({
+      conversationId,
+      message: {
+        ...message,
+        metadata: {
+          ...(message?.metadata || {}),
+          isRetry: true,
+          retryTurnIndex,
+          anchorUserMessageId: message?.id,
+          targetAssistantMessageId: messageId,
+        },
+      },
+      messages,
+      signal,
+    });
+  }
+
+  /**
    * Sends user message to backend SSE endpoint and yields live ChatMessageChunk stream.
    *
    * @async
    * @param {object} input
    * @param {string} [input.conversationId] - Active conversation ID.
    * @param {object} input.message - User ChatMessage entity.
+   * @param {Array<object>} [input.messages] - Active message list in store.
    * @param {Array<object>} [input.attachments] - Queued draft attachments.
    * @param {AbortSignal} [input.signal] - External stop signal.
    * @returns {Promise<ReadableStream>}
    */
-  async sendMessage({ conversationId, message, attachments, signal }) {
+  async sendMessage({ conversationId, message, messages, attachments, signal }) {
     const userText =
       message?.parts?.find((p) => p.type === 'text')?.text ||
       (typeof message?.content === 'string' ? message.content : '') ||
@@ -338,126 +426,153 @@ export class MuiChatAdapter {
       ? `${this.baseUrl}/chat/${targetChatId}/stream`
       : `${this.baseUrl}/chat/stream`;
 
+    const isRetry = Boolean(
+      message?.isRetry ||
+      message?.metadata?.isRetry
+    );
+
     // 1. Pre-upload file attachments if present (differentiating audio notes vs document/image attachments)
+    // On RETRY: Skip uploading and do not synthesize uploadedAttachments or uploadedAudioIds.
+    // The server will re-hydrate multi-modal context directly from the persisted MongoDB turn record.
     let uploadedAttachments = [];
     let uploadedAudioIds = [];
 
-    const activeAttachments = [
-      ...(Array.isArray(attachments) ? attachments : []),
-      ...(Array.isArray(message?.attachments) ? message.attachments : []),
-    ];
+    if (!isRetry) {
+      const activeAttachments = [
+        ...(Array.isArray(attachments) ? attachments : []),
+        ...(Array.isArray(message?.attachments) ? message.attachments : []),
+      ];
 
-    if (activeAttachments.length === 0 && Array.isArray(message?.parts)) {
-      message.parts.forEach((p) => {
-        if (p.type === 'file' || p.type === 'audio') {
-          activeAttachments.push({
-            id: p.id,
-            _id: p._id || p.id,
-            fileName: p.filename || p.name || p.fileName,
-            originalName: p.originalName || p.filename || p.name,
-            mimeType: p.mediaType || p.mimeType,
-            size: p.size,
-            path: p.path,
-            url: p.url,
-            file: p.file,
-          });
-        }
-      });
-    }
-
-    if (activeAttachments.length > 0) {
-      const audioFiles = [];
-      const docFiles = [];
-
-      activeAttachments.forEach((att) => {
-        const file = att.file;
-        const mime = (att.mimeType || att.type || att.mediaType || (file && file.type) || '').toLowerCase();
-        const cleanType = mime.split(';')[0].trim();
-        const attName = (att.name || att.originalName || att.fileName || (file && file.name) || '').toLowerCase();
-
-        const isAudioItem =
-          (cleanType && (
-            AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(cleanType) ||
-            cleanType.startsWith('audio/') ||
-            cleanType === 'video/webm' ||
-            cleanType === 'application/ogg'
-          )) ||
-          AUDIO_CONSTANTS.ALLOWED_EXTENSIONS.some((ext) => attName.endsWith(ext));
-
-        if (!file) {
-          // Pre-existing uploaded attachment or audio from an earlier turn
-          if (isAudioItem) {
-            const rawId = att._id || att.id;
-            if (rawId && /^[0-9a-fA-F]{24}$/.test(String(rawId))) {
-              uploadedAudioIds.push(String(rawId));
+      if (Array.isArray(message?.audios) && message.audios.length > 0) {
+        message.audios.forEach((a) => {
+          const id = typeof a === 'string' ? a : (a?._id || a?.id);
+          if (id && /^[0-9a-fA-F]{24}$/.test(String(id))) {
+            if (!uploadedAudioIds.includes(String(id))) {
+              uploadedAudioIds.push(String(id));
             }
-          } else if (att.fileName && (att.path || att.url)) {
-            const rawPath = att.path || (att.url && att.url.replace(/^.*\/uploads\//, 'uploads/')) || att.url;
-            const cleanPath = (rawPath ? rawPath.replace(/\\/g, '/').replace(/^.*\/uploads\//, 'uploads/').replace(/^\/+/, '') : '');
-            uploadedAttachments.push({
-              fileName: att.fileName,
-              originalName: att.originalName || att.name || att.fileName,
-              mimeType: att.mimeType || att.type || 'application/octet-stream',
-              size: Number(att.size) || 1,
-              path: cleanPath,
-              url: att.url || (cleanPath ? `/${cleanPath}` : null),
-            });
           }
-          return;
-        }
-
-        if (isAudioItem) {
-          audioFiles.push(file);
-        } else {
-          docFiles.push(file);
-        }
-      });
-
-      // 1.1 Upload audio files to /chat/upload-audio under field 'audios' with re-auth protection
-      if (audioFiles.length > 0) {
-        const audioFormData = new FormData();
-        audioFiles.forEach((f) => audioFormData.append('audios', f));
-        const audioRes = await executeWithReauth(
-          () =>
-            fetch(`${this.baseUrl}/chat/upload-audio`, {
-              method: 'POST',
-              credentials: 'include',
-              body: audioFormData,
-              signal,
-            }),
-          { dispatch: this.dispatch, baseUrl: this.baseUrl }
-        );
-        if (!audioRes.ok) {
-          const errData = await audioRes.json().catch(() => ({}));
-          throw new Error(errData?.message || `Failed to upload audio recordings (${audioRes.status})`);
-        }
-        const audioData = await audioRes.json();
-        const rawAudios = audioData?.data?.audios || audioData?.audios || [];
-        const newlyUploadedAudioIds = rawAudios.map((a) => a._id || a.id).filter(Boolean);
-        uploadedAudioIds.push(...newlyUploadedAudioIds);
+        });
       }
 
-      // 1.2 Upload document and image files to /chat/upload-attachments under field 'attachments' with re-auth protection
-      if (docFiles.length > 0) {
-        const docFormData = new FormData();
-        docFiles.forEach((f) => docFormData.append('attachments', f));
-        const uploadRes = await executeWithReauth(
-          () =>
-            fetch(`${this.baseUrl}/chat/upload-attachments`, {
-              method: 'POST',
-              credentials: 'include',
-              body: docFormData,
-              signal,
-            }),
-          { dispatch: this.dispatch, baseUrl: this.baseUrl }
-        );
-        if (!uploadRes.ok) {
-          const errData = await uploadRes.json().catch(() => ({}));
-          throw new Error(errData?.message || `Failed to upload file attachments (${uploadRes.status})`);
+      if (activeAttachments.length === 0 && Array.isArray(message?.parts)) {
+        message.parts.forEach((p) => {
+          if (p.type === 'file' || p.type === 'audio') {
+            activeAttachments.push({
+              id: p.id,
+              _id: p._id || p.id,
+              fileName: p.filename || p.name || p.fileName,
+              originalName: p.originalName || p.filename || p.name,
+              mimeType: p.mediaType || p.mimeType,
+              size: p.size,
+              path: p.path,
+              url: p.url,
+              file: p.file,
+            });
+          }
+        });
+      }
+
+      if (activeAttachments.length > 0) {
+        const audioFiles = [];
+        const docFiles = [];
+
+        activeAttachments.forEach((att) => {
+          const file = att.file;
+          const mime = (att.mimeType || att.type || att.mediaType || (file && file.type) || '').toLowerCase();
+          const cleanType = mime.split(';')[0].trim();
+          const attName = (att.name || att.originalName || att.fileName || (file && file.name) || '').toLowerCase();
+
+          const isAudioItem =
+            (cleanType && (
+              AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(cleanType) ||
+              cleanType.startsWith('audio/') ||
+              cleanType === 'video/webm' ||
+              cleanType === 'application/ogg'
+            )) ||
+            AUDIO_CONSTANTS.ALLOWED_EXTENSIONS.some((ext) => attName.endsWith(ext));
+
+          if (!file) {
+            // Pre-existing uploaded attachment or audio from an earlier turn
+            if (isAudioItem) {
+              const rawId = att._id || att.id;
+              if (rawId && /^[0-9a-fA-F]{24}$/.test(String(rawId))) {
+                uploadedAudioIds.push(String(rawId));
+              }
+            } else if (att.fileName && (att.path || att.url)) {
+              const rawPath = att.path || (att.url && att.url.replace(/^.*\/uploads\//, 'uploads/')) || att.url;
+              const isBlobOrHttp = rawPath && (rawPath.startsWith('blob:') || rawPath.startsWith('http://') || rawPath.startsWith('https://'));
+              if (isBlobOrHttp && !rawPath.includes('/uploads/')) {
+                // Ephemeral client-only blob URL with no server path; ignore
+                return;
+              }
+              const cleanPath = (rawPath ? rawPath.replace(/\\/g, '/').replace(/^.*\/uploads\//, 'uploads/').replace(/^\/+/, '') : '');
+              uploadedAttachments.push({
+                fileName: att.fileName,
+                originalName: att.originalName || att.name || att.fileName,
+                mimeType: att.mimeType || att.type || 'application/octet-stream',
+                size: Number(att.size) || 1,
+                path: cleanPath,
+                url: att.url || (cleanPath ? `/${cleanPath}` : null),
+              });
+            }
+            return;
+          }
+
+          if (isAudioItem) {
+            audioFiles.push(file);
+          } else {
+            docFiles.push(file);
+          }
+        });
+
+        // 1.1 Upload audio files to /chat/upload-audio under field 'audios' with re-auth protection
+        if (audioFiles.length > 0) {
+          this.dispatch?.(setPipelineStatus('Uploading audio note...'));
+          const audioFormData = new FormData();
+          audioFiles.forEach((f) => audioFormData.append('audios', f));
+          const audioRes = await executeWithReauth(
+            () =>
+              fetch(`${this.baseUrl}/chat/upload-audio`, {
+                method: 'POST',
+                credentials: 'include',
+                body: audioFormData,
+                signal,
+              }),
+            { dispatch: this.dispatch, baseUrl: this.baseUrl }
+          );
+          if (!audioRes.ok) {
+            const errData = await audioRes.json().catch(() => ({}));
+            throw new Error(errData?.message || `Failed to upload audio recordings (${audioRes.status})`);
+          }
+          const audioData = await audioRes.json();
+          const rawAudios = audioData?.data?.audios || audioData?.audios || [];
+          const newlyUploadedAudioIds = rawAudios.map((a) => a._id || a.id).filter(Boolean);
+          uploadedAudioIds.push(...newlyUploadedAudioIds);
         }
-        const uploadData = await uploadRes.json();
-        const newlyUploaded = uploadData?.data?.attachments || uploadData?.attachments || [];
-        uploadedAttachments.push(...newlyUploaded);
+
+        // 1.2 Upload document and image files to /chat/upload-attachments under field 'attachments' with re-auth protection
+        if (docFiles.length > 0) {
+          this.dispatch?.(setPipelineStatus('Uploading attachments...'));
+          const docFormData = new FormData();
+          docFiles.forEach((f) => docFormData.append('attachments', f));
+          const uploadRes = await executeWithReauth(
+            () =>
+              fetch(`${this.baseUrl}/chat/upload-attachments`, {
+                method: 'POST',
+                credentials: 'include',
+                body: docFormData,
+                signal,
+              }),
+            { dispatch: this.dispatch, baseUrl: this.baseUrl }
+          );
+          if (!uploadRes.ok) {
+            const errData = await uploadRes.json().catch(() => ({}));
+            throw new Error(errData?.message || `Failed to upload file attachments (${uploadRes.status})`);
+          }
+          const uploadData = await uploadRes.json();
+          const newlyUploaded = uploadData?.data?.attachments || uploadData?.attachments || [];
+          uploadedAttachments.push(...newlyUploaded);
+        }
       }
     }
 
@@ -479,7 +594,10 @@ export class MuiChatAdapter {
       id: message?.id,
       text: userText,
       chatId: targetChatId,
+      isRetry: isRetry || undefined,
       retryTurnIndex,
+      anchorUserMessageId: message?.metadata?.anchorUserMessageId || (isRetry ? message?.id : undefined),
+      targetAssistantMessageId: message?.metadata?.targetAssistantMessageId,
       editTurnIndex,
       model:
         (typeof this.getModel === 'function' ? this.getModel() : undefined) ||
@@ -515,11 +633,16 @@ export class MuiChatAdapter {
         });
 
         const textPartId = 'text-1';
-        const reasoningPartId = 'reasoning-1';
+        let reasoningCounter = 1;
+        let reasoningPartId = 'reasoning-1';
+        let toolCounter = 0;
+        let activeToolCallId = null;
         let hasTextStarted = false;
         let hasTextEnded = false;
         let hasReasoningStarted = false;
         let hasReasoningEnded = false;
+        let thoughtStartTime = null;
+        let thoughtDuration = null;
 
         try {
           const response = await executeWithReauth(
@@ -607,7 +730,17 @@ export class MuiChatAdapter {
 
                 case 'thought': {
                   if (data.delta) {
+                    if (!thoughtStartTime) {
+                      thoughtStartTime = Date.now();
+                    }
+                    if (hasReasoningEnded) {
+                      reasoningCounter += 1;
+                      reasoningPartId = `reasoning-${reasoningCounter}`;
+                      hasReasoningStarted = false;
+                      hasReasoningEnded = false;
+                    }
                     if (!hasReasoningStarted) {
+                      adapterInstance.dispatch?.(setPipelineStatus('Thinking...'));
                       controller.enqueue({
                         type: 'reasoning-start',
                         id: reasoningPartId,
@@ -623,6 +756,37 @@ export class MuiChatAdapter {
                   break;
                 }
 
+                case 'tool_call': {
+                  if (hasReasoningStarted && !hasReasoningEnded) {
+                    controller.enqueue({
+                      type: 'reasoning-end',
+                      id: reasoningPartId,
+                    });
+                    hasReasoningEnded = true;
+                  }
+                  adapterInstance.dispatch?.(setPipelineStatus(`Executing ${data.name || 'tool'}...`));
+                  toolCounter += 1;
+                  activeToolCallId = data.id || `tc-${Date.now()}-${toolCounter}`;
+                  controller.enqueue({
+                    type: 'tool-input-available',
+                    toolCallId: activeToolCallId,
+                    toolName: data.name,
+                    input: data.args || {},
+                  });
+                  break;
+                }
+
+                case 'tool_result': {
+                  const currentToolId = data.id || activeToolCallId || `tc-${Date.now()}-${toolCounter}`;
+                  controller.enqueue({
+                    type: 'tool-output-available',
+                    toolCallId: currentToolId,
+                    output: data.result !== undefined ? data.result : null,
+                  });
+                  activeToolCallId = null;
+                  break;
+                }
+
                 case 'text': {
                   if (data.delta) {
                     if (hasReasoningStarted && !hasReasoningEnded) {
@@ -632,7 +796,11 @@ export class MuiChatAdapter {
                       });
                       hasReasoningEnded = true;
                     }
+                    if (thoughtStartTime && !thoughtDuration) {
+                      thoughtDuration = ((Date.now() - thoughtStartTime) / 1000).toFixed(1);
+                    }
                     if (!hasTextStarted) {
+                      adapterInstance.dispatch?.(setPipelineStatus(''));
                       controller.enqueue({
                         type: 'text-start',
                         id: textPartId,
@@ -644,6 +812,16 @@ export class MuiChatAdapter {
                       id: textPartId,
                       delta: data.delta,
                     });
+                  }
+                  break;
+                }
+
+                case 'status': {
+                  if (data.message) {
+                    adapterInstance.dispatch?.(setPipelineStatus(data.message));
+                    if (typeof adapterInstance.onStatusUpdate === 'function') {
+                      adapterInstance.onStatusUpdate(data.message);
+                    }
                   }
                   break;
                 }
@@ -660,6 +838,7 @@ export class MuiChatAdapter {
                 }
 
                 case 'done': {
+                  adapterInstance.dispatch?.(setPipelineStatus(''));
                   if (hasReasoningStarted && !hasReasoningEnded) {
                     controller.enqueue({
                       type: 'reasoning-end',
@@ -673,6 +852,15 @@ export class MuiChatAdapter {
                       id: textPartId,
                     });
                     hasTextEnded = true;
+                  }
+                  if (thoughtStartTime && !thoughtDuration) {
+                    thoughtDuration = ((Date.now() - thoughtStartTime) / 1000).toFixed(1);
+                  }
+                  if (thoughtDuration) {
+                    controller.enqueue({
+                      type: 'message-metadata',
+                      metadata: { thoughtDuration },
+                    });
                   }
                   controller.enqueue({
                     type: 'finish',
@@ -694,6 +882,8 @@ export class MuiChatAdapter {
                     chatId: adapterInstance.currentChatId,
                     messageId: data.messageId,
                     title: data.title,
+                    model: data.model,
+                    usage: data.usage,
                   });
 
                   controller.close();
@@ -701,6 +891,7 @@ export class MuiChatAdapter {
                 }
 
                 case 'error': {
+                  adapterInstance.dispatch?.(setPipelineStatus(''));
                   if (hasReasoningStarted && !hasReasoningEnded) {
                     controller.enqueue({
                       type: 'reasoning-end',
@@ -708,27 +899,27 @@ export class MuiChatAdapter {
                     });
                     hasReasoningEnded = true;
                   }
-                  if (!hasTextStarted) {
+                  if (hasTextStarted && !hasTextEnded) {
                     controller.enqueue({
-                      type: 'text-start',
+                      type: 'text-end',
                       id: textPartId,
                     });
-                    hasTextStarted = true;
+                    hasTextEnded = true;
                   }
                   controller.enqueue({
-                    type: 'text-delta',
-                    id: textPartId,
-                    delta: `\n\n> ⚠️ **Error**: ${data.message || 'Streaming failed.'}`,
+                    type: 'message-metadata',
+                    metadata: {
+                      isError: true,
+                      error: data.message || 'Streaming failed.',
+                      reason: data.reason || 'error',
+                      failedModel: data.failedModel,
+                      suggestedModels: data.suggestedModels,
+                    },
                   });
-                  controller.enqueue({
-                    type: 'text-end',
-                    id: textPartId,
-                  });
-                  hasTextEnded = true;
                   controller.enqueue({
                     type: 'finish',
                     messageId: assistantMessageId,
-                    finishReason: data.reason || 'error',
+                    finishReason: 'error',
                   });
                   if (adapterInstance.currentChatId) {
                     adapterInstance.dispatch?.(setActiveChatId(adapterInstance.currentChatId));
@@ -768,6 +959,7 @@ export class MuiChatAdapter {
           });
           controller.close();
         } catch (streamErr) {
+          adapterInstance.dispatch?.(setPipelineStatus(''));
           if (abortController.signal.aborted) {
             if (hasReasoningStarted && !hasReasoningEnded) {
               controller.enqueue({
@@ -781,10 +973,19 @@ export class MuiChatAdapter {
                 id: textPartId,
               });
             }
+            if (thoughtStartTime && !thoughtDuration) {
+              thoughtDuration = ((Date.now() - thoughtStartTime) / 1000).toFixed(1);
+            }
             controller.enqueue({
-              type: 'finish',
+              type: 'message-metadata',
+              metadata: {
+                isStopped: true,
+                ...(thoughtDuration ? { thoughtDuration } : {}),
+              },
+            });
+            controller.enqueue({
+              type: 'abort',
               messageId: assistantMessageId,
-              finishReason: 'stop',
             });
           } else {
             if (hasReasoningStarted && !hasReasoningEnded) {
@@ -792,21 +993,22 @@ export class MuiChatAdapter {
                 type: 'reasoning-end',
                 id: reasoningPartId,
               });
+              hasReasoningEnded = true;
             }
-            if (!hasTextStarted) {
+            if (hasTextStarted && !hasTextEnded) {
               controller.enqueue({
-                type: 'text-start',
+                type: 'text-end',
                 id: textPartId,
               });
+              hasTextEnded = true;
             }
             controller.enqueue({
-              type: 'text-delta',
-              id: textPartId,
-              delta: `\n\n> ⚠️ **Connection Error**: ${streamErr.message || 'Stream connection failed.'}`,
-            });
-            controller.enqueue({
-              type: 'text-end',
-              id: textPartId,
+              type: 'message-metadata',
+              metadata: {
+                isError: true,
+                error: streamErr.message || 'Stream connection failed.',
+                reason: 'connection_error',
+              },
             });
             controller.enqueue({
               type: 'finish',

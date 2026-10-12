@@ -82,7 +82,6 @@ export const MuiSendButton = (props) => {
               bgcolor: 'error.dark',
               color: 'error.contrastText',
             },
-            boxShadow: 1,
             flexShrink: 0,
           }}
         >
@@ -116,7 +115,6 @@ export const MuiSendButton = (props) => {
                 bgcolor: 'primary.dark !important',
               }
               : {},
-            boxShadow: canSend ? 1 : 0,
             flexShrink: 0,
           }}
         >

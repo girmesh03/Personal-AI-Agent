@@ -73,6 +73,31 @@ export const AppTheme = ({ children }) => {
           ...chartsCustomizations,
           ...dataGridCustomizations,
           ...datePickersCustomizations,
+          MuiChatStreamingIndicator: {
+            styleOverrides: {
+              root: {
+                backgroundColor: 'transparent !important',
+                boxShadow: 'none !important',
+                border: 'none !important',
+              },
+              bubble: {
+                backgroundColor: 'transparent !important',
+                boxShadow: 'none !important',
+                border: 'none !important',
+                padding: '0 !important',
+              },
+            },
+          },
+          MuiChatTypingIndicator: {
+            styleOverrides: {
+              root: {
+                backgroundColor: 'transparent !important',
+                boxShadow: 'none !important',
+                border: 'none !important',
+                padding: '0 !important',
+              },
+            },
+          },
         },
       }),
     []
