@@ -18,11 +18,13 @@ import logger from '../config/logger.js';
 import { Chat } from '../models/Chat.js';
 import { Audio } from '../models/Audio.js';
 import { HTTP_STATUS, CHAT_CONSTANTS, ATTACHMENT_CONSTANTS, AUDIO_CONSTANTS, AI_MODELS } from '../utils/constants.js';
+import { User } from '../models/User.js';
 import { NotFoundError, BadRequestError } from '../errors/CustomError.js';
 import { assembleSystemPrompt } from '../utils/promptAssembler.js';
 import { agentToolDeclarations, executeAgentTool } from '../tools/agentTools.js';
 import { processAttachments } from '../utils/attachmentProcessor.js';
 import { transcribeAudioDocument, transcribeAudio as transcribeAudioUtil } from '../utils/audioChunker.js';
+import { dispatchToTelegram } from '../services/telegramService.js';
 
 /**
  * Helper to emit a formatted Server-Sent Event frame.
@@ -1075,6 +1077,34 @@ export const transcribeAudio = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * Quick manual broadcast of message text to Telegram.
+ *
+ * @function shareToTelegramDirect
+ * @route POST /api/v1/chat/share-telegram
+ * @access Private (Area Supervisor)
+ */
+export const shareToTelegramDirect = asyncHandler(async (req, res) => {
+  const { text, targetChannel = 'management', asImage = false, customNote } = req.body;
+  if (!text || typeof text !== 'string' || !text.trim()) {
+    throw new BadRequestError('Message text is required for Telegram sharing.');
+  }
+
+  const user = await User.findById(req.user._id).lean();
+  const result = await dispatchToTelegram({
+    user,
+    targetChannel,
+    text: text.trim(),
+    customNote,
+    asImage: Boolean(asImage),
+  });
+
+  res.status(HTTP_STATUS.OK).json({
+    success: result.ok || result.success || false,
+    data: result,
+  });
+});
+
 export default {
   streamChat,
   getChats,
@@ -1086,4 +1116,5 @@ export default {
   uploadChatAttachments,
   uploadChatAudios,
   transcribeAudio,
+  shareToTelegramDirect,
 };

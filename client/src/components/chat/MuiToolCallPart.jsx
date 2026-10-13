@@ -20,6 +20,8 @@ import BuildOutlinedIcon from '@mui/icons-material/BuildOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import TelegramIcon from '@mui/icons-material/Telegram';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
 /**
  * Human-friendly title dictionary for the 17 autonomous operations tools.
@@ -55,6 +57,12 @@ const deriveOutputSummary = (output) => {
     return `${output.length} record${output.length === 1 ? '' : 's'} found`;
   }
   if (typeof output === 'object') {
+    if (output.channel === 'telegram' || output.targetChannel) {
+      const ch = output.targetChannel || output.channel;
+      const modeStr = output.mode === 'image' ? 'Image Card' : 'Text';
+      const statusStr = output.isStub ? 'Stub' : 'Live';
+      return `${ch} • ${modeStr} • ${statusStr}`;
+    }
     if (output.reportId) {
       return `Report #${String(output.reportId).slice(-6)} created`;
     }
@@ -127,7 +135,11 @@ export const MuiToolCallPart = ({ toolInvocation, stepNumber, totalSteps }) => {
       >
         {/* Left: Icon, Tool Name & Status */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flexWrap: 'wrap' }}>
-          <BuildOutlinedIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+          {toolName === 'share_to_telegram' ? (
+            <TelegramIcon sx={{ fontSize: 16, color: '#2AABEE' }} />
+          ) : (
+            <BuildOutlinedIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+          )}
           <Typography
             sx={{
               fontSize: '0.8125rem',
@@ -174,6 +186,28 @@ export const MuiToolCallPart = ({ toolInvocation, stepNumber, totalSteps }) => {
             >
               {summaryText}
             </Typography>
+
+            {output?.deepLink && (
+              <Box
+                component="a"
+                href={output.deepLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 0.3,
+                  fontSize: '0.75rem',
+                  color: '#2AABEE',
+                  textDecoration: 'none',
+                  fontWeight: 600,
+                  ml: 0.5,
+                  '&:hover': { textDecoration: 'underline' },
+                }}
+              >
+                View <OpenInNewIcon sx={{ fontSize: 11 }} />
+              </Box>
+            )}
           </Box>
         </Box>
 

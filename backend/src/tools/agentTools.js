@@ -30,6 +30,7 @@ import {
   BadRequestError,
 } from '../errors/CustomError.js';
 import logger from '../config/logger.js';
+import { dispatchToTelegram } from '../services/telegramService.js';
 
 /**
  * Escapes characters with special meaning in regular expressions.
@@ -785,6 +786,10 @@ export const agentToolDeclarations = [
         customNote: {
           type: Type.STRING,
           description: 'Optional supervisor header remark or delivery note.',
+        },
+        asImage: {
+          type: Type.BOOLEAN,
+          description: 'Optional flag to render and broadcast the report or message as a high-contrast document image card.',
         },
       },
     },
@@ -2138,65 +2143,89 @@ export const toolHandlers = {
    * 16. share_to_telegram
    */
   share_to_telegram: async ({ args = {}, userId }) => {
-    const { reportId, messageText, targetChannel = 'management', customNote } = args;
+    const {
+      reportId,
+      messageText,
+      targetChannel = 'management',
+      customNote,
+      asImage = false,
+    } = args;
 
-    let formattedMessage = '';
+    // Load owning supervisor for custom Telegram settings & templates
+    const user = userId ? await User.findById(userId).lean() : null;
 
-    if (messageText && typeof messageText === 'string' && messageText.trim()) {
-      formattedMessage = messageText.trim();
-    } else if (reportId && isValidObjectId(reportId)) {
+    let payloadText = '';
+
+    if (reportId && isValidObjectId(reportId)) {
       const report = await Report.findOne({ _id: reportId, user: userId })
         .populate('visits.branch', 'name code')
         .lean();
 
       if (report) {
-        const ethDate = toEthiopianDateString(report.date);
-        const gregDate = new Date(report.date).toISOString().split('T')[0];
-        const visits = (report.visits || [])
-          .map((v) => `• *${v.branch?.name || 'Branch'}* (${v.clockIn} - ${v.clockOut})`)
-          .join('\n');
-        const activities = (report.activities || [])
-          .map((a) => `• ${a.text}`)
-          .join('\n');
-        const issues = (report.issues || [])
-          .map((i) => `• ${i.text} (${i.status})`)
-          .join('\n');
+        // Zero Artificial Wrapper Law: Use authoritative transcription matching user's template
+        if (report.transcription && typeof report.transcription === 'string' && report.transcription.trim()) {
+          payloadText = report.transcription.trim();
+        } else {
+          // Clean fallback serialization if transcription missing (zero fake headers)
+          const ethDate = toEthiopianDateString(report.date);
+          const visits = (report.visits || [])
+            .map((v) => `• ${v.branch?.name || 'Branch'} (${v.clockIn} - ${v.clockOut})`)
+            .join('\n');
+          const activities = (report.activities || [])
+            .map((a) => `• ${a.text}`)
+            .join('\n');
+          const issues = (report.issues || [])
+            .map((i) => `• ${i.text} (${i.status})`)
+            .join('\n');
+          const comments = (report.comments || [])
+            .map((c) => `• ${c.text}`)
+            .join('\n');
 
-        formattedMessage = [
-          '📋 *Operational Report*',
-          `📅 *Date:* ${ethDate} (${gregDate})`,
-          `⏰ *Work Hours:* ${report.clockIn} - ${report.clockOut}`,
-          '',
-          '🏢 *Branch Visits:*',
-          visits || '• None',
-          '',
-          '✅ *Activities:*',
-          activities || '• None',
-          '',
-          '⚠️ *Issues:*',
-          issues || '• None',
-        ].join('\n');
+          const parts = [
+            `ቀን: ${ethDate}`,
+            visits ? `ጉብኝት:\n${visits}` : null,
+            `ስራ የገባሁበት ሰዓት: ${report.clockIn}`,
+            activities ? `የተሰሩ ስራዎች:\n${activities}` : null,
+            issues ? `መፍትሄ የሚፈልጉ ጉዳዮች:\n${issues}` : null,
+            comments ? `አጠቃላይ አስተያየት:\n${comments}` : null,
+            `ከስራ የወጣሁበት ሰዓት: ${report.clockOut}`,
+          ].filter(Boolean);
+
+          payloadText = parts.join('\n\n');
+        }
+      } else {
+        throw new NotFoundError('Report could not be found for Telegram sharing.');
       }
+    } else if (messageText && typeof messageText === 'string' && messageText.trim()) {
+      // Ad-hoc text: pure pass-through without synthetic wrappers
+      payloadText = messageText.trim();
+    } else {
+      throw new BadRequestError('Either reportId or messageText must be provided for Telegram sharing.');
     }
 
-    if (customNote) {
-      formattedMessage = `📌 *Note:* ${customNote}\n\n${formattedMessage}`;
-    }
+    // Determine format: explicit tool arg asImage OR user settings defaultFormat === 'image'
+    const shouldPostImage = Boolean(asImage || user?.settings?.telegram?.defaultFormat === 'image');
 
-    // Enforce Telegram 4096 character limit
-    if (formattedMessage.length > 4096) {
-      formattedMessage = formattedMessage.slice(0, 4050) + '\n\n... [Truncated for Telegram limit]';
-    }
+    const dispatchResult = await dispatchToTelegram({
+      user,
+      targetChannel,
+      text: payloadText,
+      customNote,
+      asImage: shouldPostImage,
+    });
 
     return {
-      success: true,
-      isStub: true,
+      success: dispatchResult.ok || dispatchResult.success || false,
+      isStub: dispatchResult.isStub || false,
       channel: 'telegram',
-      targetChannel,
-      characterCount: formattedMessage.length,
-      formattedPayload: formattedMessage,
-      message:
-        `Telegram dispatch stub: message successfully formatted and dispatched to '${targetChannel}' channel.`,
+      targetChannel: dispatchResult.channel || targetChannel,
+      mode: dispatchResult.mode || (shouldPostImage ? 'image' : 'text'),
+      messageId: dispatchResult.messageId || null,
+      deepLink: dispatchResult.deepLink || null,
+      fallbackFromImage: dispatchResult.fallbackFromImage || false,
+      message: dispatchResult.isStub
+        ? `Telegram dispatch stub: message successfully formatted and dispatched to '${dispatchResult.channel || targetChannel}' channel.`
+        : `Successfully dispatched to Telegram channel '${dispatchResult.channel || targetChannel}' (${dispatchResult.mode === 'image' ? 'Image Card' : 'Semantic Text'}).`,
     };
   },
 

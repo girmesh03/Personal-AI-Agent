@@ -440,6 +440,35 @@ export const AI_MODELS = Object.freeze({
 });
 
 /**
+ * Canonical display labels for AI models.
+ * Single Source of Truth for UI presentation, telemetry tooltips, and badges.
+ * @constant
+ * @type {Readonly<Record<string, string>>}
+ */
+export const AI_MODEL_LABELS = Object.freeze({
+  [AI_MODELS.DEFAULT]: 'Gemini 3.1 Flash Lite',
+  [AI_MODELS.PRO]: 'Gemini 3.8 Flash',
+  [AI_MODELS.FALLBACK]: 'Gemini 3 Flash Preview',
+  'gemini-2.5-flash': 'Gemini 2.5 Flash',
+  'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite',
+  'gemini-2.5-pro': 'Gemini 2.5 Pro',
+});
+
+/**
+ * Returns human-friendly display name for an AI model identifier using AI_MODEL_LABELS SSOT.
+ * @param {string} [rawModel]
+ * @returns {string} User-facing model name (e.g. "Gemini 3.1 Flash Lite").
+ */
+export const formatModelDisplayName = (rawModel) => {
+  if (!rawModel) return 'Operon';
+  if (AI_MODEL_LABELS[rawModel]) return AI_MODEL_LABELS[rawModel];
+  return rawModel
+    .split('-')
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(' ');
+};
+
+/**
  * Chat session and AI agent engine constants.
  * @constant
  * @type {Readonly<{
@@ -530,6 +559,8 @@ export default {
   AUDIO_CONSTANTS,
   ATTACHMENT_CONSTANTS,
   AI_MODELS,
+  AI_MODEL_LABELS,
+  formatModelDisplayName,
   CHAT_CONSTANTS,
   CHAT_PAGINATION,
 };

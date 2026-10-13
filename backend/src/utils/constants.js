@@ -46,6 +46,21 @@ export const AI_MODELS = Object.freeze({
 });
 
 /**
+ * Canonical display labels for AI models.
+ * Single Source of Truth for logging, telemetry, and reporting.
+ * @constant
+ * @type {Readonly<Record<string, string>>}
+ */
+export const AI_MODEL_LABELS = Object.freeze({
+  [AI_MODELS.DEFAULT]: 'Gemini 3.1 Flash Lite',
+  [AI_MODELS.PRO]: 'Gemini 3.8 Flash',
+  [AI_MODELS.FALLBACK]: 'Gemini 3 Flash Preview',
+  'gemini-2.5-flash': 'Gemini 2.5 Flash',
+  'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite',
+  'gemini-2.5-pro': 'Gemini 2.5 Pro',
+});
+
+/**
  * Standard HTTP Status Codes.
  * Strict naming invariant: 401 is UNAUTHENTICATED (never UNAUTHORIZED).
  * @constant
@@ -451,6 +466,64 @@ export const CHAT_PAGINATION = Object.freeze({
   MAX_RECENT_CHATS_LIMIT: 50,
 });
 
+/**
+ * Telegram integration constants, channels, limits, and image card styling metrics.
+ * @constant
+ * @type {Readonly<{
+ *   MAX_MESSAGE_LENGTH: number,
+ *   MAX_CAPTION_LENGTH: number,
+ *   MAX_PHOTO_SIZE_BYTES: number,
+ *   MAX_DOCUMENT_SIZE_BYTES: number,
+ *   CHANNELS: readonly string[],
+ *   FORMATS: readonly string[],
+ *   DEFAULT_FORMAT: string,
+ *   RATE_LIMIT: Readonly<{ MAX_PER_MINUTE_GROUP: number, RETRY_AFTER_DEFAULT_SEC: number }>,
+ *   IMAGE_CARD: Readonly<{
+ *     WIDTH: number,
+ *     PADDING_X: number,
+ *     BASE_FONT_SIZE: number,
+ *     SECTION_FONT_SIZE: number,
+ *     LINE_HEIGHT: number,
+ *     SECTION_TOP_GAP: number,
+ *     SECTION_BOTTOM_GAP: number,
+ *     INTER_BULLET_GAP: number,
+ *     BULLET_RADIUS: number,
+ *     BULLET_INDENT: number,
+ *     FONT_FAMILY: string,
+ *     BG_COLOR: string,
+ *     TEXT_COLOR: string,
+ *   }>
+ * }>}
+ */
+export const TELEGRAM_CONSTANTS = Object.freeze({
+  MAX_MESSAGE_LENGTH: 4096,
+  MAX_CAPTION_LENGTH: 1024,
+  MAX_PHOTO_SIZE_BYTES: 10 * 1024 * 1024, // 10MB
+  MAX_DOCUMENT_SIZE_BYTES: 50 * 1024 * 1024, // 50MB
+  CHANNELS: Object.freeze(['management', 'maintenance', 'general']),
+  FORMATS: Object.freeze(['text', 'image']),
+  DEFAULT_FORMAT: 'text',
+  RATE_LIMIT: Object.freeze({
+    MAX_PER_MINUTE_GROUP: 20,
+    RETRY_AFTER_DEFAULT_SEC: 5,
+  }),
+  IMAGE_CARD: Object.freeze({
+    WIDTH: 860,
+    PADDING_X: 60,
+    BASE_FONT_SIZE: 26,
+    SECTION_FONT_SIZE: 28,
+    LINE_HEIGHT: 38,
+    SECTION_TOP_GAP: 28,
+    SECTION_BOTTOM_GAP: 14,
+    INTER_BULLET_GAP: 16,
+    BULLET_RADIUS: 4.5,
+    BULLET_INDENT: 32,
+    FONT_FAMILY: "'Segoe UI Historic', 'Noto Sans Ethiopic', 'Nyala', 'Abyssinica SIL', sans-serif",
+    BG_COLOR: '#FFFFFF',
+    TEXT_COLOR: '#111111',
+  }),
+});
+
 export default {
   HTTP_STATUS,
   PASSWORD_REGEX,
@@ -469,10 +542,12 @@ export default {
   REPORT_CONSTANTS,
   CHAT_CONSTANTS,
   CHAT_PAGINATION,
+  TELEGRAM_CONSTANTS,
   AUDIO_CONSTANTS,
   ATTACHMENT_CONSTANTS,
   AVATAR_CONSTANTS,
   AI_MODELS,
+  AI_MODEL_LABELS,
   UPLOADS_CONFIG,
 };
 

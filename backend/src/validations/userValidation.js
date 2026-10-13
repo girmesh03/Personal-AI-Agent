@@ -11,6 +11,7 @@ import {
   PASSWORD_REGEX,
   CHAT_CONSTANTS,
   REPORT_CONSTANTS,
+  TELEGRAM_CONSTANTS,
 } from '../utils/constants.js';
 
 /**
@@ -186,6 +187,40 @@ export const updateAgentConfigValidation = [
     .trim()
     .isLength({ max: REPORT_CONSTANTS.TEMPLATE_MAX_LENGTH })
     .withMessage(`Multi branch template cannot exceed ${REPORT_CONSTANTS.TEMPLATE_MAX_LENGTH} characters.`),
+
+  body('telegram')
+    .optional()
+    .isObject()
+    .withMessage('Telegram settings must be an object.'),
+
+  body('telegram.botToken')
+    .optional({ nullable: true })
+    .trim()
+    .isString()
+    .withMessage('Telegram bot token must be a string.'),
+
+  body('telegram.managementChatId')
+    .optional({ nullable: true })
+    .trim()
+    .isString()
+    .withMessage('Telegram management chat ID must be a string.'),
+
+  body('telegram.maintenanceChatId')
+    .optional({ nullable: true })
+    .trim()
+    .isString()
+    .withMessage('Telegram maintenance chat ID must be a string.'),
+
+  body('telegram.generalChatId')
+    .optional({ nullable: true })
+    .trim()
+    .isString()
+    .withMessage('Telegram general chat ID must be a string.'),
+
+  body('telegram.defaultFormat')
+    .optional()
+    .isIn(TELEGRAM_CONSTANTS.FORMATS)
+    .withMessage(`Telegram default format must be one of: ${TELEGRAM_CONSTANTS.FORMATS.join(', ')}.`),
 ];
 
 /**

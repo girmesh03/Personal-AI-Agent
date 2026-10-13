@@ -15,24 +15,22 @@ import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import Button from '@mui/material/Button';
 import Tooltip from '@mui/material/Tooltip';
+import Popover from '@mui/material/Popover';
+import MenuList from '@mui/material/MenuList';
+import MenuItem from '@mui/material/MenuItem';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
+import CircularProgress from '@mui/material/CircularProgress';
+import Divider from '@mui/material/Divider';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
 import ReplayIcon from '@mui/icons-material/Replay';
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-
-/**
- * Normalizes model identifier to user-friendly label.
- * @param {string} rawModel
- * @returns {string} Clean model label.
- */
-const formatModelName = (rawModel) => {
-  if (!rawModel) return 'Operon';
-  if (rawModel.includes('flash-lite')) return 'Gemini 2.5 Flash-Lite';
-  if (rawModel.includes('flash')) return 'Gemini 2.5 Flash';
-  if (rawModel.includes('pro')) return 'Gemini 2.5 Pro';
-  return rawModel;
-};
+import TelegramIcon from '@mui/icons-material/Telegram';
+import { toast } from 'react-toastify';
+import { useShareTelegramMutation } from '../../redux/features/chatSlice.js';
+import { formatModelDisplayName } from '../../utils/constants.js';
 
 /**
  * Formats timestamp for display.
@@ -77,6 +75,40 @@ export const MuiAgentMessageBottomBar = ({
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef(null);
 
+  const [shareTelegram] = useShareTelegramMutation();
+  const [telegramAnchor, setTelegramAnchor] = useState(null);
+  const [telegramFormat, setTelegramFormat] = useState('text');
+  const [sharingChannel, setSharingChannel] = useState(null);
+
+  const handleOpenTelegram = (e) => {
+    setTelegramAnchor(e.currentTarget);
+  };
+
+  const handleCloseTelegram = () => {
+    setTelegramAnchor(null);
+  };
+
+  const handleShareToTelegramChannel = async (channel) => {
+    if (!text || sharingChannel) return;
+    setSharingChannel(channel);
+    try {
+      const res = await shareTelegram({
+        text,
+        targetChannel: channel,
+        asImage: telegramFormat === 'image',
+      }).unwrap();
+
+      const modeLabel = telegramFormat === 'image' ? 'Image Card' : 'Text';
+      const stubLabel = res?.isStub ? ' (Stub)' : '';
+      toast.success(`Dispatched to Telegram: ${channel} [${modeLabel}]${stubLabel}`);
+      handleCloseTelegram();
+    } catch (err) {
+      toast.error(err?.data?.message || err?.message || 'Telegram dispatch failed');
+    } finally {
+      setSharingChannel(null);
+    }
+  };
+
   const handleCopy = async () => {
     if (!text) return;
     try {
@@ -91,7 +123,7 @@ export const MuiAgentMessageBottomBar = ({
     }
   };
 
-  const modelLabel = formatModelName(model);
+  const modelLabel = formatModelDisplayName(model);
   const timeLabel = formatTimestamp(createdAt);
 
   const usageTooltip =
@@ -110,7 +142,7 @@ export const MuiAgentMessageBottomBar = ({
         mt: 0.5,
         pt: 0.5,
         userSelect: 'none',
-        opacity: isStopped ? 1 : { xs: 1, sm: 0 },
+        opacity: isStopped || Boolean(telegramAnchor) ? 1 : { xs: 1, sm: 0 },
         transition: 'opacity 150ms ease',
         '.MuiAgentMessage-root:hover &': {
           opacity: 1,
@@ -240,6 +272,118 @@ export const MuiAgentMessageBottomBar = ({
               )}
             </IconButton>
           </Tooltip>
+        )}
+
+        {/* Share to Telegram */}
+        {Boolean(text && text.trim()) && (
+          <>
+            <Tooltip title="Share to Telegram">
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={handleOpenTelegram}
+                  disabled={isStreaming}
+                  aria-label="Share to Telegram"
+                  sx={{
+                    p: 0.5,
+                    color: 'text.secondary',
+                    bgcolor: 'transparent !important',
+                    backgroundColor: 'transparent !important',
+                    boxShadow: 'none !important',
+                    border: 'none !important',
+                    '&:hover': {
+                      color: '#2AABEE',
+                      bgcolor: 'transparent !important',
+                      backgroundColor: 'transparent !important',
+                    },
+                    '&:disabled': {
+                      color: 'text.disabled',
+                      bgcolor: 'transparent !important',
+                      backgroundColor: 'transparent !important',
+                    },
+                  }}
+                >
+                  <TelegramIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              </span>
+            </Tooltip>
+
+            <Popover
+              open={Boolean(telegramAnchor)}
+              anchorEl={telegramAnchor}
+              onClose={handleCloseTelegram}
+              anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
+              transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              slotProps={{
+                paper: {
+                  sx: {
+                    p: 1.5,
+                    minWidth: 230,
+                    borderRadius: 2,
+                    boxShadow: 4,
+                    border: 1,
+                    borderColor: 'divider',
+                    backgroundImage: 'none',
+                    mb: 1,
+                  },
+                },
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.2 }}>
+                <TelegramIcon sx={{ fontSize: 18, color: '#2AABEE' }} />
+                <Typography sx={{ fontSize: '0.8125rem', fontWeight: 600 }}>
+                  Share to Telegram
+                </Typography>
+              </Box>
+
+              <ToggleButtonGroup
+                value={telegramFormat}
+                exclusive
+                onChange={(_e, val) => val && setTelegramFormat(val)}
+                size="small"
+                fullWidth
+                sx={{ mb: 1 }}
+              >
+                <ToggleButton value="text" sx={{ fontSize: '0.75rem', py: 0.3 }}>
+                  Text (HTML)
+                </ToggleButton>
+                <ToggleButton value="image" sx={{ fontSize: '0.75rem', py: 0.3 }}>
+                  Image Card
+                </ToggleButton>
+              </ToggleButtonGroup>
+
+              <Divider sx={{ my: 0.8 }} />
+
+              <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+                Select Channel:
+              </Typography>
+
+              <MenuList disablePadding>
+                {[
+                  { id: 'management', label: 'Management (Default)' },
+                  { id: 'maintenance', label: 'Maintenance & Facilities' },
+                  { id: 'general', label: 'General Operations' },
+                ].map((item) => (
+                  <MenuItem
+                    key={item.id}
+                    onClick={() => handleShareToTelegramChannel(item.id)}
+                    disabled={Boolean(sharingChannel)}
+                    sx={{
+                      fontSize: '0.8125rem',
+                      borderRadius: 1,
+                      py: 0.6,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <span>{item.label}</span>
+                    {sharingChannel === item.id && <CircularProgress size={12} sx={{ ml: 1 }} />}
+                  </MenuItem>
+                ))}
+              </MenuList>
+            </Popover>
+          </>
         )}
       </Box>
 

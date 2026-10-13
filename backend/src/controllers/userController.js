@@ -240,6 +240,13 @@ export const getUserAgentConfig = asyncHandler(async (req, res) => {
       sttEngine: user.settings?.sttEngine || 'addis_ai',
       agentConfig: user.settings?.agentConfig || {},
       reportTemplates: user.settings?.reportTemplates || {},
+      telegram: user.settings?.telegram || {
+        botToken: null,
+        managementChatId: null,
+        maintenanceChatId: null,
+        generalChatId: null,
+        defaultFormat: 'text',
+      },
       directives: {
         negativeVocabulary: directives.negativeVocabulary || [],
         phraseMappings,
@@ -287,6 +294,25 @@ export const updateUserAgentConfig = asyncHandler(async (req, res) => {
         }
       }
 
+      if (b.telegram) {
+        if (!user.settings.telegram) user.settings.telegram = {};
+        if (b.telegram.botToken !== undefined) {
+          user.settings.telegram.botToken = b.telegram.botToken;
+        }
+        if (b.telegram.managementChatId !== undefined) {
+          user.settings.telegram.managementChatId = b.telegram.managementChatId;
+        }
+        if (b.telegram.maintenanceChatId !== undefined) {
+          user.settings.telegram.maintenanceChatId = b.telegram.maintenanceChatId;
+        }
+        if (b.telegram.generalChatId !== undefined) {
+          user.settings.telegram.generalChatId = b.telegram.generalChatId;
+        }
+        if (b.telegram.defaultFormat !== undefined) {
+          user.settings.telegram.defaultFormat = b.telegram.defaultFormat;
+        }
+      }
+
       user.markModified('settings');
       await user.save({ session });
       updatedUser = user;
@@ -299,6 +325,7 @@ export const updateUserAgentConfig = asyncHandler(async (req, res) => {
         sttEngine: updatedUser.settings.sttEngine,
         agentConfig: updatedUser.settings.agentConfig,
         reportTemplates: updatedUser.settings.reportTemplates,
+        telegram: updatedUser.settings.telegram,
       },
     });
   } finally {

@@ -19,6 +19,7 @@ import {
   uploadChatAttachments,
   uploadChatAudios,
   transcribeAudio,
+  shareToTelegramDirect,
 } from '../controllers/chatController.js';
 
 import {
@@ -64,6 +65,13 @@ router.post('/upload-audio', uploadReportAudiosMiddleware, uploadChatAudios);
  * @access Protected (Area Supervisor)
  */
 router.post('/upload-attachments', uploadChatAttachmentsMiddleware, uploadChatAttachments);
+
+/**
+ * @route POST /api/v1/chat/share-telegram
+ * @desc Manually dispatch message text to Telegram channel/supergroup
+ * @access Protected (Area Supervisor)
+ */
+router.post('/share-telegram', shareToTelegramDirect);
 
 /**
  * @route POST /api/v1/chat/stream

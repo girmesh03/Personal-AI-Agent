@@ -306,6 +306,17 @@ export const chatApi = apiSlice.injectEndpoints({
       }),
       invalidatesTags: [{ type: 'Chat', id: 'LIST' }],
     }),
+
+    /**
+     * Dispatches operational broadcast to Telegram channel (text or image card).
+     */
+    shareTelegram: builder.mutation({
+      query: ({ text, targetChannel, asImage }) => ({
+        url: '/chat/share-telegram',
+        method: 'POST',
+        body: { text, targetChannel, asImage },
+      }),
+    }),
   }),
 });
 
@@ -319,6 +330,7 @@ export const {
   useRenameChatMutation,
   useUpdateChatConfigMutation,
   useDeleteChatMutation,
+  useShareTelegramMutation,
 } = chatApi;
 
 export default chatSlice.reducer;

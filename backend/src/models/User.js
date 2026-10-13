@@ -146,6 +146,17 @@ const userSchema = new mongoose.Schema(
         phraseMappings: { type: Map, of: String, default: () => new Map() },
         customInstructions: [{ type: String, trim: true }],
       },
+      telegram: {
+        botToken: { type: String, default: null, trim: true },
+        managementChatId: { type: String, default: null, trim: true },
+        maintenanceChatId: { type: String, default: null, trim: true },
+        generalChatId: { type: String, default: null, trim: true },
+        defaultFormat: {
+          type: String,
+          enum: ['text', 'image'],
+          default: 'text',
+        },
+      },
     },
   },
   {

@@ -119,6 +119,12 @@ export const env = Object.freeze({
   OAUTH_GOOGLE_CLIENT_ID: process.env.OAUTH_GOOGLE_CLIENT_ID || '',
   OAUTH_GOOGLE_CLIENT_SECRET: process.env.OAUTH_GOOGLE_CLIENT_SECRET || '',
   OAUTH_GOOGLE_CALLBACK_URL: process.env.OAUTH_GOOGLE_CALLBACK_URL || 'http://localhost:4000/api/v1/auth/oauth/google/callback',
+
+  TELEGRAM_ENABLED: process.env.TELEGRAM_ENABLED === 'true',
+  TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
+  TELEGRAM_MANAGEMENT_CHAT_ID: process.env.TELEGRAM_MANAGEMENT_CHAT_ID || '',
+  TELEGRAM_MAINTENANCE_CHAT_ID: process.env.TELEGRAM_MAINTENANCE_CHAT_ID || '',
+  TELEGRAM_GENERAL_CHAT_ID: process.env.TELEGRAM_GENERAL_CHAT_ID || '',
 });
 
 export default env;
