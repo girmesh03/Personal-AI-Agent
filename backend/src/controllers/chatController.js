@@ -109,12 +109,14 @@ export const streamChat = asyncHandler(async (req, res) => {
   }
 
   let isClientAborted = false;
-  req.on('close', () => {
+  const handleClientClose = () => {
     if (!res.writableEnded) {
       isClientAborted = true;
       logger.info(`[chatController] Client socket closed / aborted by user for chat: ${requestedChatId || chat?._id}`);
     }
-  });
+  };
+  req.on('close', handleClientClose);
+  res.on('close', handleClientClose);
 
   try {
     // 3. Modality Ingestion & Preparation
@@ -122,16 +124,93 @@ export const streamChat = asyncHandler(async (req, res) => {
     let attachmentTextContext = '';
     let inlineParts = [];
 
-    // 4. Handle Turn Type: Retry vs Edit vs Fresh Send
+    // 4. Handle Turn Type: Continuation vs Retry vs Edit vs Fresh Send
+    const isContinue =
+      b.continueTurn === true ||
+      b.continueTurn === 'true';
     const isRetry =
-      b.isRetry === true ||
-      b.isRetry === 'true' ||
-      (typeof b.retryTurnIndex === 'number' && b.retryTurnIndex >= 0);
-    const isEdit = typeof b.editTurnIndex === 'number' && b.editTurnIndex >= 0;
+      !isContinue &&
+      (b.isRetry === true ||
+        b.isRetry === 'true' ||
+        (typeof b.retryTurnIndex === 'number' && b.retryTurnIndex >= 0));
+    const isEdit = !isContinue && typeof b.editTurnIndex === 'number' && b.editTurnIndex >= 0;
 
     let userTurn = null;
+    let stoppedTurn = null;
 
-    if (isRetry) {
+    if (isContinue) {
+      // CONTINUATION CONTRACT: Never create a new user turn.
+      // Resume generating from the stopped assistant turn in chat.messages
+      let targetIdx = -1;
+      if (b.targetAssistantMessageId) {
+        targetIdx = chat.messages.findIndex(
+          (m) =>
+            String(m.id) === String(b.targetAssistantMessageId) ||
+            String(m._id) === String(b.targetAssistantMessageId)
+        );
+      }
+      if (targetIdx === -1) {
+        targetIdx = chat.messages.findLastIndex((m) => m.role === 'assistant');
+      }
+
+      if (targetIdx === -1 || chat.messages[targetIdx].role !== 'assistant') {
+        throw new BadRequestError('Cannot continue: target assistant message not found.');
+      }
+
+      stoppedTurn = chat.messages[targetIdx];
+      // Prune any turns after the stopped turn to maintain linear causality
+      chat.messages = chat.messages.slice(0, targetIdx + 1);
+
+      // Find anchor user turn preceding the stopped assistant turn
+      const anchorIdx = chat.messages.slice(0, targetIdx).findLastIndex((m) => m.role === 'user');
+      if (anchorIdx === -1) {
+        throw new BadRequestError('Cannot continue: corresponding user message not found in conversation.');
+      }
+      userTurn = chat.messages[anchorIdx];
+
+      // Re-hydrate multi-modal context from anchor user turn (same as retry)
+      if (Array.isArray(userTurn.audios) && userTurn.audios.length > 0) {
+        try {
+          sendSSE(res, 'status', {
+            stage: 'transcribing',
+            message: 'Transcribing audio note with Addis AI...',
+          });
+          const existingAudios = await Audio.find({ _id: { $in: userTurn.audios }, user: req.user._id });
+          for (const audioDoc of existingAudios) {
+            if (!audioDoc.transcription || audioDoc.status !== 'transcribed') {
+              const updated = await transcribeAudioDocument(audioDoc._id, {
+                sttEngine: req.user.settings?.sttEngine,
+              });
+              if (updated?.transcription && updated.transcription.trim()) {
+                audioTranscriptions.push(updated.transcription.trim());
+              }
+            } else if (audioDoc.transcription && audioDoc.transcription.trim()) {
+              audioTranscriptions.push(audioDoc.transcription.trim());
+            }
+          }
+        } catch (audioHydrateErr) {
+          logger.warn(`[chatController] Failed to re-hydrate audio transcriptions for continue: ${audioHydrateErr.message}`);
+        }
+      }
+
+      if (Array.isArray(userTurn.attachments) && userTurn.attachments.length > 0) {
+        try {
+          sendSSE(res, 'status', {
+            stage: 'processing_attachments',
+            message: 'Extracting document text...',
+          });
+          const attResult = await processAttachments(userTurn.attachments);
+          if (attResult.textContext) {
+            attachmentTextContext = attResult.textContext;
+          }
+          if (Array.isArray(attResult.inlineParts) && attResult.inlineParts.length > 0) {
+            inlineParts.push(...attResult.inlineParts);
+          }
+        } catch (attHydrateErr) {
+          logger.warn(`[chatController] Failed to re-hydrate attachments for continue: ${attHydrateErr.message}`);
+        }
+      }
+    } else if (isRetry) {
       // RETRY CONTRACT: Never create a new user turn.
       // Re-hydrate multi-modal context strictly from the persisted database record!
       let anchorIdx = -1;
@@ -253,7 +332,23 @@ export const streamChat = asyncHandler(async (req, res) => {
       }
 
       if (isEdit) {
-        chat.messages = chat.messages.slice(0, b.editTurnIndex);
+        let editIdx = typeof b.editTurnIndex === 'number' ? b.editTurnIndex : -1;
+        if (b.anchorUserMessageId) {
+          const matchIdx = chat.messages.findIndex(
+            (m) =>
+              String(m.id) === String(b.anchorUserMessageId) ||
+              String(m._id) === String(b.anchorUserMessageId)
+          );
+          if (matchIdx !== -1) {
+            editIdx = matchIdx;
+          }
+        }
+        if (editIdx >= 0) {
+          if (editIdx === 0) {
+            chat.title = null;
+          }
+          chat.messages = chat.messages.slice(0, editIdx);
+        }
       }
 
       userTurn = {
@@ -289,7 +384,7 @@ export const streamChat = asyncHandler(async (req, res) => {
 
     const compiledUserMessageText = partsForPrompt.join('\n\n');
 
-    if (!compiledUserMessageText.trim() && inlineParts.length === 0 && !isRetry) {
+    if (!compiledUserMessageText.trim() && inlineParts.length === 0 && !isRetry && !isContinue) {
       throw new BadRequestError('No speech, text, or valid attachment content detected in message.');
     }
 
@@ -310,47 +405,105 @@ export const streamChat = asyncHandler(async (req, res) => {
     // 9. Build Gemini Contents History
     const geminiContents = [];
 
-    for (let i = 0; i < chat.messages.length - 1; i++) {
-      const msg = chat.messages[i];
-      if (msg.role === 'user') {
-        let userText = (msg.text || '').trim();
-        if (!userText) {
-          if (Array.isArray(msg.attachments) && msg.attachments.length > 0) {
-            userText = `[User sent attachments: ${msg.attachments.map((a) => a.name || a.originalName || a.fileName || 'file').join(', ')}]`;
-          } else if (Array.isArray(msg.audios) && msg.audios.length > 0) {
-            userText = '[User sent audio message]';
-          } else {
-            userText = '(empty message)';
+    if (isContinue) {
+      const anchorIdx = chat.messages.findIndex((m) => m === userTurn);
+      for (let i = 0; i < anchorIdx; i++) {
+        const msg = chat.messages[i];
+        if (msg.role === 'user') {
+          let userText = (msg.text || '').trim();
+          if (!userText) {
+            if (Array.isArray(msg.attachments) && msg.attachments.length > 0) {
+              userText = `[User sent attachments: ${msg.attachments.map((a) => a.name || a.originalName || a.fileName || 'file').join(', ')}]`;
+            } else if (Array.isArray(msg.audios) && msg.audios.length > 0) {
+              userText = '[User sent audio message]';
+            } else {
+              userText = '(empty message)';
+            }
           }
+          geminiContents.push({
+            role: 'user',
+            parts: [{ text: userText }],
+          });
+        } else if (msg.role === 'assistant') {
+          geminiContents.push({
+            role: 'model',
+            parts: [{ text: msg.text || '(empty response)' }],
+          });
         }
-        geminiContents.push({
-          role: 'user',
-          parts: [{ text: userText }],
-        });
-      } else if (msg.role === 'assistant') {
-        geminiContents.push({
-          role: 'model',
-          parts: [{ text: msg.text || '(empty response)' }],
-        });
       }
-    }
 
-    // Append latest user turn with inline multimodal parts if any
-    const latestUserMsg = chat.messages[chat.messages.length - 1];
-    const latestUserText = (compiledUserMessageText || latestUserMsg?.text || '').trim();
-    const latestUserParts = [];
-    if (latestUserText) {
-      latestUserParts.push({ text: latestUserText });
-    } else if (inlineParts.length === 0) {
-      latestUserParts.push({ text: '(empty message)' });
+      // Anchor user prompt
+      const anchorUserParts = [];
+      const anchorUserText = (compiledUserMessageText || userTurn?.text || '').trim();
+      if (anchorUserText) {
+        anchorUserParts.push({ text: anchorUserText });
+      } else if (inlineParts.length === 0) {
+        anchorUserParts.push({ text: '(empty message)' });
+      }
+      if (inlineParts.length > 0) {
+        anchorUserParts.push(...inlineParts);
+      }
+      geminiContents.push({
+        role: 'user',
+        parts: anchorUserParts,
+      });
+
+      // Stopped model response
+      geminiContents.push({
+        role: 'model',
+        parts: [{ text: stoppedTurn.text || '(empty response)' }],
+      });
+
+      // Seamless continuation prompt satisfying Gemini's last-turn-user invariant
+      geminiContents.push({
+        role: 'user',
+        parts: [{
+          text: 'Please continue generating directly from where you left off. Do not repeat what was already written or provide any conversational filler; seamlessly output the remaining content.',
+        }],
+      });
+    } else {
+      for (let i = 0; i < chat.messages.length - 1; i++) {
+        const msg = chat.messages[i];
+        if (msg.role === 'user') {
+          let userText = (msg.text || '').trim();
+          if (!userText) {
+            if (Array.isArray(msg.attachments) && msg.attachments.length > 0) {
+              userText = `[User sent attachments: ${msg.attachments.map((a) => a.name || a.originalName || a.fileName || 'file').join(', ')}]`;
+            } else if (Array.isArray(msg.audios) && msg.audios.length > 0) {
+              userText = '[User sent audio message]';
+            } else {
+              userText = '(empty message)';
+            }
+          }
+          geminiContents.push({
+            role: 'user',
+            parts: [{ text: userText }],
+          });
+        } else if (msg.role === 'assistant') {
+          geminiContents.push({
+            role: 'model',
+            parts: [{ text: msg.text || '(empty response)' }],
+          });
+        }
+      }
+
+      // Append latest user turn with inline multimodal parts if any
+      const latestUserMsg = chat.messages[chat.messages.length - 1];
+      const latestUserText = (compiledUserMessageText || latestUserMsg?.text || '').trim();
+      const latestUserParts = [];
+      if (latestUserText) {
+        latestUserParts.push({ text: latestUserText });
+      } else if (inlineParts.length === 0) {
+        latestUserParts.push({ text: '(empty message)' });
+      }
+      if (inlineParts.length > 0) {
+        latestUserParts.push(...inlineParts);
+      }
+      geminiContents.push({
+        role: 'user',
+        parts: latestUserParts,
+      });
     }
-    if (inlineParts.length > 0) {
-      latestUserParts.push(...inlineParts);
-    }
-    geminiContents.push({
-      role: 'user',
-      parts: latestUserParts,
-    });
 
     // 10. Multi-Step Autonomous Tool Execution Loop (maxSteps: 5)
     const apiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
@@ -383,6 +536,48 @@ export const streamChat = asyncHandler(async (req, res) => {
     const maxSteps = 5;
     let activeModel = modelName;
     let tokenUsage = { promptTokens: 0, candidatesTokens: 0, totalTokens: 0 };
+
+    let hasPersistedAbort = false;
+    const persistAbortState = async () => {
+      if (hasPersistedAbort || !chat) return;
+      hasPersistedAbort = true;
+      try {
+        if (isContinue && stoppedTurn) {
+          if (fullText) {
+            stoppedTurn.text = (stoppedTurn.text ? `${stoppedTurn.text} ` : '') + fullText;
+          }
+          if (fullThought) {
+            stoppedTurn.thought = (stoppedTurn.thought ? `${stoppedTurn.thought}\n` : '') + fullThought;
+          }
+          stoppedTurn.isStopped = true;
+          stoppedTurn.model = activeModel;
+          await chat.save();
+        } else {
+          const lastMsg = chat.messages[chat.messages.length - 1];
+          if (!lastMsg || lastMsg.role !== 'assistant') {
+            const assistantTurn = {
+              id: new mongoose.Types.ObjectId().toString(),
+              role: 'assistant',
+              text: fullText || '',
+              thought: fullThought || null,
+              toolCalls: toolsCalled,
+              model: activeModel,
+              usage: tokenUsage,
+              isStopped: true,
+              createdAt: new Date(),
+            };
+            chat.messages.push(assistantTurn);
+            await chat.save();
+          } else {
+            lastMsg.isStopped = true;
+            if (fullText) lastMsg.text = fullText;
+            await chat.save();
+          }
+        }
+      } catch (saveErr) {
+        logger.error(`[chatController] Error persisting aborted turn: ${saveErr.message}`);
+      }
+    };
 
     while (step < maxSteps) {
       step++;
@@ -569,19 +764,7 @@ export const streamChat = asyncHandler(async (req, res) => {
     // Handle user stop / abort interruption before turn completion
     if (isClientAborted) {
       logger.info(`[chatController] Stream stopped by user for chat ${chat._id}. Persisting partial turn.`);
-      const assistantTurn = {
-        id: new mongoose.Types.ObjectId().toString(),
-        role: 'assistant',
-        text: fullText || '',
-        thought: fullThought || null,
-        toolCalls: toolsCalled,
-        model: activeModel,
-        usage: tokenUsage,
-        isStopped: true,
-        createdAt: new Date(),
-      };
-      chat.messages.push(assistantTurn);
-      await chat.save();
+      await persistAbortState();
       if (!res.writableEnded) {
         res.end();
       }
@@ -589,7 +772,7 @@ export const streamChat = asyncHandler(async (req, res) => {
     }
 
     // 11. First-Turn Auto-Titling (Turn 1 only)
-    if (!chat.title) {
+    if (!chat.title && !isContinue) {
       try {
         const titlePrompt = `Summarize the user's intent in 3 to 5 words as a concise title. Output ONLY the title:\n"${userTurn.text.slice(0, 300)}"`;
         const titleRes = await ai.models.generateContent({
@@ -606,23 +789,41 @@ export const streamChat = asyncHandler(async (req, res) => {
     }
 
     // 12. Persist Assistant Turn to Chat Document
-    const assistantTurn = {
-      id: new mongoose.Types.ObjectId().toString(),
-      role: 'assistant',
-      text: fullText,
-      thought: fullThought || null,
-      toolCalls: toolsCalled,
-      model: activeModel,
-      usage: tokenUsage,
-      createdAt: new Date(),
-    };
-    chat.messages.push(assistantTurn);
-    await chat.save();
+    let savedAssistantMessageId;
+    if (isContinue && stoppedTurn) {
+      if (fullText) {
+        stoppedTurn.text = (stoppedTurn.text ? `${stoppedTurn.text} ` : '') + fullText;
+      }
+      if (fullThought) {
+        stoppedTurn.thought = (stoppedTurn.thought ? `${stoppedTurn.thought}\n` : '') + fullThought;
+      }
+      stoppedTurn.isStopped = false;
+      stoppedTurn.model = activeModel;
+      if (tokenUsage && tokenUsage.totalTokens) {
+        stoppedTurn.usage = tokenUsage;
+      }
+      await chat.save();
+      savedAssistantMessageId = stoppedTurn.id || stoppedTurn._id.toString();
+    } else {
+      const assistantTurn = {
+        id: new mongoose.Types.ObjectId().toString(),
+        role: 'assistant',
+        text: fullText,
+        thought: fullThought || null,
+        toolCalls: toolsCalled,
+        model: activeModel,
+        usage: tokenUsage,
+        createdAt: new Date(),
+      };
+      chat.messages.push(assistantTurn);
+      await chat.save();
+      savedAssistantMessageId = assistantTurn.id;
+    }
 
     // 13. Send Completion Frame
     sendSSE(res, 'done', {
       chatId: chat._id.toString(),
-      messageId: assistantTurn.id,
+      messageId: savedAssistantMessageId,
       title: chat.title,
       model: activeModel,
       usage: tokenUsage,
@@ -630,7 +831,8 @@ export const streamChat = asyncHandler(async (req, res) => {
     res.end();
   } catch (err) {
     if (isClientAborted) {
-      logger.info(`[chatController] Error caught after client abort; ignoring for chat: ${chat?._id}`);
+      logger.info(`[chatController] Error caught after client abort; persisting partial turn for chat: ${chat?._id}`);
+      await persistAbortState();
       if (!res.writableEnded) {
         res.end();
       }

@@ -24,6 +24,7 @@ import {
   useGetChatByIdQuery,
 } from '../redux/features/chatSlice.js';
 import { MuiChatAdapter } from '../adapters/MuiChatAdapter.js';
+import { ChatAdapterContext } from '../contexts/ChatAdapterContext.jsx';
 import {
   MuiChatEmptyState,
   MuiComposerInput,
@@ -291,19 +292,21 @@ export const Chat = () => {
   }, [adapter, chatId, reduxActiveChatId, location.state?.newChatAt, currentUser, activeModel, thinkingBudget, language]);
 
   return (
-    <ChatBox
-      key={sessionKey}
-      adapter={adapter}
-      layoutMode="standard"
-      activeConversationId={chatId || undefined}
-      onActiveConversationChange={handleActiveConversationChange}
-      currentUser={currentUser}
-      getMessageAuthorId={getMessageAuthorId}
-      features={FEATURES}
-      slots={SLOTS}
-      slotProps={SLOT_PROPS}
-      sx={CHATBOX_SX}
-    />
+    <ChatAdapterContext.Provider value={adapter}>
+      <ChatBox
+        key={sessionKey}
+        adapter={adapter}
+        layoutMode="standard"
+        activeConversationId={chatId || undefined}
+        onActiveConversationChange={handleActiveConversationChange}
+        currentUser={currentUser}
+        getMessageAuthorId={getMessageAuthorId}
+        features={FEATURES}
+        slots={SLOTS}
+        slotProps={SLOT_PROPS}
+        sx={CHATBOX_SX}
+      />
+    </ChatAdapterContext.Provider>
   );
 };
 

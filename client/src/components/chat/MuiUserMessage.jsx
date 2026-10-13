@@ -376,6 +376,7 @@ export const MuiUserMessage = ({ messageId }) => {
         attachments: draftAttachments,
         metadata: {
           editTurnIndex: turnIndex >= 0 ? turnIndex : undefined,
+          anchorUserMessageId: messageId,
         },
       });
     }

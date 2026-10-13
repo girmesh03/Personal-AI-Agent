@@ -91,8 +91,11 @@ export const sendChatMessageValidation = [
       (b.retryTurnIndex !== undefined && b.retryTurnIndex !== null) ||
       b.isRetry === true ||
       b.isRetry === 'true';
+    const hasContinue =
+      b.continueTurn === true ||
+      b.continueTurn === 'true';
 
-    if (!hasText && !hasAudios && !hasAttachments && !hasRetry) {
+    if (!hasText && !hasAudios && !hasAttachments && !hasRetry && !hasContinue) {
       throw new Error(
         'Message turn must include at least one input modality: text, audio, or attachment.'
       );
@@ -148,6 +151,11 @@ export const sendChatMessageValidation = [
     .toInt(),
 
   body('isRetry')
+    .optional()
+    .isBoolean()
+    .toBoolean(),
+
+  body('continueTurn')
     .optional()
     .isBoolean()
     .toBoolean(),

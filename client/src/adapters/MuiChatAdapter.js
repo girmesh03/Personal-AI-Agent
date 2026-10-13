@@ -612,6 +612,11 @@ export class MuiChatAdapter {
       attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
     };
 
+    if (this.activeAbortController) {
+      this.activeAbortController.abort();
+      this.activeAbortController = null;
+    }
+
     const abortController = new AbortController();
     this.activeAbortController = abortController;
 
@@ -1023,6 +1028,221 @@ export class MuiChatAdapter {
         }
       },
     });
+  }
+
+  /**
+   * Resumes generation of an interrupted assistant message turn in-place (Model A).
+   * Appends incoming streaming tokens directly to the target assistant message in the store
+   * without creating synthetic user bubbles or polluting database history.
+   *
+   * @async
+   * @param {object} input
+   * @param {string} [input.conversationId] - Target conversation ID.
+   * @param {string} input.messageId - Assistant message ID being resumed.
+   * @param {object} input.store - Headless chat store instance.
+   * @param {AbortSignal} [input.signal] - Optional external abort signal.
+   * @returns {Promise<void>}
+   */
+  async continueGeneration({ conversationId, messageId, store, signal } = {}) {
+    if (this.activeAbortController) {
+      this.activeAbortController.abort();
+      this.activeAbortController = null;
+    }
+
+    const targetChatId =
+      conversationId ||
+      (typeof this.getActiveChatId === 'function' ? this.getActiveChatId() : null) ||
+      this.currentChatId;
+
+    if (!targetChatId) {
+      throw new Error('Cannot continue generation without an active conversation ID.');
+    }
+
+    const streamUrl = `${this.baseUrl}/chat/${targetChatId}/stream`;
+    const payload = {
+      chatId: targetChatId,
+      continueTurn: true,
+      targetAssistantMessageId: messageId,
+      model:
+        (typeof this.getModel === 'function' ? this.getModel() : undefined) ||
+        this.activeModel,
+      thinkingBudget:
+        (typeof this.getThinkingBudget === 'function' ? this.getThinkingBudget() : undefined) ??
+        this.activeThinkingBudget,
+      language:
+        (typeof this.getLanguage === 'function' ? this.getLanguage() : undefined) ??
+        this.activeLanguage,
+    };
+
+    const abortController = new AbortController();
+    this.activeAbortController = abortController;
+
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        abortController.abort();
+      });
+    }
+
+    const adapterInstance = this;
+
+    // Set streaming state on store so global indicators reflect active generation
+    store?.setStreaming?.(true, targetChatId);
+    store?.setError?.(null);
+
+    // Snapshot existing target message from store
+    const existingMsg = store?.state?.messagesById?.[messageId];
+    let currentText = '';
+    if (typeof existingMsg?.content === 'string') {
+      currentText = existingMsg.content;
+    } else {
+      const textPart = existingMsg?.parts?.find((p) => p.type === 'text');
+      currentText = textPart?.text || existingMsg?.text || '';
+    }
+
+    try {
+      const response = await executeWithReauth(
+        () =>
+          fetch(streamUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'text/event-stream',
+            },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+            signal: abortController.signal,
+          }),
+        { dispatch: adapterInstance.dispatch, baseUrl: adapterInstance.baseUrl }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Stream request failed (${response.status})`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      let accumulatedText = currentText;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        let currentEvent = 'message';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            currentEvent = 'message';
+            continue;
+          }
+          if (trimmed.startsWith('event:')) {
+            currentEvent = trimmed.slice(6).trim();
+            continue;
+          }
+          if (trimmed.startsWith('data:')) {
+            const jsonStr = trimmed.slice(5).trim();
+            let data = null;
+            try {
+              data = JSON.parse(jsonStr);
+            } catch {
+              continue;
+            }
+
+            if (currentEvent === 'text' && data?.delta) {
+              accumulatedText += data.delta;
+              if (store && existingMsg) {
+                const updatedParts = (existingMsg.parts || []).map((p) =>
+                  p.type === 'text' ? { ...p, text: accumulatedText } : p
+                );
+                if (!updatedParts.some((p) => p.type === 'text')) {
+                  updatedParts.push({ type: 'text', text: accumulatedText });
+                }
+                store.update({
+                  messagesById: {
+                    ...store.state.messagesById,
+                    [messageId]: {
+                      ...existingMsg,
+                      text: accumulatedText,
+                      content: accumulatedText,
+                      parts: updatedParts,
+                      metadata: {
+                        ...(existingMsg.metadata || {}),
+                        isStopped: false,
+                      },
+                    },
+                  },
+                });
+              }
+            } else if (currentEvent === 'status' && data?.message) {
+              adapterInstance.dispatch?.(setPipelineStatus(data.message));
+            } else if (currentEvent === 'done') {
+              adapterInstance.dispatch?.(setPipelineStatus(''));
+              if (store && existingMsg) {
+                store.update({
+                  messagesById: {
+                    ...store.state.messagesById,
+                    [messageId]: {
+                      ...existingMsg,
+                      text: accumulatedText,
+                      content: accumulatedText,
+                      parts: (existingMsg.parts || []).map((p) =>
+                        p.type === 'text' ? { ...p, text: accumulatedText } : p
+                      ),
+                      metadata: {
+                        ...(existingMsg.metadata || {}),
+                        isStopped: false,
+                        model: data.model || existingMsg.metadata?.model,
+                        usage: data.usage || existingMsg.metadata?.usage,
+                      },
+                    },
+                  },
+                });
+              }
+              adapterInstance.dispatch?.(
+                apiSlice.util.invalidateTags([
+                  { type: 'Chat', id: 'LIST' },
+                  { type: 'Chat', id: targetChatId },
+                ])
+              );
+              store?.setStreaming?.(false);
+              return;
+            } else if (currentEvent === 'error') {
+              adapterInstance.dispatch?.(setPipelineStatus(''));
+              throw new Error(data?.message || 'Continuation failed.');
+            }
+          }
+        }
+      }
+    } catch (err) {
+      if (abortController.signal.aborted) {
+        if (store && existingMsg) {
+          store.update({
+            messagesById: {
+              ...store.state.messagesById,
+              [messageId]: {
+                ...existingMsg,
+                metadata: {
+                  ...(existingMsg.metadata || {}),
+                  isStopped: true,
+                },
+              },
+            },
+          });
+        }
+      } else {
+        console.warn('[MuiChatAdapter] continueGeneration error:', err);
+        adapterInstance.onError?.(err);
+      }
+    } finally {
+      store?.setStreaming?.(false);
+      adapterInstance.dispatch?.(setPipelineStatus(''));
+      adapterInstance.activeAbortController = null;
+    }
   }
 }
 

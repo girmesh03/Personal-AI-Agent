@@ -20,6 +20,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useMessage, useMessageError, useChatActions, useChatStore, useMessageIds } from '@mui/x-chat-headless';
 
 import { setActiveModel, selectPipelineStatus, selectActiveModel } from '../../redux/features/chatSlice.js';
+import { useChatAdapter } from '../../contexts/ChatAdapterContext.jsx';
 import MuiAgentExecutionTimeline from './MuiAgentExecutionTimeline.jsx';
 import MuiAgentMessageBody from './MuiAgentMessageBody.jsx';
 import MuiAgentMessageBottomBar from './MuiAgentMessageBottomBar.jsx';
@@ -35,6 +36,7 @@ import MuiErrorNotice from './MuiErrorNotice.jsx';
  */
 export const MuiAgentMessage = ({ messageId }) => {
   const dispatch = useDispatch();
+  const adapter = useChatAdapter();
   const message = useMessage(messageId);
   const messageError = useMessageError(messageId);
   const actions = useChatActions(true);
@@ -118,23 +120,20 @@ export const MuiAgentMessage = ({ messageId }) => {
     [handleRegenerate]
   );
 
-  // Resilient Continue Generating handler for stopped turns
+  // Resilient Continue Generating handler for stopped turns (Model A: In-Place Resumption)
   const handleContinue = useCallback(async () => {
-    if (actions && typeof actions.sendMessage === 'function') {
-      await actions.sendMessage({
-        parts: [
-          {
-            type: 'text',
-            text: 'Continue',
-          },
-        ],
-        metadata: {
-          continueTurn: true,
-          previousAssistantText: fullText,
-        },
-      });
+    if (adapter && typeof adapter.continueGeneration === 'function') {
+      try {
+        await adapter.continueGeneration({
+          conversationId: message?.conversationId || adapter.currentChatId,
+          messageId,
+          store,
+        });
+      } catch (err) {
+        console.warn('[MuiAgentMessage] adapter.continueGeneration error:', err);
+      }
     }
-  }, [actions, fullText]);
+  }, [adapter, message?.conversationId, messageId, store]);
 
   if (!message) return null;
 
