@@ -469,6 +469,30 @@ export const formatModelDisplayName = (rawModel) => {
 };
 
 /**
+ * Canonical display labels for Speech-to-Text (STT) engines.
+ * Single Source of Truth for logging, status pipeline, and telemetry.
+ * @constant
+ * @type {Readonly<Record<string, string>>}
+ */
+export const STT_ENGINE_LABELS = Object.freeze({
+  addis_ai: 'Addis AI',
+  'gemini-3.8-flash': 'Gemini 3.8 Flash',
+  'gemini-3.1-flash-lite': 'Gemini 3.1 Flash Lite',
+});
+
+/**
+ * Returns user-facing display label for an STT engine identifier.
+ * @param {string} [engine]
+ * @returns {string} Human-friendly display label (e.g. "Addis AI", "Gemini 3.8 Flash").
+ */
+export const formatSttEngineDisplayName = (engine) => {
+  if (!engine) return 'Addis AI';
+  if (STT_ENGINE_LABELS[engine]) return STT_ENGINE_LABELS[engine];
+  if (AI_MODEL_LABELS[engine]) return AI_MODEL_LABELS[engine];
+  return engine;
+};
+
+/**
  * Chat session and AI agent engine constants.
  * @constant
  * @type {Readonly<{
@@ -561,6 +585,8 @@ export default {
   AI_MODELS,
   AI_MODEL_LABELS,
   formatModelDisplayName,
+  STT_ENGINE_LABELS,
+  formatSttEngineDisplayName,
   CHAT_CONSTANTS,
   CHAT_PAGINATION,
 };

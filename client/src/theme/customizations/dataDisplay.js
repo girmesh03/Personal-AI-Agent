@@ -242,6 +242,18 @@ const dataDisplayCustomizations = {
       fontSize: "small",
     },
   },
+  MuiTooltip: {
+    defaultProps: {
+      disableFocusListener: true,
+      disableTouchListener: true,
+      arrow: true,
+    },
+    styleOverrides: {
+      tooltip: {
+        pointerEvents: "none",
+      },
+    },
+  },
 };
 
 export default dataDisplayCustomizations;

@@ -61,12 +61,16 @@ export const MuiSendButton = (props) => {
   // State 3: Active Streaming Generation (Stop Mode)
   if (isStreaming) {
     return (
-      <Tooltip title="Stop generating" arrow>
+      <Tooltip title="Stop generating" arrow disableFocusListener disableTouchListener>
         <IconButton
           type="button"
           aria-label="Stop generating"
           size="small"
-          onClick={() => {
+          onPointerDown={(e) => {
+            e.currentTarget.blur();
+          }}
+          onClick={(e) => {
+            e.currentTarget.blur();
             if (typeof actions?.stopStreaming === 'function') {
               actions.stopStreaming();
             }
@@ -75,12 +79,14 @@ export const MuiSendButton = (props) => {
             width: 34,
             height: 34,
             borderRadius: '50%',
-            bgcolor: 'error.main',
-            color: 'error.contrastText',
+            bgcolor: 'error.main !important',
+            backgroundColor: 'error.main !important',
+            color: 'error.contrastText !important',
             transition: 'none !important',
             '&:hover': {
-              bgcolor: 'error.dark',
-              color: 'error.contrastText',
+              bgcolor: 'error.dark !important',
+              backgroundColor: 'error.dark !important',
+              color: 'error.contrastText !important',
             },
             flexShrink: 0,
           }}
@@ -93,15 +99,27 @@ export const MuiSendButton = (props) => {
 
   // States 1 & 2: Idle Drafting (Send Mode)
   return (
-    <Tooltip title={canSend ? 'Send message' : ''} arrow disableHoverListener={!canSend}>
+    <Tooltip
+      title={canSend ? 'Send message' : ''}
+      arrow
+      disableHoverListener={!canSend}
+      disableFocusListener
+      disableTouchListener
+    >
       <span>
         <IconButton
           type="submit"
           aria-label="Send message"
           size="small"
           disabled={!canSend}
-          onPointerDown={handleSendTrigger}
-          onClick={handleSendTrigger}
+          onPointerDown={(e) => {
+            e.currentTarget.blur();
+            handleSendTrigger(e);
+          }}
+          onClick={(e) => {
+            e.currentTarget.blur();
+            handleSendTrigger(e);
+          }}
           sx={{
             width: 34,
             height: 34,

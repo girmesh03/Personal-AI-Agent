@@ -53,6 +53,7 @@ export class MuiChatAdapter {
     getModel,
     getThinkingBudget,
     getLanguage,
+    getSttEngine,
     getActiveChatId,
   } = {}) {
     this.dispatch = dispatch;
@@ -65,12 +66,14 @@ export class MuiChatAdapter {
     this.getModel = getModel;
     this.getThinkingBudget = getThinkingBudget;
     this.getLanguage = getLanguage;
+    this.getSttEngine = getSttEngine;
     this.getActiveChatId = getActiveChatId;
     this.activeAbortController = null;
     this.currentChatId = null;
     this.activeModel = null;
     this.activeThinkingBudget = undefined;
     this.activeLanguage = undefined;
+    this.activeSttEngine = undefined;
   }
 
   /**
@@ -123,6 +126,14 @@ export class MuiChatAdapter {
    */
   setLanguage(lang) {
     this.activeLanguage = lang;
+  }
+
+  /**
+   * Sets or synchronizes speech-to-text engine preference.
+   * @param {string|undefined} engine - STT engine identifier.
+   */
+  setSttEngine(engine) {
+    this.activeSttEngine = engine;
   }
 
   /**
@@ -530,6 +541,12 @@ export class MuiChatAdapter {
           this.dispatch?.(setPipelineStatus('Uploading audio note...'));
           const audioFormData = new FormData();
           audioFiles.forEach((f) => audioFormData.append('audios', f));
+          const effectiveStt =
+            (typeof this.getSttEngine === 'function' ? this.getSttEngine() : undefined) ||
+            this.activeSttEngine;
+          if (effectiveStt) {
+            audioFormData.append('sttEngine', effectiveStt);
+          }
           const audioRes = await executeWithReauth(
             () =>
               fetch(`${this.baseUrl}/chat/upload-audio`, {
@@ -608,6 +625,9 @@ export class MuiChatAdapter {
       language:
         (typeof this.getLanguage === 'function' ? this.getLanguage() : undefined) ??
         this.activeLanguage,
+      sttEngine:
+        (typeof this.getSttEngine === 'function' ? this.getSttEngine() : undefined) ||
+        this.activeSttEngine,
       audios: uploadedAudioIds.length > 0 ? uploadedAudioIds : undefined,
       attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
     };
@@ -1072,6 +1092,9 @@ export class MuiChatAdapter {
       language:
         (typeof this.getLanguage === 'function' ? this.getLanguage() : undefined) ??
         this.activeLanguage,
+      sttEngine:
+        (typeof this.getSttEngine === 'function' ? this.getSttEngine() : undefined) ||
+        this.activeSttEngine,
     };
 
     const abortController = new AbortController();

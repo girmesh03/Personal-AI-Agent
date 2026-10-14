@@ -527,12 +527,13 @@ const runLifecycleSuite = async () => {
     });
     await mockAudio.save();
 
-    // Send a new multi-modal user turn with audio reference
+    // Send a new multi-modal user turn with audio reference and explicit sttEngine
     const mmStreamRes = await postmanSSEStream(`/chat/${activeChatId}/stream`, {
       body: {
         chatId: activeChatId,
         text: 'What did the supervisor report in the audio note?',
         audios: [mockAudio._id.toString()],
+        sttEngine: 'gemini-3.8-flash',
         attachments: [{
           fileName: 'ops_summary.txt',
           originalName: 'ops_summary.txt',
@@ -545,6 +546,15 @@ const runLifecycleSuite = async () => {
     });
     assert(mmStreamRes.status === 200, 'Multi-modal turn stream returned HTTP 200');
 
+    // Assert that the transcribing status event reflected 'Gemini 3.8 Flash' instead of hardcoded 'Addis AI'
+    const transcribingStatusEvent = mmStreamRes.events.find(
+      (e) => e.event === 'status' && e.data?.stage === 'transcribing'
+    );
+    assert(
+      transcribingStatusEvent && transcribingStatusEvent.data?.message?.includes('Gemini 3.8 Flash'),
+      'STT transcription status event dynamically displayed Gemini 3.8 Flash'
+    );
+
     const chatDoc10 = await Chat.findById(activeChatId);
     assert(chatDoc10.messages.length === 8, 'Chat now contains 8 messages with multi-modal turn');
     const mmUserTurn = chatDoc10.messages[6];
@@ -556,11 +566,19 @@ const runLifecycleSuite = async () => {
       body: {
         chatId: activeChatId,
         isRetry: true,
+        sttEngine: 'addis_ai',
         anchorUserMessageId: mmUserTurn._id.toString(),
         model: AI_MODELS.DEFAULT,
       },
     });
     assert(mmRetryRes.status === 200, 'Multi-modal retry stream returned HTTP 200');
+    const retryTranscribingEvent = mmRetryRes.events.find(
+      (e) => e.event === 'status' && e.data?.stage === 'transcribing'
+    );
+    assert(
+      retryTranscribingEvent && retryTranscribingEvent.data?.message?.includes('Addis AI'),
+      'STT retry status event dynamically displayed Addis AI'
+    );
     const chatDoc10Retry = await Chat.findById(activeChatId);
     assert(chatDoc10Retry.messages.length === 8, 'Zero duplicate user turns on multi-modal retry');
     assert(chatDoc10Retry.messages[6].audios.length === 1, 'Audios persisted across retry');

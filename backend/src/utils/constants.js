@@ -61,6 +61,41 @@ export const AI_MODEL_LABELS = Object.freeze({
 });
 
 /**
+ * Canonical display labels for Speech-to-Text (STT) engines.
+ * Single Source of Truth for logging, status pipeline, and telemetry.
+ * @constant
+ * @type {Readonly<Record<string, string>>}
+ */
+export const STT_ENGINE_LABELS = Object.freeze({
+  addis_ai: 'Addis AI',
+  'gemini-3.8-flash': 'Gemini 3.8 Flash',
+  'gemini-3.1-flash-lite': 'Gemini 3.1 Flash Lite',
+});
+
+/**
+ * Returns human-friendly display name for an AI model identifier.
+ * @param {string} [rawModel]
+ * @returns {string} User-facing model name (e.g. "Gemini 3.1 Flash Lite").
+ */
+export const formatModelDisplayName = (rawModel) => {
+  if (!rawModel) return 'Operon';
+  if (AI_MODEL_LABELS[rawModel]) return AI_MODEL_LABELS[rawModel];
+  return rawModel;
+};
+
+/**
+ * Returns user-facing display label for an STT engine identifier.
+ * @param {string} [engine]
+ * @returns {string} Human-friendly display label (e.g. "Addis AI", "Gemini 3.8 Flash").
+ */
+export const formatSttEngineDisplayName = (engine) => {
+  if (!engine) return 'Addis AI';
+  if (STT_ENGINE_LABELS[engine]) return STT_ENGINE_LABELS[engine];
+  if (AI_MODEL_LABELS[engine]) return AI_MODEL_LABELS[engine];
+  return engine;
+};
+
+/**
  * Standard HTTP Status Codes.
  * Strict naming invariant: 401 is UNAUTHENTICATED (never UNAUTHORIZED).
  * @constant
@@ -548,6 +583,9 @@ export default {
   AVATAR_CONSTANTS,
   AI_MODELS,
   AI_MODEL_LABELS,
+  STT_ENGINE_LABELS,
+  formatModelDisplayName,
+  formatSttEngineDisplayName,
   UPLOADS_CONFIG,
 };
 

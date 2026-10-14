@@ -16,6 +16,7 @@ import {
   selectActiveModel,
   selectThinkingBudget,
   selectLanguage,
+  selectSttEngine,
   setActiveChatId,
   setActiveModel,
   setThinkingBudget,
@@ -183,6 +184,7 @@ export const Chat = () => {
   const activeModel = useSelector(selectActiveModel);
   const thinkingBudget = useSelector(selectThinkingBudget);
   const language = useSelector(selectLanguage);
+  const sttEngine = useSelector(selectSttEngine);
   const reduxActiveChatId = useSelector((state) => state.chat.activeChatId);
 
   // Synchronize activeChatId in Redux on route param changes
@@ -277,7 +279,7 @@ export const Chat = () => {
     });
   }, [dispatch]);
 
-  // Keep active chat ID, current user, model, thinkingBudget, and language synchronized on state changes
+  // Keep active chat ID, current user, model, thinkingBudget, language, and sttEngine synchronized on state changes
   useEffect(() => {
     const effectiveChatId = chatId || reduxActiveChatId || null;
     if (effectiveChatId) {
@@ -289,7 +291,8 @@ export const Chat = () => {
     adapter.setModel(activeModel);
     adapter.setThinkingBudget(thinkingBudget);
     adapter.setLanguage(language);
-  }, [adapter, chatId, reduxActiveChatId, location.state?.newChatAt, currentUser, activeModel, thinkingBudget, language]);
+    adapter.setSttEngine(sttEngine);
+  }, [adapter, chatId, reduxActiveChatId, location.state?.newChatAt, currentUser, activeModel, thinkingBudget, language, sttEngine]);
 
   return (
     <ChatAdapterContext.Provider value={adapter}>

@@ -17,7 +17,7 @@ import env from '../config/env.js';
 import logger from '../config/logger.js';
 import { Chat } from '../models/Chat.js';
 import { Audio } from '../models/Audio.js';
-import { HTTP_STATUS, CHAT_CONSTANTS, ATTACHMENT_CONSTANTS, AUDIO_CONSTANTS, AI_MODELS } from '../utils/constants.js';
+import { HTTP_STATUS, CHAT_CONSTANTS, ATTACHMENT_CONSTANTS, AUDIO_CONSTANTS, AI_MODELS, formatSttEngineDisplayName } from '../utils/constants.js';
 import { User } from '../models/User.js';
 import { NotFoundError, BadRequestError } from '../errors/CustomError.js';
 import { assembleSystemPrompt } from '../utils/promptAssembler.js';
@@ -109,6 +109,7 @@ export const streamChat = asyncHandler(async (req, res) => {
   }
 
   let isClientAborted = false;
+  let persistAbortState = null;
   const handleClientClose = () => {
     if (!res.writableEnded) {
       isClientAborted = true;
@@ -123,6 +124,13 @@ export const streamChat = asyncHandler(async (req, res) => {
     const audioTranscriptions = [];
     let attachmentTextContext = '';
     let inlineParts = [];
+
+    // Dynamically resolve active STT engine and human-friendly display label from SSOT constants
+    const activeSttEngine =
+      (b.sttEngine && AI_MODELS.STT_ENGINES.includes(b.sttEngine) ? b.sttEngine : null) ||
+      (AI_MODELS.STT_ENGINES.includes(req.user.settings?.sttEngine) ? req.user.settings.sttEngine : null) ||
+      AI_MODELS.DEFAULT_STT_ENGINE;
+    const sttEngineLabel = formatSttEngineDisplayName(activeSttEngine);
 
     // 4. Handle Turn Type: Continuation vs Retry vs Edit vs Fresh Send
     const isContinue =
@@ -173,13 +181,13 @@ export const streamChat = asyncHandler(async (req, res) => {
         try {
           sendSSE(res, 'status', {
             stage: 'transcribing',
-            message: 'Transcribing audio note with Addis AI...',
+            message: `Transcribing audio note with ${sttEngineLabel}...`,
           });
           const existingAudios = await Audio.find({ _id: { $in: userTurn.audios }, user: req.user._id });
           for (const audioDoc of existingAudios) {
             if (!audioDoc.transcription || audioDoc.status !== 'transcribed') {
               const updated = await transcribeAudioDocument(audioDoc._id, {
-                sttEngine: req.user.settings?.sttEngine,
+                sttEngine: activeSttEngine,
               });
               if (updated?.transcription && updated.transcription.trim()) {
                 audioTranscriptions.push(updated.transcription.trim());
@@ -255,13 +263,13 @@ export const streamChat = asyncHandler(async (req, res) => {
         try {
           sendSSE(res, 'status', {
             stage: 'transcribing',
-            message: 'Transcribing audio note with Addis AI...',
+            message: `Transcribing audio note with ${sttEngineLabel}...`,
           });
           const existingAudios = await Audio.find({ _id: { $in: userTurn.audios }, user: req.user._id });
           for (const audioDoc of existingAudios) {
             if (!audioDoc.transcription || audioDoc.status !== 'transcribed') {
               const updated = await transcribeAudioDocument(audioDoc._id, {
-                sttEngine: req.user.settings?.sttEngine,
+                sttEngine: activeSttEngine,
               });
               if (updated?.transcription && updated.transcription.trim()) {
                 audioTranscriptions.push(updated.transcription.trim());
@@ -298,7 +306,7 @@ export const streamChat = asyncHandler(async (req, res) => {
       if (Array.isArray(b.audios) && b.audios.length > 0) {
         sendSSE(res, 'status', {
           stage: 'transcribing',
-          message: 'Transcribing audio note with Addis AI...',
+          message: `Transcribing audio note with ${sttEngineLabel}...`,
         });
         for (const audioId of b.audios) {
           try {
@@ -306,7 +314,7 @@ export const streamChat = asyncHandler(async (req, res) => {
             if (audioDoc) {
               if (!audioDoc.transcription || audioDoc.status !== 'transcribed') {
                 const updated = await transcribeAudioDocument(audioDoc._id, {
-                  sttEngine: req.user.settings?.sttEngine,
+                  sttEngine: activeSttEngine,
                 });
                 if (updated.transcription && updated.transcription.trim()) {
                   audioTranscriptions.push(updated.transcription.trim());
@@ -538,7 +546,7 @@ export const streamChat = asyncHandler(async (req, res) => {
     let tokenUsage = { promptTokens: 0, candidatesTokens: 0, totalTokens: 0 };
 
     let hasPersistedAbort = false;
-    const persistAbortState = async () => {
+    persistAbortState = async () => {
       if (hasPersistedAbort || !chat) return;
       hasPersistedAbort = true;
       try {
@@ -764,7 +772,9 @@ export const streamChat = asyncHandler(async (req, res) => {
     // Handle user stop / abort interruption before turn completion
     if (isClientAborted) {
       logger.info(`[chatController] Stream stopped by user for chat ${chat._id}. Persisting partial turn.`);
-      await persistAbortState();
+      if (typeof persistAbortState === 'function') {
+        await persistAbortState();
+      }
       if (!res.writableEnded) {
         res.end();
       }
@@ -832,7 +842,9 @@ export const streamChat = asyncHandler(async (req, res) => {
   } catch (err) {
     if (isClientAborted) {
       logger.info(`[chatController] Error caught after client abort; persisting partial turn for chat: ${chat?._id}`);
-      await persistAbortState();
+      if (typeof persistAbortState === 'function') {
+        await persistAbortState();
+      }
       if (!res.writableEnded) {
         res.end();
       }

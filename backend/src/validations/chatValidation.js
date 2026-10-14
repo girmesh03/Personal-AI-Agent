@@ -138,6 +138,18 @@ export const sendChatMessageValidation = [
     .isLength({ min: 2, max: 10 })
     .withMessage('Language code must be a valid language string (e.g. "am", "en").'),
 
+  body('sttEngine')
+    .optional()
+    .trim()
+    .isString()
+    .withMessage('sttEngine must be a string.')
+    .custom((value) => {
+      if (value && !AI_MODELS.STT_ENGINES.includes(value)) {
+        throw new Error(`sttEngine '${value}' is not supported.`);
+      }
+      return true;
+    }),
+
   body('editTurnIndex')
     .optional()
     .isInt({ min: 0 })
