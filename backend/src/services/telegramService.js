@@ -148,141 +148,257 @@ export function chunkTelegramMessage(text = '', maxLimit = TELEGRAM_CONSTANTS.MA
 }
 
 /**
- * Simple word wrap utility for Ethiopic / Latin text.
- * @param {string} text
- * @param {number} maxChars
- * @returns {string[]}
+ * Estimates character advance width in pixels based on font size and script geometry.
+ * Ethiopic glyph advance: ~0.60 * fontSize (normal) / 0.62 * fontSize (bold).
+ * Latin glyph advance: ~0.50 * fontSize (normal) / 0.52 * fontSize (bold).
+ * Narrow punctuation: ~0.28 * fontSize.
+ * Space: ~0.30 * fontSize.
+ *
+ * @param {string} ch - Character
+ * @param {number} fontSize - Base font size in px
+ * @param {boolean} [isBold=false] - Whether bold weight
+ * @returns {number} Estimated pixel advance
  */
-function wrapText(text, maxChars) {
-  const words = text.split(' ');
-  const lines = [];
-  let currentLine = '';
+function estimateCharWidth(ch, fontSize, isBold = false) {
+  const code = ch.charCodeAt(0);
+  if (ch === ' ') return fontSize * 0.30;
+  if (code >= 0x1200 && code <= 0x137f) {
+    return fontSize * (isBold ? 0.62 : 0.60);
+  }
+  if (['i', 'l', 'I', '1', '.', ':', ',', ';', '!', '|', '\'', '"', '`'].includes(ch)) {
+    return fontSize * 0.28;
+  }
+  if (['m', 'w', 'M', 'W', '@', '%'].includes(ch)) {
+    return fontSize * 0.82;
+  }
+  return fontSize * (isBold ? 0.52 : 0.50);
+}
 
-  for (const word of words) {
-    if (!currentLine) {
-      currentLine = word;
-    } else if ((currentLine + ' ' + word).length <= maxChars) {
-      currentLine += ' ' + word;
+/**
+ * Measures total advance width of a string in pixels.
+ *
+ * @param {string} text - Input text
+ * @param {number} fontSize - Font size in px
+ * @param {boolean} [isBold=false] - Bold flag
+ * @returns {number} Width in px
+ */
+function measureTextWidth(text, fontSize, isBold = false) {
+  let w = 0;
+  for (let i = 0; i < text.length; i++) {
+    w += estimateCharWidth(text[i], fontSize, isBold);
+  }
+  return w;
+}
+
+/**
+ * Pixel-aware word wrapping utility respecting exact glyph geometry.
+ *
+ * @param {string} text - Input text to wrap
+ * @param {number} maxWidth - Maximum allowed line width in px
+ * @param {number} fontSize - Font size in px
+ * @param {boolean} [isBold=false] - Bold flag
+ * @returns {string[]} Array of wrapped line strings
+ */
+function wrapTextPixels(text, maxWidth, fontSize, isBold = false) {
+  const words = text.split(/\s+/);
+  const lines = [];
+  let curLine = '';
+  let curWidth = 0;
+
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    const wordWidth = measureTextWidth(word, fontSize, isBold);
+    const spaceWidth = curLine ? measureTextWidth(' ', fontSize, isBold) : 0;
+
+    if (curWidth + spaceWidth + wordWidth <= maxWidth) {
+      curLine = curLine ? `${curLine} ${word}` : word;
+      curWidth += spaceWidth + wordWidth;
     } else {
-      lines.push(currentLine);
-      currentLine = word;
+      if (curLine) {
+        lines.push(curLine);
+      }
+      if (wordWidth > maxWidth) {
+        let chunk = '';
+        let chunkW = 0;
+        for (let c = 0; c < word.length; c++) {
+          const cw = estimateCharWidth(word[c], fontSize, isBold);
+          if (chunkW + cw > maxWidth && chunk) {
+            lines.push(chunk);
+            chunk = word[c];
+            chunkW = cw;
+          } else {
+            chunk += word[c];
+            chunkW = cw;
+          }
+        }
+        curLine = chunk;
+        curWidth = chunkW;
+      } else {
+        curLine = word;
+        curWidth = wordWidth;
+      }
     }
   }
-  if (currentLine) {
-    lines.push(currentLine);
+  if (curLine) {
+    lines.push(curLine);
   }
   return lines;
 }
 
 /**
  * Dynamically generates a high-contrast, mobile-optimized document sheet image card
- * using sharp and SVG rendering based on field-verified layout specifications.
+ * at standard non-negotiable 1440px 2K resolution using sharp and SVG vector rendering.
  *
  * @param {string} reportText - Formatted report text or ad-hoc message
+ * @param {Object} [options={}] - Dynamic styling options
  * @returns {Promise<Buffer>} PNG image buffer
  */
-export async function generateReportImageCard(reportText = '') {
+export async function generateReportImageCard(reportText = '', options = {}) {
   const C = TELEGRAM_CONSTANTS.IMAGE_CARD;
-  const width = C.WIDTH;
-  const paddingX = C.PADDING_X;
-  const maxCharsPerLine = 48;
-  const maxCharsBulletHanging = 44;
+  const width = options.width || C.WIDTH;
+  const paddingX = options.paddingX || C.PADDING_X;
+  const baseFontSize = options.fontSize || C.BASE_FONT_SIZE;
+  const sectionFontSize = options.sectionFontSize || C.SECTION_FONT_SIZE;
+  const lineHeight = options.lineHeight || C.LINE_HEIGHT;
+  const sectionTopGap = options.sectionTopGap !== undefined ? options.sectionTopGap : C.SECTION_TOP_GAP;
+  const sectionBottomGap = options.sectionBottomGap !== undefined ? options.sectionBottomGap : C.SECTION_BOTTOM_GAP;
+  const paragraphGap = options.paragraphGap !== undefined ? options.paragraphGap : C.PARAGRAPH_GAP;
+  const bulletGap = options.bulletGap !== undefined ? options.bulletGap : C.INTER_BULLET_GAP;
+  const bulletIndent = options.bulletIndent || C.BULLET_INDENT;
+  const bulletRadius = options.bulletRadius || C.BULLET_RADIUS;
+  const textColor = options.textColor || C.TEXT_COLOR;
+  const bgColor = options.bgColor || C.BG_COLOR;
+  const fontFamily = options.fontFamily || C.FONT_FAMILY;
+
+  // Synthetic bold stroke settings ensuring cross-platform Ethiopic bolding
+  const boldStrokeBody = `stroke="${textColor}" stroke-width="1.1" paint-order="stroke fill"`;
+  const boldStrokeHeader = `stroke="${textColor}" stroke-width="1.3" paint-order="stroke fill"`;
+
+  const usableWidth = width - 2 * paddingX;
+  const bulletUsableWidth = usableWidth - bulletIndent;
+  const maxLineSafety = 45; // Safety buffer ensuring right margin >= 100px
 
   const lines = reportText.split('\n');
   const elements = [];
-  let currentY = 60;
+  let currentY = paddingX + 15;
+
+  function formatInlineSpans(text) {
+    if (!text || !text.includes('**')) {
+      return escapeHtml(text || '');
+    }
+    const parts = text.split(/(\*\*[^*]+\*\*)/g);
+    return parts.map((part) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        const inner = part.slice(2, -2);
+        return `<tspan font-weight="bold" ${boldStrokeBody}>${escapeHtml(inner)}</tspan>`;
+      }
+      return escapeHtml(part);
+    }).join('');
+  }
 
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i].trim();
     if (!rawLine) {
-      currentY += 12;
+      currentY += paragraphGap;
       continue;
     }
 
-    // Detect section headers (ends with colon and has section keywords or is distinct header)
+    // Clean markdown wrapping if present
+    const cleanLine = rawLine.replace(/^\s*(#+\s*|\*\*|\*)/, '').replace(/(\*\*|\*)\s*$/, '').trim();
+
+    // Markdown-compliant Bullet Detection:
+    // A bullet must start with '•', '- ', or an asterisk followed by space ('* ')
+    // Note: Double asterisk '**' indicates Markdown bold, NOT a bullet list!
+    const isBullet = rawLine.startsWith('•') || rawLine.startsWith('- ') || /^\*\s+/.test(rawLine);
+
+    // Zero-Hardcoding Section Header Detection:
+    // A line is a section header if it is not a bullet, and ends with ':' (or Ethiopic '፡' / '፦')
+    // with no following value on the same line.
     const isSectionHeader = (
-      rawLine.endsWith(':') &&
-      (rawLine.includes('ስራዎች') || rawLine.includes('ጉዳዮች') || rawLine.includes('አስተያየት') ||
-       rawLine.includes('ሪፖርት') || rawLine.includes('ተግባራት') || rawLine.includes('Activities') ||
-       rawLine.includes('Issues') || rawLine.includes('Remarks'))
+      !isBullet &&
+      (cleanLine.endsWith(':') || cleanLine.endsWith('፡') || cleanLine.endsWith('፦')) &&
+      !cleanLine.slice(0, -1).includes(':')
     );
 
+    const isAllBold = Boolean(options.allBold || options.bold);
+    const defaultWeight = isAllBold ? 'bold' : 'normal';
+    const bodyStroke = isAllBold ? ` ${boldStrokeBody}` : '';
+    const underlineAttr = (options.underline || (isSectionHeader && options.underlineHeaders))
+      ? ' text-decoration="underline"'
+      : '';
+
     if (isSectionHeader) {
-      currentY += C.SECTION_TOP_GAP;
-      const textWidthApprox = rawLine.length * 17;
-      const lineStartX = Math.max(paddingX, (width - textWidthApprox) / 2);
-      const lineEndX = Math.min(width - paddingX, (width + textWidthApprox) / 2);
+      currentY += sectionTopGap;
+      elements.push(
+        `<text x="${paddingX}" y="${currentY}" font-family='${fontFamily}' font-size="${sectionFontSize}" font-weight="bold" fill="${textColor}" ${boldStrokeHeader} xml:space="preserve"${underlineAttr}>${escapeHtml(cleanLine)}</text>`
+      );
+      currentY += lineHeight + sectionBottomGap;
+    } else if (isBullet) {
+      const bulletContent = rawLine.replace(/^([•\-]\s*|\*\s+)/, '').trim();
+      const wrapped = wrapTextPixels(bulletContent, bulletUsableWidth - maxLineSafety, baseFontSize, isAllBold);
 
-      elements.push(`
-        <text x="${width / 2}" y="${currentY}" 
-              text-anchor="middle" 
-              font-family="${C.FONT_FAMILY}" 
-              font-size="${C.SECTION_FONT_SIZE}" 
-              font-weight="bold" 
-              fill="${C.TEXT_COLOR}">${escapeHtml(rawLine)}</text>
-        <line x1="${lineStartX}" y1="${currentY + 6}" x2="${lineEndX}" y2="${currentY + 6}" stroke="${C.TEXT_COLOR}" stroke-width="2" />
-      `);
-      currentY += C.SECTION_BOTTOM_GAP + 28;
-    } else if (rawLine.startsWith('•') || rawLine.startsWith('-') || rawLine.startsWith('*')) {
-      const bulletContent = rawLine.replace(/^[•\-\*]\s*/, '').trim();
-      const wrapped = wrapText(bulletContent, maxCharsBulletHanging);
+      const textIndentX = paddingX + bulletIndent;
+      const bulletOffset = Math.min(22, Math.max(14, Math.round(baseFontSize * 0.45)));
+      const bulletCenterX = textIndentX - bulletOffset;
 
-      const bulletCenterX = paddingX + 8;
-      const textIndentX = paddingX + C.BULLET_INDENT;
-
-      elements.push(`
-        <circle cx="${bulletCenterX}" cy="${currentY - 8}" r="${C.BULLET_RADIUS}" fill="${C.TEXT_COLOR}" />
-      `);
+      elements.push(
+        `<circle cx="${bulletCenterX}" cy="${currentY - Math.round(baseFontSize * 0.32)}" r="${bulletRadius}" fill="${textColor}" />`
+      );
 
       for (let j = 0; j < wrapped.length; j++) {
-        elements.push(`
-          <text x="${textIndentX}" y="${currentY}" 
-                font-family="${C.FONT_FAMILY}" 
-                font-size="${C.BASE_FONT_SIZE}" 
-                font-weight="normal" 
-                fill="${C.TEXT_COLOR}">${escapeHtml(wrapped[j])}</text>
-        `);
-        currentY += C.LINE_HEIGHT;
+        elements.push(
+          `<text x="${textIndentX}" y="${currentY}" font-family='${fontFamily}' font-size="${baseFontSize}" font-weight="${defaultWeight}" fill="${textColor}"${bodyStroke} xml:space="preserve">${formatInlineSpans(wrapped[j])}</text>`
+        );
+        currentY += lineHeight;
       }
-      currentY += C.INTER_BULLET_GAP;
+      currentY += bulletGap;
     } else {
-      const colonIdx = rawLine.indexOf(':');
-      if (colonIdx !== -1 && colonIdx < 25) {
-        elements.push(`
-          <text x="${paddingX}" y="${currentY}" 
-                font-family="${C.FONT_FAMILY}" 
-                font-size="${C.BASE_FONT_SIZE}" 
-                font-weight="normal" 
-                fill="${C.TEXT_COLOR}">
-            <tspan font-weight="bold">${escapeHtml(rawLine.substring(0, colonIdx + 1))}</tspan>${escapeHtml(rawLine.substring(colonIdx + 1))}
-          </text>
-        `);
+      // Key-Value Line Detection (supporting optional markdown bold syntax like **Key:** Value or Key: Value)
+      const kvMatch = rawLine.match(/^(\*{0,2})([^:\n፡፦]+?)(:|፦|፡)(\*{0,2})\s+(.*)$/);
+      if (kvMatch && kvMatch[2].trim().length < 35) {
+        const keyPart = `${kvMatch[2].trim()}${kvMatch[3]}`;
+        const valuePart = kvMatch[5].replace(/\*{1,2}$/, '').trim();
+
+        const keyW = measureTextWidth(keyPart + ' ', baseFontSize, true);
+        const wrappedVal = wrapTextPixels(valuePart, usableWidth - keyW - maxLineSafety, baseFontSize, isAllBold);
+
+        if (wrappedVal.length <= 1) {
+          elements.push(
+            `<text x="${paddingX}" y="${currentY}" font-family='${fontFamily}' font-size="${baseFontSize}" fill="${textColor}" xml:space="preserve"><tspan font-weight="bold" ${boldStrokeBody}>${escapeHtml(keyPart)} </tspan><tspan font-weight="${defaultWeight}"${bodyStroke}>${formatInlineSpans(wrappedVal[0] || valuePart)}</tspan></text>`
+          );
+          currentY += lineHeight;
+        } else {
+          elements.push(
+            `<text x="${paddingX}" y="${currentY}" font-family='${fontFamily}' font-size="${baseFontSize}" fill="${textColor}" xml:space="preserve"><tspan font-weight="bold" ${boldStrokeBody}>${escapeHtml(keyPart)} </tspan><tspan font-weight="${defaultWeight}"${bodyStroke}>${formatInlineSpans(wrappedVal[0])}</tspan></text>`
+          );
+          currentY += lineHeight;
+          for (let j = 1; j < wrappedVal.length; j++) {
+            elements.push(
+              `<text x="${paddingX + keyW}" y="${currentY}" font-family='${fontFamily}' font-size="${baseFontSize}" font-weight="${defaultWeight}" fill="${textColor}"${bodyStroke} xml:space="preserve">${formatInlineSpans(wrappedVal[j])}</text>`
+            );
+            currentY += lineHeight;
+          }
+        }
       } else {
-        const wrapped = wrapText(rawLine, maxCharsPerLine);
-        for (const line of wrapped) {
-          elements.push(`
-            <text x="${paddingX}" y="${currentY}" 
-                  font-family="${C.FONT_FAMILY}" 
-                  font-size="${C.BASE_FONT_SIZE}" 
-                  font-weight="normal" 
-                  fill="${C.TEXT_COLOR}">${escapeHtml(line)}</text>
-          `);
-          currentY += C.LINE_HEIGHT;
+        const wrapped = wrapTextPixels(rawLine, usableWidth - maxLineSafety, baseFontSize, isAllBold);
+        for (let j = 0; j < wrapped.length; j++) {
+          elements.push(
+            `<text x="${paddingX}" y="${currentY}" font-family='${fontFamily}' font-size="${baseFontSize}" font-weight="${defaultWeight}" fill="${textColor}"${bodyStroke} xml:space="preserve">${formatInlineSpans(wrapped[j])}</text>`
+          );
+          currentY += lineHeight;
         }
       }
-      currentY += C.LINE_HEIGHT;
     }
   }
 
-  const finalHeight = currentY + 40;
-
-  const svg = `<svg width="${width}" height="${finalHeight}" viewBox="0 0 ${width} ${finalHeight}" xmlns="http://www.w3.org/2000/svg">
-    <rect width="${width}" height="${finalHeight}" fill="${C.BG_COLOR}"/>
-    ${elements.join('\n')}
+  const finalHeight = Math.ceil(currentY + paddingX);
+  const svg = `<svg width="${width}" height="${finalHeight}" viewBox="0 0 ${width} ${finalHeight}" xmlns="http://www.w3.org/2000/svg" xml:space="preserve">
+    <rect width="${width}" height="${finalHeight}" fill="${bgColor}"/>
+    ${elements.join('\n    ')}
   </svg>`;
 
   return sharp(Buffer.from(svg))
-    .png({ quality: 100 })
+    .png({ quality: 100, compressionLevel: 6 })
     .toBuffer();
 }
 
@@ -333,6 +449,7 @@ export async function dispatchToTelegram({
   text = '',
   customNote,
   asImage = false,
+  options = {},
   botToken: tokenOverride,
   chatId: chatIdOverride,
 }) {
@@ -340,11 +457,12 @@ export async function dispatchToTelegram({
   const botToken = tokenOverride !== undefined ? tokenOverride : resolveBotToken(user);
   const chatId = chatIdOverride !== undefined ? chatIdOverride : resolveChannelChatId(user, channel);
 
-  // Assemble full authentic text with optional customNote prefix
-  let fullText = text ? text.trim() : '';
-  if (customNote && typeof customNote === 'string' && customNote.trim()) {
-    fullText = `${customNote.trim()}\n\n${fullText}`;
-  }
+  const cleanText = text ? text.trim() : '';
+  const hasCustomNote = Boolean(customNote && typeof customNote === 'string' && customNote.trim());
+  const noteText = hasCustomNote ? customNote.trim() : '';
+
+  // For text messages, prefix customNote if provided
+  const fullText = hasCustomNote ? `${noteText}\n\n${cleanText}` : cleanText;
 
   const isUserDisabled = user?.settings?.telegram?.enabled === false;
   const isLiveConfigured = Boolean(env.TELEGRAM_ENABLED && !isUserDisabled && botToken && chatId);
@@ -370,11 +488,19 @@ export async function dispatchToTelegram({
   // =========================================================================
   if (asImage) {
     try {
-      const imageBuffer = await generateReportImageCard(fullText);
+      // Merge user saved image card options with explicit call options
+      const mergedOptions = {
+        ...(user?.settings?.telegram?.imageCardOptions || {}),
+        ...options,
+      };
+      const imageBuffer = await generateReportImageCard(cleanText, mergedOptions);
       const blob = new Blob([imageBuffer], { type: 'image/png' });
       const formData = new FormData();
       formData.append('chat_id', chatId);
       formData.append('photo', blob, 'operational_report.png');
+      if (hasCustomNote) {
+        formData.append('caption', noteText);
+      }
 
       const res = await fetch(`${apiBase}/sendPhoto`, {
         method: 'POST',

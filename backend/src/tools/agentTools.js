@@ -791,6 +791,38 @@ export const agentToolDeclarations = [
           type: Type.BOOLEAN,
           description: 'Optional flag to render and broadcast the report or message as a high-contrast document image card.',
         },
+        fontSize: {
+          type: Type.STRING,
+          description: 'Optional font size specification (e.g. "14pt", "14 in ms word", "38px", "40px", "small", "medium", "large").',
+        },
+        lineSpacing: {
+          type: Type.STRING,
+          description: 'Optional line spacing ("compact", "normal", "relaxed", or pixel value like "40px").',
+        },
+        bulletIndent: {
+          type: Type.STRING,
+          description: 'Optional bullet indentation specification (e.g. "more", "less", "large", "compact", "48px", "60px", "80px").',
+        },
+        paddingX: {
+          type: Type.STRING,
+          description: 'Optional horizontal padding / side margins (e.g. "compact", "wide", "50px", "100px").',
+        },
+        bold: {
+          type: Type.BOOLEAN,
+          description: 'Optional flag to render all content in bold weight.',
+        },
+        underlineHeaders: {
+          type: Type.BOOLEAN,
+          description: 'Optional flag to render section headers with underline decoration.',
+        },
+        theme: {
+          type: Type.STRING,
+          description: 'Optional color theme: "light" (default white paper) or "dark".',
+        },
+        saveAsDefault: {
+          type: Type.BOOLEAN,
+          description: 'Optional flag to save these layout and formatting preferences permanently into supervisor settings for future posts.',
+        },
       },
     },
   },
@@ -2206,12 +2238,110 @@ export const toolHandlers = {
     // Determine format: explicit tool arg asImage OR user settings defaultFormat === 'image'
     const shouldPostImage = Boolean(asImage || user?.settings?.telegram?.defaultFormat === 'image');
 
+    // Extract dynamic formatting options with zero hardcoding
+    const savedCardOptions = user?.settings?.telegram?.imageCardOptions || {};
+    const imageOptions = { ...savedCardOptions };
+
+    if (args.fontSize !== undefined && args.fontSize !== null) {
+      const fsStr = String(args.fontSize).toLowerCase().trim();
+      if (fsStr.includes('14') || fsStr.includes('word')) {
+        imageOptions.fontSize = 38; // MS Word 14pt equivalent on 1440px canvas
+        imageOptions.lineHeight = 48;
+      } else if (fsStr === 'small' || fsStr === 'compact') {
+        imageOptions.fontSize = 30;
+        imageOptions.lineHeight = 38;
+      } else if (fsStr === 'large' || fsStr === 'big') {
+        imageOptions.fontSize = 44;
+        imageOptions.lineHeight = 56;
+      } else {
+        const num = parseInt(fsStr, 10);
+        if (!isNaN(num) && num >= 18 && num <= 72) {
+          imageOptions.fontSize = num;
+          imageOptions.lineHeight = Math.round(num * 1.26);
+        }
+      }
+    }
+
+    if (args.lineSpacing !== undefined && args.lineSpacing !== null) {
+      const lsStr = String(args.lineSpacing).toLowerCase().trim();
+      const base = imageOptions.fontSize || 38;
+      if (lsStr === 'compact' || lsStr === 'small' || lsStr === 'tight' || lsStr.includes('reduce') || lsStr.includes('less')) {
+        imageOptions.lineHeight = Math.round(base * 1.18);
+      } else if (lsStr === 'relaxed' || lsStr === 'loose' || lsStr === 'wide' || lsStr.includes('more')) {
+        imageOptions.lineHeight = Math.round(base * 1.55);
+      } else {
+        const num = parseInt(lsStr, 10);
+        if (!isNaN(num) && num >= 20 && num <= 120) {
+          imageOptions.lineHeight = num;
+        }
+      }
+    }
+
+    if (args.bulletIndent !== undefined && args.bulletIndent !== null) {
+      const biStr = String(args.bulletIndent).toLowerCase().trim();
+      if (biStr.includes('much') || biStr.includes('extra') || biStr === 'huge') {
+        imageOptions.bulletIndent = 80;
+      } else if (biStr.includes('more') || biStr === 'large' || biStr === 'wide' || biStr.includes('deep') || biStr.includes('increase')) {
+        imageOptions.bulletIndent = 56;
+      } else if (biStr.includes('less') || biStr === 'small' || biStr === 'compact' || biStr.includes('tight') || biStr.includes('decrease')) {
+        imageOptions.bulletIndent = 20;
+      } else {
+        const num = parseInt(biStr, 10);
+        if (!isNaN(num) && num >= 10 && num <= 200) {
+          imageOptions.bulletIndent = num;
+        }
+      }
+    }
+
+    if (args.paddingX !== undefined && args.paddingX !== null) {
+      const pxStr = String(args.paddingX).toLowerCase().trim();
+      if (pxStr === 'compact' || pxStr === 'narrow' || pxStr === 'small') {
+        imageOptions.paddingX = 50;
+      } else if (pxStr === 'wide' || pxStr === 'spacious' || pxStr === 'large') {
+        imageOptions.paddingX = 120;
+      } else {
+        const num = parseInt(pxStr, 10);
+        if (!isNaN(num) && num >= 30 && num <= 250) {
+          imageOptions.paddingX = num;
+        }
+      }
+    }
+
+    if (args.bold !== undefined && args.bold !== null) {
+      imageOptions.allBold = Boolean(args.bold);
+    }
+    if (args.underlineHeaders !== undefined && args.underlineHeaders !== null) {
+      imageOptions.underlineHeaders = Boolean(args.underlineHeaders);
+    }
+    if (args.theme) {
+      const thStr = String(args.theme).toLowerCase().trim();
+      if (thStr === 'dark') {
+        imageOptions.bgColor = '#1E1E1E';
+        imageOptions.textColor = '#FFFFFF';
+      } else if (thStr === 'light') {
+        imageOptions.bgColor = '#FFFFFF';
+        imageOptions.textColor = '#000000';
+      }
+    }
+
+    // Persist formatting preferences to user settings if requested
+    if (args.saveAsDefault && userId) {
+      try {
+        await User.findByIdAndUpdate(userId, {
+          $set: { 'settings.telegram.imageCardOptions': imageOptions },
+        });
+      } catch (err) {
+        logger.warn(`[agentTools] Failed to persist imageCardOptions: ${err.message}`);
+      }
+    }
+
     const dispatchResult = await dispatchToTelegram({
       user,
       targetChannel,
       text: payloadText,
       customNote,
       asImage: shouldPostImage,
+      options: imageOptions,
     });
 
     return {

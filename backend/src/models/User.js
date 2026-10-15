@@ -156,6 +156,10 @@ const userSchema = new mongoose.Schema(
           enum: ['text', 'image'],
           default: 'text',
         },
+        imageCardOptions: {
+          type: Object,
+          default: {},
+        },
       },
     },
   },

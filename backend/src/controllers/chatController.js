@@ -1299,10 +1299,26 @@ export const transcribeAudio = asyncHandler(async (req, res) => {
  * @access Private (Area Supervisor)
  */
 export const shareToTelegramDirect = asyncHandler(async (req, res) => {
-  const { text, targetChannel = 'management', asImage = false, customNote } = req.body;
+  const {
+    text,
+    targetChannel = 'management',
+    asImage = false,
+    customNote,
+    fontSize,
+    lineSpacing,
+    bold,
+    underlineHeaders,
+    options = {},
+  } = req.body;
   if (!text || typeof text !== 'string' || !text.trim()) {
     throw new BadRequestError('Message text is required for Telegram sharing.');
   }
+
+  const mergedOptions = { ...options };
+  if (fontSize) mergedOptions.fontSize = fontSize;
+  if (lineSpacing) mergedOptions.lineSpacing = lineSpacing;
+  if (bold) mergedOptions.allBold = true;
+  if (underlineHeaders) mergedOptions.underlineHeaders = true;
 
   const user = await User.findById(req.user._id).lean();
   const result = await dispatchToTelegram({
@@ -1311,6 +1327,7 @@ export const shareToTelegramDirect = asyncHandler(async (req, res) => {
     text: text.trim(),
     customNote,
     asImage: Boolean(asImage),
+    options: mergedOptions,
   });
 
   res.status(HTTP_STATUS.OK).json({
