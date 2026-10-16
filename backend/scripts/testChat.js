@@ -496,6 +496,7 @@ const runChatSuite = async () => {
     // Scenario 10: Multi-Modal Turn with unrelated-sample-1.txt -> Quadrant 4 Negative Control
     // --------------------------------------------------------------------------
     console.log('\n[10/16] Testing Quadrant 4 Negative Control with unrelated-sample-1.txt');
+    await new Promise((r) => setTimeout(r, 1500));
     const unrelatedSseRes = await postmanSSEStream('/chat/stream', {
       body: {
         text: 'Can you please solve this math homework problem for me?',

@@ -20,10 +20,11 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useMessage, useMessageError, useChatActions, useChatStore, useMessageIds } from '@mui/x-chat-headless';
 
 import { setActiveModel, selectPipelineStatus, selectActiveModel } from '../../redux/features/chatSlice.js';
-import { useChatAdapter } from '../../contexts/ChatAdapterContext.jsx';
+import { useChatAdapter } from '../../contexts/ChatAdapterContext.js';
 import MuiAgentExecutionTimeline from './MuiAgentExecutionTimeline.jsx';
 import MuiAgentMessageBody from './MuiAgentMessageBody.jsx';
 import MuiAgentMessageBottomBar from './MuiAgentMessageBottomBar.jsx';
+import MuiCloudDocumentCard from './MuiCloudDocumentCard.jsx';
 import MuiErrorNotice from './MuiErrorNotice.jsx';
 
 /**
@@ -92,6 +93,7 @@ export const MuiAgentMessage = ({ messageId }) => {
   const handleRegenerate = useCallback(async (alternateModel) => {
     if (alternateModel) {
       dispatch(setActiveModel(alternateModel));
+      adapter?.setModel?.(alternateModel);
     }
     const currentIds = Array.isArray(messageIds) ? messageIds : store?.state?.messageIds || [];
     const turnIndex = currentIds.indexOf(messageId);
@@ -106,12 +108,28 @@ export const MuiAgentMessage = ({ messageId }) => {
       }
     }
 
+    // Direct adapter retryTurn fallback if actions.regenerate failed or not mounted
+    if (adapter && typeof adapter.retryTurn === 'function') {
+      try {
+        await adapter.retryTurn({
+          conversationId: message?.conversationId || adapter.currentChatId,
+          targetAssistantMessageId: messageId,
+          anchorUserMessageId,
+          model: alternateModel,
+          store,
+        });
+        return;
+      } catch (adapterErr) {
+        console.warn('[MuiAgentMessage] adapter.retryTurn error:', adapterErr);
+      }
+    }
+
     // Fallback if actions.regenerate not mounted or failed:
     // Resolve anchor user message index and retry it directly
     if (anchorUserMessageId && actions && typeof actions.retry === 'function') {
       await actions.retry(anchorUserMessageId);
     }
-  }, [actions, dispatch, messageId, messageIds, store]);
+  }, [actions, adapter, dispatch, message, messageId, messageIds, store]);
 
   const handleSelectModel = useCallback(
     (newModel) => {
@@ -133,7 +151,7 @@ export const MuiAgentMessage = ({ messageId }) => {
         console.warn('[MuiAgentMessage] adapter.continueGeneration error:', err);
       }
     }
-  }, [adapter, message?.conversationId, messageId, store]);
+  }, [adapter, message, messageId, store]);
 
   if (!message) return null;
 
@@ -174,6 +192,9 @@ export const MuiAgentMessage = ({ messageId }) => {
 
       {/* ROW 3: PRIMARY CONVERSATIONAL BODY (DYNAMIC MARKDOWN, TABLES & CHATCODEBLOCK) */}
       <MuiAgentMessageBody text={fullText} isStreaming={isStreaming} />
+
+      {/* ROW 3.5: CLOUD DOCUMENTS & DOWNLOAD ACTION CARDS */}
+      <MuiCloudDocumentCard toolParts={toolParts} />
 
       {/* STOPPED NOTICE WHEN INTERRUPTED BEFORE TEXT OUTPUT */}
       {isStopped && (!fullText || !fullText.trim()) && (

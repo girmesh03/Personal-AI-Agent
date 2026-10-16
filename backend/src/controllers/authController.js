@@ -14,6 +14,9 @@ import {
   setAuthCookies,
   clearAuthCookies,
 } from '../utils/token.js';
+import jwt from 'jsonwebtoken';
+import env from '../config/env.js';
+import logger from '../config/logger.js';
 import {
   HTTP_STATUS,
   DEFAULT_POSITION,
@@ -22,7 +25,15 @@ import {
 import {
   ConflictError,
   UnauthenticatedError,
+  BadRequestError,
+  NotFoundError,
 } from '../errors/CustomError.js';
+import {
+  getAuthorizationUrl,
+  exchangeCodeAndSaveTokens,
+  disconnectGoogleDrive,
+  connectMockGoogleDrive,
+} from '../services/googleDriveService.js';
 
 /**
  * Registers a new user account (Area Supervisor).
@@ -210,10 +221,127 @@ export const googleAuthStub = asyncHandler(async (_req, res) => {
   });
 });
 
+/**
+ * Initiates Google OAuth connection flow for Google Drive & Workspace.
+ *
+ * @route GET /api/v1/auth/google/connect
+ */
+export const connectGoogleDrive = asyncHandler(async (req, res) => {
+  const userId = req.user?._id || req.query.userId;
+  if (!userId) {
+    throw new UnauthenticatedError('User authentication is required to connect Google Drive.');
+  }
+
+  // Create signed state parameter
+  const state = jwt.sign({ userId: String(userId) }, env.JWT_ACCESS_SECRET, { expiresIn: '15m' });
+  const authUrl = getAuthorizationUrl(state);
+
+  if (req.query.json === 'true' || req.headers.accept?.includes('application/json')) {
+    return res.status(HTTP_STATUS.OK).json({
+      success: true,
+      authUrl,
+    });
+  }
+
+  res.redirect(authUrl);
+});
+
+/**
+ * Handles Google OAuth redirect callback.
+ *
+ * @route GET /api/v1/auth/google/callback
+ */
+export const handleGoogleCallback = asyncHandler(async (req, res) => {
+  const { code, state, error } = req.query;
+
+  if (error) {
+    logger.warn(`[authController] Google OAuth error returned: ${error}`);
+    return res.redirect(`${env.CLIENT_ORIGIN}/chat?google_auth=error&error=${encodeURIComponent(error)}`);
+  }
+
+  if (!code || !state) {
+    throw new BadRequestError('Authorization code and state token are required.');
+  }
+
+  let decoded;
+  try {
+    decoded = jwt.verify(state, env.JWT_ACCESS_SECRET);
+  } catch (err) {
+    throw new BadRequestError('Invalid or expired OAuth state parameter.');
+  }
+
+  const userId = decoded.userId;
+  const integrationProfile = await exchangeCodeAndSaveTokens(userId, code);
+
+  if (req.query.json === 'true' || req.headers.accept?.includes('application/json')) {
+    return res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: 'Google Drive connected successfully.',
+      data: integrationProfile,
+    });
+  }
+
+  res.redirect(`${env.CLIENT_ORIGIN}/chat?google_auth=success`);
+});
+
+/**
+ * Disconnects Google Drive integration for authenticated user.
+ *
+ * @route POST /api/v1/auth/google/disconnect
+ */
+export const disconnectGoogleDriveRoute = asyncHandler(async (req, res) => {
+  await disconnectGoogleDrive(req.user._id);
+  res.status(HTTP_STATUS.OK).json({
+    success: true,
+    message: 'Google Drive disconnected successfully.',
+  });
+});
+
+/**
+ * Retrieves Google Drive connection status for authenticated user.
+ *
+ * @route GET /api/v1/auth/google/status
+ */
+export const getGoogleDriveStatus = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id);
+  if (!user) throw new NotFoundError('User not found.');
+
+  const drive = user.integrations?.googleDrive || {};
+  res.status(HTTP_STATUS.OK).json({
+    success: true,
+    data: {
+      connected: Boolean(drive.connected),
+      email: drive.email || null,
+      rootFolderId: drive.rootFolderId || null,
+      connectedAt: drive.connectedAt || null,
+    },
+  });
+});
+
+/**
+ * Mock Connect Google Drive for automated integration tests and isolated environments.
+ *
+ * @route POST /api/v1/auth/google/mock-connect
+ */
+export const mockConnectGoogleDriveRoute = asyncHandler(async (req, res) => {
+  const email = req.body?.email || req.user.email || 'mock-user@gmail.com';
+  const profile = await connectMockGoogleDrive(req.user._id, email);
+  res.status(HTTP_STATUS.OK).json({
+    success: true,
+    message: 'Mock Google Drive connected successfully.',
+    data: profile,
+  });
+});
+
 export default {
   register,
   login,
   refreshToken,
   logout,
   googleAuthStub,
+  connectGoogleDrive,
+  handleGoogleCallback,
+  disconnectGoogleDriveRoute,
+  getGoogleDriveStatus,
+  mockConnectGoogleDriveRoute,
 };

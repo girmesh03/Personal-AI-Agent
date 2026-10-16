@@ -41,41 +41,59 @@ const TOOL_DISPLAY_NAMES = {
   delete_report_permanently: 'Permanent Delete Report',
   query_historical_reports: 'Historical Reports Query',
   query_branch_records: 'Branch Records Query',
-  export_report: 'Export Operational Report',
   share_to_telegram: 'Telegram Alert Dispatch',
   save_supervisor_directive: 'Save Supervisor Directives',
+  manage_google_drive: 'Google Drive Management',
+  create_cloud_document: 'Cloud Document Authoring',
+  generate_document_file: 'Document Generation',
 };
 
 /**
  * Derives a human-friendly summary text from the tool execution output.
  * @param {object|any} output
+ * @param {string} [toolName='']
  * @returns {string} Summary string.
  */
-const deriveOutputSummary = (output) => {
+const deriveOutputSummary = (output, toolName = '') => {
   if (!output) return 'Completed';
-  if (Array.isArray(output)) {
-    return `${output.length} record${output.length === 1 ? '' : 's'} found`;
+  const out = output?.data !== undefined ? output.data : output;
+  if (Array.isArray(out)) {
+    return `${out.length} record${out.length === 1 ? '' : 's'} found`;
   }
-  if (typeof output === 'object') {
-    if (output.channel === 'telegram' || output.targetChannel) {
-      const ch = output.targetChannel || output.channel;
-      const modeStr = output.mode === 'image' ? 'Image Card' : 'Text';
-      const statusStr = output.isStub ? 'Stub' : 'Live';
+  if (typeof out === 'object') {
+    if (toolName === 'create_cloud_document') {
+      const typeLabel = out.type === 'sheet' || out.mimeType?.includes('spreadsheet') ? 'Google Sheet' : 'Google Doc';
+      return `${typeLabel} created`;
+    }
+    if (toolName === 'generate_document_file') {
+      const fmt = (out.format || 'doc').toUpperCase();
+      const sizeStr = out.fileSizeFormatted ? ` (${out.fileSizeFormatted})` : '';
+      return `${fmt} generated${sizeStr}`;
+    }
+    if (toolName === 'manage_google_drive') {
+      if (out.action === 'create_folder') return `Folder '${out.name || 'Personal AI Agent'}' created`;
+      if (out.action === 'search') return `${out.count || 0} file${out.count === 1 ? '' : 's'} found`;
+      if (out.action === 'check_connection') return out.connected ? 'Drive connected' : 'Drive disconnected';
+    }
+    if (out.channel === 'telegram' || out.targetChannel) {
+      const ch = out.targetChannel || out.channel;
+      const modeStr = out.mode === 'image' ? 'Image Card' : 'Text';
+      const statusStr = out.isStub ? 'Stub' : 'Live';
       return `${ch} • ${modeStr} • ${statusStr}`;
     }
-    if (output.reportId) {
-      return `Report #${String(output.reportId).slice(-6)} created`;
+    if (out.reportId) {
+      return `Report #${String(out.reportId).slice(-6)} created`;
     }
-    if (output.count !== undefined) {
-      return `${output.count} item${output.count === 1 ? '' : 's'} found`;
+    if (out.count !== undefined) {
+      return `${out.count} item${out.count === 1 ? '' : 's'} found`;
     }
-    if (output.branch?.name) {
-      return `Branch: ${output.branch.name}`;
+    if (out.branch?.name) {
+      return `Branch: ${out.branch.name}`;
     }
-    if (output.message && typeof output.message === 'string') {
-      return output.message.slice(0, 60);
+    if (out.message && typeof out.message === 'string') {
+      return out.message.slice(0, 60);
     }
-    if (output.success) {
+    if (out.success) {
       return 'Execution successful';
     }
   }
@@ -96,6 +114,7 @@ export const MuiToolCallPart = ({ toolInvocation, stepNumber, totalSteps }) => {
   if (!toolInvocation) return null;
 
   const { toolName = 'tool', state = 'output-available', input, output, errorText } = toolInvocation;
+  const out = output?.data !== undefined ? output.data : output;
 
   const isExecuting = state === 'input-streaming' || state === 'input-available';
   const isError = state === 'output-error' || Boolean(errorText);
@@ -109,7 +128,7 @@ export const MuiToolCallPart = ({ toolInvocation, stepNumber, totalSteps }) => {
     ? 'Executing in ACID session...'
     : isError
       ? (errorText || 'Execution error')
-      : deriveOutputSummary(output);
+      : deriveOutputSummary(out, toolName);
 
   return (
     <Box
@@ -187,10 +206,10 @@ export const MuiToolCallPart = ({ toolInvocation, stepNumber, totalSteps }) => {
               {summaryText}
             </Typography>
 
-            {output?.deepLink && (
+            {out?.deepLink && (
               <Box
                 component="a"
-                href={output.deepLink}
+                href={out.deepLink}
                 target="_blank"
                 rel="noopener noreferrer"
                 sx={{
@@ -206,6 +225,28 @@ export const MuiToolCallPart = ({ toolInvocation, stepNumber, totalSteps }) => {
                 }}
               >
                 View <OpenInNewIcon sx={{ fontSize: 11 }} />
+              </Box>
+            )}
+
+            {out?.webViewLink && (
+              <Box
+                component="a"
+                href={out.webViewLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 0.3,
+                  fontSize: '0.75rem',
+                  color: 'primary.main',
+                  textDecoration: 'none',
+                  fontWeight: 600,
+                  ml: 0.5,
+                  '&:hover': { textDecoration: 'underline' },
+                }}
+              >
+                Open <OpenInNewIcon sx={{ fontSize: 11 }} />
               </Box>
             )}
           </Box>

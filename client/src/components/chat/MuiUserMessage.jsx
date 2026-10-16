@@ -28,6 +28,7 @@ import { useMessage, useChatActions, useChatStore, useMessageIds } from '@mui/x-
 import MuiUserAttachmentShelf from './MuiUserAttachmentShelf.jsx';
 import MuiUserMessageBody from './MuiUserMessageBody.jsx';
 import MuiUserMessageBottomBar from './MuiUserMessageBottomBar.jsx';
+import { useChatAdapter } from '../../contexts/ChatAdapterContext.js';
 import { ATTACHMENT_CONSTANTS, AUDIO_CONSTANTS } from '../../utils/constants.js';
 
 /**
@@ -45,6 +46,7 @@ const CLAMP_HEIGHT_PX = 206;
  * @returns {import('react').JSX.Element|null} Rendered user message card.
  */
 export const MuiUserMessage = ({ messageId }) => {
+  const adapter = useChatAdapter();
   const message = useMessage(messageId);
   const actions = useChatActions(true);
   const store = useChatStore();
@@ -397,10 +399,24 @@ export const MuiUserMessage = ({ messageId }) => {
       }
     }
 
+    if (adapter && typeof adapter.retryTurn === 'function') {
+      try {
+        await adapter.retryTurn({
+          conversationId: message?.conversationId || adapter.currentChatId,
+          targetAssistantMessageId: nextAssistantId,
+          anchorUserMessageId: messageId,
+          store,
+        });
+        return;
+      } catch (adapterErr) {
+        console.warn('[MuiUserMessage] adapter.retryTurn fallback:', adapterErr);
+      }
+    }
+
     if (actions && typeof actions.retry === 'function') {
       await actions.retry(messageId);
     }
-  }, [actions, messageId, messageIds, store]);
+  }, [actions, adapter, message, messageId, messageIds, store]);
 
   if (!message) return null;
 

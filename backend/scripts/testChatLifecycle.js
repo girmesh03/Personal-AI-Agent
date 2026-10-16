@@ -17,6 +17,7 @@
  * 11. Teardown, Fixture Cleanup & Clean Server Termination.
  */
 
+import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,6 +49,23 @@ const assert = (condition, message) => {
   }
   assertionsPassed += 1;
   console.log(`  ✅ [PASS] ${message}`);
+};
+
+/**
+ * Asserts strict conversational turn alternation: U_0 -> A_0 -> U_1 -> A_1 ... -> U_k -> A_k
+ * Guarantees zero adjacent duplicate user turns and zero adjacent duplicate assistant turns.
+ */
+const assertAlternatingSequence = (doc, contextLabel = '') => {
+  const prefix = contextLabel ? `[${contextLabel}] ` : '';
+  assert(Array.isArray(doc?.messages), `${prefix}Chat messages is an array`);
+  assert(doc.messages.length % 2 === 0, `${prefix}Message count is strictly even: ${doc.messages.length}`);
+  for (let i = 0; i < doc.messages.length; i++) {
+    const expectedRole = i % 2 === 0 ? 'user' : 'assistant';
+    assert(
+      doc.messages[i].role === expectedRole,
+      `${prefix}Turn index ${i} strictly matches expected role '${expectedRole}' (actual: '${doc.messages[i].role}')`
+    );
+  }
 };
 
 /**
@@ -331,6 +349,7 @@ const runLifecycleSuite = async () => {
     assert(chatDoc1.messages[1].role === 'assistant', 'Second message is assistant role');
     assert(chatDoc1.messages[1].isStopped === false, 'Assistant message isStopped is false');
     assert(typeof chatDoc1.title === 'string' && chatDoc1.title.length > 0, `Auto-title generated: "${chatDoc1.title}"`);
+    assertAlternatingSequence(chatDoc1, 'Scenario 1: Turn 0 Creation');
 
     // --------------------------------------------------------------------------
     // Scenario 2: Turn 0 Edit & Title Reset/Regeneration
@@ -353,6 +372,7 @@ const runLifecycleSuite = async () => {
     assert(chatDoc2.messages[0].text.includes('5 + 5'), 'Turn 0 user text updated to edited prompt');
     assert(chatDoc2.messages[1].role === 'assistant', 'Turn 0 assistant replaced with new response');
     assert(typeof chatDoc2.title === 'string' && chatDoc2.title.length > 0, `Turn 0 re-titled to: "${chatDoc2.title}"`);
+    assertAlternatingSequence(chatDoc2, 'Scenario 2: Turn 0 Edit');
 
     // --------------------------------------------------------------------------
     // Scenario 3: Multi-Turn Conversation Expansion (Turn 1)
@@ -371,6 +391,7 @@ const runLifecycleSuite = async () => {
     assert(chatDoc3.messages.length === 4, 'Chat now contains exactly 4 messages (2 user, 2 assistant)');
     assert(chatDoc3.messages[2].role === 'user', 'Message index 2 is user role');
     assert(chatDoc3.messages[3].role === 'assistant', 'Message index 3 is assistant role');
+    assertAlternatingSequence(chatDoc3, 'Scenario 3: Multi-Turn Expansion');
 
     // --------------------------------------------------------------------------
     // Scenario 4: Intermediate Turn Edit with Linear History Pruning
@@ -392,16 +413,18 @@ const runLifecycleSuite = async () => {
     assert(chatDoc4.messages.length === 4, 'Linear pruning maintains exact 4 messages count');
     assert(chatDoc4.messages[2].text.includes('multiply that result by 7'), 'Turn 1 user text replaced with edited prompt');
     assert(chatDoc4.messages[3].role === 'assistant', 'Assistant regenerated for edited prompt');
+    assertAlternatingSequence(chatDoc4, 'Scenario 4: Intermediate Turn Edit');
 
     // --------------------------------------------------------------------------
     // Scenario 5: Latest Assistant Retry (Zero Duplicate User Turns Invariant)
     // --------------------------------------------------------------------------
     console.log('\n[Scenario 5] Latest Assistant Retry (Zero Duplicate User Turns Invariant)');
+    const assistantTurn1Id = chatDoc4.messages[3]._id.toString();
     const streamRes5 = await postmanSSEStream(`/chat/${activeChatId}/stream`, {
       body: {
         chatId: activeChatId,
         isRetry: true,
-        anchorUserMessageId: userTurn1Id,
+        targetAssistantMessageId: assistantTurn1Id,
         model: AI_MODELS.DEFAULT,
       },
     });
@@ -411,6 +434,7 @@ const runLifecycleSuite = async () => {
     assert(chatDoc5.messages.length === 4, 'ZERO DUPLICATE USER TURNS: Message count remains exactly 4');
     assert(chatDoc5.messages[2].role === 'user', 'Anchor user message preserved');
     assert(chatDoc5.messages[3].role === 'assistant', 'Assistant message regenerated in-place');
+    assertAlternatingSequence(chatDoc5, 'Scenario 5: Latest Assistant Retry');
 
     // --------------------------------------------------------------------------
     // Scenario 6: Retry with Alternate Model Selection ('gemini-3.8-flash')
@@ -431,6 +455,7 @@ const runLifecycleSuite = async () => {
       chatDoc6.messages[3].model === AI_MODELS.PRO || AI_MODELS.SUPPORTED.includes(chatDoc6.messages[3].model),
       `Assistant turn persisted with valid model (requested: ${AI_MODELS.PRO}, persisted: ${chatDoc6.messages[3].model})`
     );
+    assertAlternatingSequence(chatDoc6, 'Scenario 6: Alternate Model Retry');
 
     // --------------------------------------------------------------------------
     // Scenario 7: Client Abort Simulation (Stop During Text Streaming)
@@ -457,6 +482,7 @@ const runLifecycleSuite = async () => {
     const stoppedAsstTurn = chatDoc7.messages[5];
     assert(stoppedAsstTurn.role === 'assistant', 'Last message is assistant');
     assert(stoppedAsstTurn.isStopped === true, 'Stopped assistant turn has isStopped === true persisted in DB');
+    assertAlternatingSequence(chatDoc7, 'Scenario 7: Client Abort');
     console.log(`     Stopped assistant partial text length: ${stoppedAsstTurn.text?.length || 0} chars`);
 
     // --------------------------------------------------------------------------
@@ -487,6 +513,7 @@ const runLifecycleSuite = async () => {
       (continuedAsstTurn.text?.length || 0) >= initialTextLength,
       `Text concatenated in-place: previous ${initialTextLength} chars -> new ${(continuedAsstTurn.text?.length || 0)} chars`
     );
+    assertAlternatingSequence(chatDoc8, 'Scenario 8: Model A Continue');
 
     // --------------------------------------------------------------------------
     // Scenario 9: Stop -> Continue -> Stop -> Retry Lifecycle Cycle
@@ -507,11 +534,26 @@ const runLifecycleSuite = async () => {
     const chatDoc9 = await Chat.findById(activeChatId);
     assert(chatDoc9.messages.length === 6, 'Retry clean re-run maintains 6 messages count');
     assert(chatDoc9.messages[5].isStopped === false, 'Regenerated assistant message has isStopped === false');
+    assertAlternatingSequence(chatDoc9, 'Scenario 9: Retry After Continue');
 
     // --------------------------------------------------------------------------
     // Scenario 10: Multi-Modal Context Re-hydration during Retry
     // --------------------------------------------------------------------------
     console.log('\n[Scenario 10] Multi-Modal Context Re-hydration during Retry');
+
+    // Create physical fixture directories and verified files on disk
+    const uploadsDir = path.resolve(process.cwd(), 'uploads');
+    const attachmentsDir = path.join(uploadsDir, 'attachments');
+    const audiosDir = path.join(uploadsDir, 'audios');
+    fs.mkdirSync(attachmentsDir, { recursive: true });
+    fs.mkdirSync(audiosDir, { recursive: true });
+
+    const opsSummaryDiskPath = path.join(attachmentsDir, 'ops_summary.txt');
+    fs.writeFileSync(opsSummaryDiskPath, 'Weekly operations summary: Branch operations running optimally with 99.8% service uptime.');
+
+    const audioFixtureDiskPath = path.join(audiosDir, 'test_voice_note.mp3');
+    fs.writeFileSync(audioFixtureDiskPath, Buffer.from([0xff, 0xfb, 0x90, 0x64]));
+
     // Provision a mock audio document in MongoDB
     mockAudio = new Audio({
       user: testUser._id,
@@ -560,6 +602,7 @@ const runLifecycleSuite = async () => {
     const mmUserTurn = chatDoc10.messages[6];
     assert(mmUserTurn.audios.length === 1, 'User turn persisted audio ObjectId reference');
     assert(mmUserTurn.attachments.length === 1, 'User turn persisted attachment disk path');
+    assertAlternatingSequence(chatDoc10, 'Scenario 10: Multi-Modal Turn');
 
     // Retry the multi-modal assistant turn without resending audio files
     const mmRetryRes = await postmanSSEStream(`/chat/${activeChatId}/stream`, {
@@ -583,11 +626,20 @@ const runLifecycleSuite = async () => {
     assert(chatDoc10Retry.messages.length === 8, 'Zero duplicate user turns on multi-modal retry');
     assert(chatDoc10Retry.messages[6].audios.length === 1, 'Audios persisted across retry');
     assert(chatDoc10Retry.messages[6].attachments.length === 1, 'Attachments persisted across retry');
+    assertAlternatingSequence(chatDoc10Retry, 'Scenario 10: Multi-Modal Retry');
 
     // --------------------------------------------------------------------------
     // Scenario 11: Teardown, Fixture Cleanup & Clean Server Termination
     // --------------------------------------------------------------------------
     console.log('\n[Scenario 11] Teardown, Database Cleanup & Server Termination');
+    // Clean up temporary disk fixture files
+    try {
+      if (fs.existsSync(opsSummaryDiskPath)) fs.unlinkSync(opsSummaryDiskPath);
+      if (fs.existsSync(audioFixtureDiskPath)) fs.unlinkSync(audioFixtureDiskPath);
+    } catch (_diskErr) {
+      // Ignore teardown unlink warnings
+    }
+
     await User.deleteOne({ _id: testUser._id });
     await Branch.deleteOne({ _id: testBranch._id });
     if (activeChatId) await Chat.deleteOne({ _id: activeChatId });

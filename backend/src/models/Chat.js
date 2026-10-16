@@ -139,9 +139,14 @@ const messageTurnSchema = new mongoose.Schema(
       type: String,
       default: '',
       trim: true,
-      maxlength: [
-        CHAT_CONSTANTS.MAX_MESSAGE_LENGTH,
-        `Message text cannot exceed ${CHAT_CONSTANTS.MAX_MESSAGE_LENGTH} characters.`,
+      validate: [
+        function (val) {
+          if (this.role === 'user' && val && val.length > CHAT_CONSTANTS.MAX_MESSAGE_LENGTH) {
+            return false;
+          }
+          return true;
+        },
+        `User message text cannot exceed ${CHAT_CONSTANTS.MAX_MESSAGE_LENGTH} characters.`,
       ],
     },
     thought: {
@@ -169,6 +174,14 @@ const messageTurnSchema = new mongoose.Schema(
         `File attachments per turn cannot exceed ${ATTACHMENT_CONSTANTS.MAX_FILES_COUNT}.`,
       ],
     },
+    audioTranscriptions: {
+      type: [String],
+      default: [],
+    },
+    documentTextContext: {
+      type: String,
+      default: null,
+    },
     toolCalls: {
       type: Array,
       default: [],
@@ -185,6 +198,14 @@ const messageTurnSchema = new mongoose.Schema(
     isStopped: {
       type: Boolean,
       default: false,
+    },
+    isError: {
+      type: Boolean,
+      default: false,
+    },
+    error: {
+      type: String,
+      default: null,
     },
     createdAt: {
       type: Date,

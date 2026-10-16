@@ -162,6 +162,18 @@ const userSchema = new mongoose.Schema(
         },
       },
     },
+    integrations: {
+      googleDrive: {
+        connected: { type: Boolean, default: false },
+        email: { type: String, default: null },
+        accessToken: { type: String, default: null, select: false },
+        refreshToken: { type: String, default: null, select: false },
+        expiryDate: { type: Number, default: null, select: false },
+        scope: [{ type: String }],
+        rootFolderId: { type: String, default: null },
+        connectedAt: { type: Date, default: null },
+      },
+    },
   },
   {
     ...BASE_SCHEMA_OPTIONS,
@@ -171,6 +183,11 @@ const userSchema = new mongoose.Schema(
         delete ret.__v;
         delete ret.id;
         delete ret.password;
+        if (ret.integrations?.googleDrive) {
+          delete ret.integrations.googleDrive.accessToken;
+          delete ret.integrations.googleDrive.refreshToken;
+          delete ret.integrations.googleDrive.expiryDate;
+        }
         return ret;
       },
     },
@@ -180,6 +197,11 @@ const userSchema = new mongoose.Schema(
         delete ret.__v;
         delete ret.id;
         delete ret.password;
+        if (ret.integrations?.googleDrive) {
+          delete ret.integrations.googleDrive.accessToken;
+          delete ret.integrations.googleDrive.refreshToken;
+          delete ret.integrations.googleDrive.expiryDate;
+        }
         return ret;
       },
     },

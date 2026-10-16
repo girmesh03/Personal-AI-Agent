@@ -20,6 +20,7 @@ import {
   uploadChatAudios,
   transcribeAudio,
   shareToTelegramDirect,
+  downloadGeneratedDocument,
 } from '../controllers/chatController.js';
 
 import {
@@ -93,6 +94,13 @@ router.post('/:chatId/stream', chatIdValidation, sendChatMessageValidation, vali
  * @access Protected (Area Supervisor)
  */
 router.get('/', getChatsValidation, validate, getChats);
+
+/**
+ * @route GET /api/v1/chat/downloads/:fileId
+ * @desc Securely download generated document asset
+ * @access Protected (Area Supervisor)
+ */
+router.get('/downloads/:fileId', downloadGeneratedDocument);
 
 /**
  * @route GET /api/v1/chat/:chatId

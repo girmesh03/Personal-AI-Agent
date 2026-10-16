@@ -10,7 +10,7 @@
 import { apiSlice } from '../redux/app/apiSlice.js';
 import { executeWithReauth } from '../redux/app/authClient.js';
 import { chatApi, setActiveChatId, setPipelineStatus } from '../redux/features/chatSlice.js';
-import { AUDIO_CONSTANTS, CHAT_PAGINATION } from '../utils/constants.js';
+import { AUDIO_CONSTANTS, CHAT_PAGINATION, formatModelDisplayName } from '../utils/constants.js';
 
 /**
  * Default API base URL from client environment configuration.
@@ -74,6 +74,7 @@ export class MuiChatAdapter {
     this.activeThinkingBudget = undefined;
     this.activeLanguage = undefined;
     this.activeSttEngine = undefined;
+    this.sentUserMessageIds = new Set();
   }
 
   /**
@@ -94,6 +95,7 @@ export class MuiChatAdapter {
    */
   clearActiveChatId() {
     this.currentChatId = null;
+    this.sentUserMessageIds?.clear();
   }
 
   /**
@@ -315,10 +317,19 @@ export class MuiChatAdapter {
           });
         });
 
+        if (isUser) {
+          this.sentUserMessageIds?.add(String(msg.id || msg._id));
+        }
+
+        const isError = Boolean(msg.isError || msg.error);
+        const isStopped = Boolean(msg.isStopped);
+        const status = isError ? 'error' : (isStopped ? 'cancelled' : 'sent');
+
         return {
           id: String(msg.id || msg._id),
           conversationId,
           role: isUser ? 'user' : 'assistant',
+          status,
           author: isUser
             ? {
                 id: activeUser.id,
@@ -336,9 +347,13 @@ export class MuiChatAdapter {
           metadata: {
             model: msg.model || null,
             usage: msg.usage || null,
-            isStopped: Boolean(msg.isStopped),
+            isStopped,
+            isError,
+            error: msg.error || null,
             thoughtDuration: msg.thoughtDuration || null,
           },
+          isError,
+          error: msg.error || null,
           createdAt: msg.createdAt
             ? new Date(msg.createdAt).toISOString()
             : new Date().toISOString(),
@@ -439,8 +454,16 @@ export class MuiChatAdapter {
 
     const isRetry = Boolean(
       message?.isRetry ||
-      message?.metadata?.isRetry
+      message?.metadata?.isRetry ||
+      message?.metadata?.anchorUserMessageId ||
+      typeof message?.retryTurnIndex === 'number' ||
+      typeof message?.metadata?.retryTurnIndex === 'number' ||
+      (targetChatId && message?.id && this.sentUserMessageIds?.has(String(message.id)))
     );
+
+    if (message?.id) {
+      this.sentUserMessageIds?.add(String(message.id));
+    }
 
     // 1. Pre-upload file attachments if present (differentiating audio notes vs document/image attachments)
     // On RETRY: Skip uploading and do not synthesize uploadedAttachments or uploadedAudioIds.
@@ -657,7 +680,8 @@ export class MuiChatAdapter {
           author: { id: 'assistant', displayName: 'Operon', role: 'assistant' },
         });
 
-        const textPartId = 'text-1';
+        let textCounter = 1;
+        let textPartId = 'text-1';
         let reasoningCounter = 1;
         let reasoningPartId = 'reasoning-1';
         let toolCounter = 0;
@@ -841,6 +865,37 @@ export class MuiChatAdapter {
                   break;
                 }
 
+                case 'reset_stream': {
+                  if (data.alternateModel) {
+                    adapterInstance.dispatch?.(
+                      setPipelineStatus(`Switching model to ${formatModelDisplayName(data.alternateModel)}...`)
+                    );
+                  }
+                  if (hasReasoningStarted && !hasReasoningEnded) {
+                    controller.enqueue({
+                      type: 'reasoning-end',
+                      id: reasoningPartId,
+                    });
+                    hasReasoningEnded = true;
+                  }
+                  if (hasTextStarted && !hasTextEnded) {
+                    controller.enqueue({
+                      type: 'text-end',
+                      id: textPartId,
+                    });
+                    hasTextEnded = true;
+                  }
+                  textCounter += 1;
+                  textPartId = `text-${textCounter}`;
+                  reasoningCounter += 1;
+                  reasoningPartId = `reasoning-${reasoningCounter}`;
+                  hasTextStarted = false;
+                  hasTextEnded = false;
+                  hasReasoningStarted = false;
+                  hasReasoningEnded = false;
+                  break;
+                }
+
                 case 'status': {
                   if (data.message) {
                     adapterInstance.dispatch?.(setPipelineStatus(data.message));
@@ -1018,14 +1073,12 @@ export class MuiChatAdapter {
                 type: 'reasoning-end',
                 id: reasoningPartId,
               });
-              hasReasoningEnded = true;
             }
             if (hasTextStarted && !hasTextEnded) {
               controller.enqueue({
                 type: 'text-end',
                 id: textPartId,
               });
-              hasTextEnded = true;
             }
             controller.enqueue({
               type: 'message-metadata',
@@ -1114,7 +1167,7 @@ export class MuiChatAdapter {
 
     // Snapshot existing target message from store
     const existingMsg = store?.state?.messagesById?.[messageId];
-    let currentText = '';
+    let currentText;
     if (typeof existingMsg?.content === 'string') {
       currentText = existingMsg.content;
     } else {
@@ -1266,6 +1319,51 @@ export class MuiChatAdapter {
       adapterInstance.dispatch?.(setPipelineStatus(''));
       adapterInstance.activeAbortController = null;
     }
+  }
+
+  /**
+   * Universal retry method for failed or regenerated conversational turns.
+   * Resolves the anchor user turn, enforces zero duplicate user turns,
+   * passes isRetry: true with complete multi-modal context re-hydration metadata,
+   * and dispatches through the streaming pipeline.
+   *
+   * @async
+   * @param {object} input
+   * @param {string} [input.conversationId] - Target conversation ID.
+   * @param {string} [input.targetAssistantMessageId] - Assistant message ID being replaced.
+   * @param {string} [input.anchorUserMessageId] - Prior user message ID being regenerated.
+   * @param {string} [input.model] - Optional alternate AI model identifier.
+   * @param {object} input.store - Headless chat store.
+   * @param {AbortSignal} [input.signal] - Optional external abort signal.
+   * @returns {Promise<ReadableStream>}
+   */
+  async retryTurn({ conversationId, targetAssistantMessageId, anchorUserMessageId, model, store, signal } = {}) {
+    if (model) {
+      this.setModel(model);
+    }
+    const currentIds = store?.state?.messageIds || [];
+    let anchorId = anchorUserMessageId;
+    if (!anchorId && targetAssistantMessageId) {
+      const asstIdx = currentIds.indexOf(targetAssistantMessageId);
+      if (asstIdx > 0) {
+        anchorId = currentIds[asstIdx - 1];
+      }
+    }
+    if (!anchorId) {
+      anchorId = currentIds.findLast((id) => store?.state?.messagesById[id]?.role === 'user');
+    }
+    const anchorMessage = anchorId ? store?.state?.messagesById[anchorId] : null;
+    if (!anchorMessage) {
+      throw new Error('Cannot retry: anchor user message not found in store.');
+    }
+    const targetChatId = conversationId || this.currentChatId;
+    return this.regenerate({
+      conversationId: targetChatId,
+      messageId: targetAssistantMessageId || `asst-retry-${Date.now()}`,
+      message: anchorMessage,
+      messages: currentIds.map((id) => store?.state?.messagesById[id]).filter(Boolean),
+      signal,
+    });
   }
 }
 

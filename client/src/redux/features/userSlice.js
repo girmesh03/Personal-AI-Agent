@@ -126,12 +126,34 @@ export const userSlice = apiSlice.injectEndpoints({
         }
       },
     }),
+    getGoogleDriveStatus: builder.query({
+      query: () => '/auth/google/status',
+      providesTags: ['User'],
+    }),
+    getGoogleDriveConnectUrl: builder.query({
+      query: () => '/auth/google/connect',
+    }),
+    disconnectGoogleDrive: builder.mutation({
+      query: () => ({
+        url: '/auth/google/disconnect',
+        method: 'POST',
+      }),
+      invalidatesTags: ['User'],
+    }),
+    mockConnectGoogleDrive: builder.mutation({
+      query: (body) => ({
+        url: '/auth/google/mock-connect',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['User'],
+    }),
   }),
   overrideExisting: false,
 });
 
 /**
- * RTK Query query and mutation hooks for supervisor user profile operations.
+ * RTK Query query and mutation hooks for supervisor user profile operations and cloud integrations.
  */
 export const {
   useGetProfileQuery,
@@ -140,6 +162,10 @@ export const {
   useRemoveAvatarMutation,
   useUpdatePasswordMutation,
   useUpdateAgentConfigMutation,
+  useGetGoogleDriveStatusQuery,
+  useLazyGetGoogleDriveConnectUrlQuery,
+  useDisconnectGoogleDriveMutation,
+  useMockConnectGoogleDriveMutation,
 } = userSlice;
 
 export default userSlice;

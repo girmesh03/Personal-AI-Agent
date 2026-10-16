@@ -25,7 +25,7 @@ import {
   useGetChatByIdQuery,
 } from '../redux/features/chatSlice.js';
 import { MuiChatAdapter } from '../adapters/MuiChatAdapter.js';
-import { ChatAdapterContext } from '../contexts/ChatAdapterContext.jsx';
+import { ChatAdapterContext } from '../contexts/ChatAdapterContext.js';
 import {
   MuiChatEmptyState,
   MuiComposerInput,
@@ -33,6 +33,7 @@ import {
   MuiComposerBottomToolbar,
   MuiMessageContent,
 } from '../components/chat/index.js';
+import { toast } from 'react-toastify';
 import { ATTACHMENT_CONSTANTS } from '../utils/constants.js';
 
 /**
@@ -195,6 +196,28 @@ export const Chat = () => {
       dispatch(setActiveChatId(null));
     }
   }, [dispatch, chatId, location.state?.newChatAt]);
+
+  // Handle Google Drive OAuth callback redirect parameters (?google_auth=success or ?google_auth=error)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const googleAuth = params.get('google_auth');
+    if (googleAuth) {
+      if (googleAuth === 'success') {
+        toast.success(
+          'Google Drive connected successfully! Your Personal AI Agent can now author docs and sheets in your Drive.'
+        );
+      } else if (googleAuth === 'error') {
+        const message = params.get('message') || 'Authentication failed or was cancelled.';
+        toast.error(`Failed to connect Google Drive: ${message}`);
+      }
+      const newSearch = new URLSearchParams(location.search);
+      newSearch.delete('google_auth');
+      newSearch.delete('message');
+      const searchStr = newSearch.toString();
+      const newUrl = `${location.pathname}${searchStr ? `?${searchStr}` : ''}`;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+  }, [location.search, location.pathname]);
 
   // Hydrate config if opening an existing chat thread
   const { data: chatData } = useGetChatByIdQuery({ chatId }, { skip: !chatId });

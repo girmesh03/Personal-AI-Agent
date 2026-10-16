@@ -31,6 +31,8 @@ import {
 } from '../errors/CustomError.js';
 import logger from '../config/logger.js';
 import { dispatchToTelegram } from '../services/telegramService.js';
+import { manageGoogleDrive, createCloudDocument } from '../services/googleDriveService.js';
+import { generateDocumentFile } from '../services/documentGenerationService.js';
 
 /**
  * Escapes characters with special meaning in regular expressions.
@@ -724,44 +726,111 @@ export const agentToolDeclarations = [
   },
 
   // ==========================================
-  // CATEGORY 4: EXTERNAL EXPORT, BROADCAST & DIRECTIVES SSOT (3 TOOLS)
+  // CATEGORY 4: CLOUD WORKSPACE, DOCUMENT GENERATION & BROADCAST (4 TOOLS)
   // ==========================================
   {
-    name: 'export_report',
+    name: 'manage_google_drive',
     description:
-      'Generate an export payload of operational report or audit log formatted for Plain Text, Markdown, JSON, Tabular CSV/Spreadsheet, or Google Docs / Google Sheets. Includes functional stubbing for Google Drive OAuth dispatch.',
+      'Autonomously manage Google Drive folders, files, searches, metadata, and sharing permissions. Can list files in a folder, create folders, search files by keyword, inspect file metadata, or share documents with collaborators.',
     parameters: {
       type: Type.OBJECT,
       properties: {
-        reportId: {
+        action: {
           type: Type.STRING,
-          description: 'Optional 24-character hexadecimal MongoDB ObjectId of a specific report.',
+          description: "Operation to perform: 'list', 'create_folder', 'search', 'get_metadata', or 'share'.",
         },
-        format: {
+        folderName: {
           type: Type.STRING,
-          description: "Format: 'markdown', 'txt', 'json', 'csv', 'spreadsheet', 'gdoc', or 'gsheet'.",
+          description: 'Name of the folder to create (required when action is create_folder).',
         },
-        destination: {
+        query: {
           type: Type.STRING,
-          description: "Destination: 'download', 'clipboard', or 'google_drive'.",
+          description: 'Search keyword to filter files/folders (used when action is search).',
         },
-        branchIds: {
-          type: Type.ARRAY,
-          items: { type: Type.STRING },
-          description:
-            'Optional array of branch IDs or codes when exporting tabular cross-branch audit logs (CSV/Spreadsheet).',
-        },
-        customContent: {
+        folderId: {
           type: Type.STRING,
-          description:
-            'Arbitrary markdown, text, or tabular content generated in the conversation to export (e.g. comparison tables, calculations, summaries).',
+          description: 'Optional Google Drive folder ID to scope operations inside (defaults to "Personal AI Agent" root).',
+        },
+        fileId: {
+          type: Type.STRING,
+          description: 'Google Drive file or folder ID (required for get_metadata and share).',
+        },
+        role: {
+          type: Type.STRING,
+          description: "Permission role when sharing: 'reader', 'commenter', or 'writer'. Default: 'reader'.",
+        },
+        emailAddress: {
+          type: Type.STRING,
+          description: 'Optional email address of collaborator to share with. Omit to share publicly via link.',
+        },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'create_cloud_document',
+    description:
+      'Autonomously create and format a live Google Doc or Google Spreadsheet in Google Drive. For documents, provide open-ended text or markdown in content. For spreadsheets, provide arbitrary structured data, table arrays, or cell grids in data.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        type: {
+          type: Type.STRING,
+          description: "Document type to create: 'doc' (Google Document) or 'sheet' (Google Spreadsheet). Default: 'doc'.",
         },
         title: {
           type: Type.STRING,
-          description: 'Optional document title or filename for the exported payload.',
+          description: 'Title of the Google Document or Spreadsheet.',
+        },
+        folderId: {
+          type: Type.STRING,
+          description: 'Optional Google Drive folder ID to place the file into (defaults to "Personal AI Agent" root).',
+        },
+        content: {
+          type: Type.STRING,
+          description: 'Open-ended markdown or text content to format and insert into the Google Doc.',
+        },
+        data: {
+          type: Type.OBJECT,
+          description: 'Arbitrary structured data, table rows, cell grid, or key-value map to populate into the Google Sheet.',
         },
       },
-      required: ['format'],
+      required: ['title'],
+    },
+  },
+  {
+    name: 'generate_document_file',
+    description:
+      'Generate an open-ended document file in PDF, Microsoft Word (.docx), Microsoft Excel (.xlsx), CSV, Markdown, or JSON. Can deliver either as a direct browser download URL or upload immediately to Google Drive.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        format: {
+          type: Type.STRING,
+          description: "File format: 'pdf', 'docx', 'xlsx', 'csv', 'markdown', or 'json'. Default: 'pdf'.",
+        },
+        title: {
+          type: Type.STRING,
+          description: 'Document title and output filename.',
+        },
+        destination: {
+          type: Type.STRING,
+          description: "Destination for generated document: 'download' (local download URL) or 'google_drive' (upload to Google Drive). Default: 'download'.",
+        },
+        folderId: {
+          type: Type.STRING,
+          description: 'Optional Google Drive folder ID when destination is google_drive.',
+        },
+        content: {
+          type: Type.STRING,
+          description: 'Open-ended text, markdown, report summary, letter, notes, or paragraphs for the document.',
+        },
+        data: {
+          type: Type.OBJECT,
+          description: 'Arbitrary structured data, tabular rows, list of records, or object grid for spreadsheets, tables, or JSON.',
+        },
+      },
+      required: ['title'],
     },
   },
   {
@@ -1980,195 +2049,24 @@ export const toolHandlers = {
   // ----------------------------------------------------------------------------
 
   /**
-   * 15. export_report
+   * 15. manage_google_drive
    */
-  export_report: async ({ args = {}, userId }) => {
-    const format = args.format || 'txt';
-    const destination = args.destination || 'download';
+  manage_google_drive: async ({ args = {}, userId }) => {
+    return await manageGoogleDrive(userId, args);
+  },
 
-    // 1. Dynamic ad-hoc content export (decoupled from persisted MongoDB reports)
-    if (args.customContent && typeof args.customContent === 'string' && args.customContent.trim()) {
-      const content = args.customContent.trim();
-      const docTitle = args.title || 'Exported Document';
-      let exportContent = content;
+  /**
+   * 16. create_cloud_document
+   */
+  create_cloud_document: async ({ args = {}, userId }) => {
+    return await createCloudDocument(userId, args);
+  },
 
-      if (format === 'json') {
-        exportContent = JSON.stringify(
-          { title: docTitle, content, exportedAt: new Date().toISOString() },
-          null,
-          2
-        );
-      } else if (format === 'csv' || format === 'spreadsheet' || format === 'gsheet') {
-        const lines = content.split('\n').map((l) => l.trim()).filter(Boolean);
-        const tableLines = lines.filter((l) => l.startsWith('|') && l.endsWith('|'));
-        if (tableLines.length >= 2) {
-          exportContent = tableLines
-            .filter((l) => !/^\|[\s\-:|]+\|$/.test(l))
-            .map((l) =>
-              l
-                .slice(1, -1)
-                .split('|')
-                .map((c) => `"${c.trim().replace(/"/g, '""')}"`)
-                .join(',')
-            )
-            .join('\n');
-        } else {
-          exportContent = `"Content"\n"${content.replace(/"/g, '""')}"`;
-        }
-      }
-
-      return {
-        success: true,
-        format,
-        destination,
-        title: docTitle,
-        recordCount: 1,
-        characterCount: exportContent.length,
-        content: exportContent,
-        message: `Dynamic conversational content successfully formatted for ${format.toUpperCase()} export.`,
-      };
-    }
-
-    let reportsToExport = [];
-    if (args.reportId && isValidObjectId(args.reportId)) {
-      const singleReport = await Report.findOne({ _id: args.reportId, user: userId })
-        .populate('visits.branch', 'name code')
-        .populate('user', 'fullName email')
-        .lean();
-      if (!singleReport) {
-        throw new NotFoundError('Report not found.');
-      }
-      reportsToExport = [singleReport];
-    } else {
-      const query = { user: userId, isArchived: false };
-      const rawBranchIds = args.branchIds || (args.branchId ? [args.branchId] : []);
-      if (rawBranchIds.length > 0) {
-        const resolvedIds = await resolveBranchObjectIds(rawBranchIds, userId);
-        if (resolvedIds.length > 0) {
-          query['visits.branch'] = { $in: resolvedIds };
-        }
-      }
-      reportsToExport = await Report.find(query)
-        .sort({ date: -1, createdAt: -1 })
-        .limit(20)
-        .populate('visits.branch', 'name code')
-        .populate('user', 'fullName email')
-        .lean();
-    }
-
-    const isSingle = reportsToExport.length === 1;
-    const report = isSingle ? reportsToExport[0] : null;
-
-    let exportContent = '';
-    const ethiopianDateStr = report ? toEthiopianDateString(report.date) : toEthiopianDateString(new Date());
-    const gregorianDateStr = report
-      ? new Date(report.date).toISOString().split('T')[0]
-      : new Date().toISOString().split('T')[0];
-
-    if (format === 'json') {
-      exportContent = JSON.stringify(isSingle ? report : reportsToExport, null, 2);
-    } else if (format === 'markdown') {
-      if (isSingle) {
-        exportContent =
-          `# Operational Report (${ethiopianDateStr})\n\n` +
-          `**Date**: ${gregorianDateStr} (Ethiopian: ${ethiopianDateStr})\n` +
-          `**Supervisor**: ${report.user?.fullName || 'N/A'}\n` +
-          `**Work Hours**: ${report.clockIn} - ${report.clockOut}\n\n` +
-          `## Branch Visits\n` +
-          (report.visits || [])
-            .map((v) => `- **${v.branch?.name || 'Branch'}** (${v.branch?.code || 'N/A'}): ${v.clockIn} - ${v.clockOut}`)
-            .join('\n') +
-          `\n\n## Activities Conducted\n` +
-          (report.activities || []).map((a) => `- [x] ${a.text} (${a.status})`).join('\n') +
-          `\n\n## Issues & Challenges\n` +
-          (report.issues || []).map((i) => `- [ ] ${i.text} (${i.status})`).join('\n') +
-          `\n\n## General Comments\n` +
-          (report.comments && report.comments.length
-            ? report.comments.map((c) => `- ${c.text}`).join('\n')
-            : '_None_') +
-          `\n\n## Corporate Transcription\n\n${report.transcription}`;
-      } else if (reportsToExport.length > 1) {
-        exportContent =
-          `# Cross-Branch Operational Audit Export\n\n` +
-          `**Total Reports**: ${reportsToExport.length}\n` +
-          `**Export Date**: ${gregorianDateStr} (Ethiopian: ${ethiopianDateStr})\n\n` +
-          reportsToExport
-            .map((r, idx) => {
-              const rEth = toEthiopianDateString(r.date);
-              const rGreg = new Date(r.date).toISOString().split('T')[0];
-              const bNames = (r.visits || []).map((v) => v.branch?.name || 'Branch').join(', ');
-              return (
-                `### ${idx + 1}. Audit: ${bNames} (${rGreg} / Eth: ${rEth})\n` +
-                `- **Work Hours**: ${r.clockIn} - ${r.clockOut}\n` +
-                `- **Activities**: ${(r.activities || []).map((a) => a.text).join('; ') || 'None'}\n` +
-                `- **Issues**: ${(r.issues || []).map((i) => `${i.text} [${i.status}]`).join('; ') || 'None'}\n`
-              );
-            })
-            .join('\n');
-      } else {
-        exportContent = '# Operational Report Export\nNo matching reports found.';
-      }
-    } else if (format === 'csv' || format === 'spreadsheet' || format === 'gsheet') {
-      const csvRows = ['Date,EthiopianDate,Branch,RecordType,Description,Status'];
-      for (const rep of reportsToExport) {
-        const repEth = toEthiopianDateString(rep.date);
-        const repGreg = new Date(rep.date).toISOString().split('T')[0];
-        const branchNames = (rep.visits || []).map((v) => v.branch?.name || 'Branch').join('; ');
-
-        (rep.activities || []).forEach((act) => {
-          csvRows.push(
-            `"${repGreg}","${repEth}","${branchNames}","Activity","${act.text.replace(/"/g, '""')}","${act.status}"`
-          );
-        });
-        (rep.issues || []).forEach((iss) => {
-          csvRows.push(
-            `"${repGreg}","${repEth}","${branchNames}","Issue","${iss.text.replace(/"/g, '""')}","${iss.status}"`
-          );
-        });
-        (rep.comments || []).forEach((com) => {
-          csvRows.push(
-            `"${repGreg}","${repEth}","${branchNames}","Comment","${com.text.replace(/"/g, '""')}","N/A"`
-          );
-        });
-      }
-      exportContent = csvRows.join('\n');
-    } else {
-      // Default plain text (verbatim transcription or summary)
-      if (isSingle) {
-        exportContent = report.transcription || 'Operational Report Export';
-      } else if (reportsToExport.length > 0) {
-        exportContent = reportsToExport
-          .map((r, i) => `=== REPORT ${i + 1} (${new Date(r.date).toISOString().split('T')[0]}) ===\n${r.transcription}`)
-          .join('\n\n');
-      } else {
-        exportContent = 'Operational Report Export: No matching reports found.';
-      }
-    }
-
-    // Functional Stub Architecture: Google Drive / Sheets
-    if (destination === 'google_drive') {
-      const ext = format === 'csv' || format === 'spreadsheet' || format === 'gsheet' ? 'csv' : 'txt';
-      const fileName = `Operational_Report_${gregorianDateStr}_${Date.now()}.${ext}`;
-      return {
-        success: true,
-        isStub: true,
-        format,
-        destination,
-        fileName,
-        payloadPreview: exportContent.slice(0, 300),
-        reportsCount: reportsToExport.length,
-        message: 'Google Drive integration stub: payload formatted and ready for dispatch.',
-      };
-    }
-
-    return {
-      reportId: report ? report._id.toString() : null,
-      reportsCount: reportsToExport.length,
-      format,
-      destination,
-      exportContent,
-      message: `Report successfully exported in ${format} format.`,
-    };
+  /**
+   * 17. generate_document_file
+   */
+  generate_document_file: async ({ args = {}, userId }) => {
+    return await generateDocumentFile(userId, args);
   },
 
   /**

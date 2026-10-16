@@ -25,4 +25,5 @@ export { default as MuiAgentMessageBottomBar } from './MuiAgentMessageBottomBar.
 export { default as MuiErrorNotice } from './MuiErrorNotice.jsx';
 export { default as MuiAgentMessage } from './MuiAgentMessage.jsx';
 export { default as MuiAgentExecutionTimeline } from './MuiAgentExecutionTimeline.jsx';
+export { default as MuiCloudDocumentCard } from './MuiCloudDocumentCard.jsx';
 

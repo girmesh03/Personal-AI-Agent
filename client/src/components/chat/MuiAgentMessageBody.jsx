@@ -166,28 +166,7 @@ const markdownOverrides = {
       </Box>
     ),
   },
-  blockquote: {
-    component: ({ children, ...props }) => (
-      <Box
-        component="blockquote"
-        sx={{
-          my: 1.5,
-          mx: 0,
-          pl: 2,
-          py: 0.5,
-          borderLeft: 3,
-          borderColor: 'primary.main',
-          bgcolor: (theme) => alpha(theme.palette.action.hover, 0.4),
-          borderRadius: '0 8px 8px 0',
-          color: 'text.secondary',
-          fontStyle: 'italic',
-        }}
-        {...props}
-      >
-        {children}
-      </Box>
-    ),
-  },
+
   a: {
     component: ({ href, children, ...props }) => {
       const isInternal = href && (href.startsWith('/') || href.startsWith('#'));

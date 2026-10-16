@@ -10,12 +10,18 @@ import {
   refreshToken,
   logout,
   googleAuthStub,
+  connectGoogleDrive,
+  handleGoogleCallback,
+  disconnectGoogleDriveRoute,
+  getGoogleDriveStatus,
+  mockConnectGoogleDriveRoute,
 } from '../controllers/authController.js';
 import {
   registerValidation,
   loginValidation,
 } from '../validations/authValidation.js';
 import { validate } from '../middleware/validate.js';
+import { verifyToken } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -48,9 +54,44 @@ router.post('/refresh', refreshToken);
 router.post('/logout', logout);
 
 /**
+ * @route GET /api/v1/auth/google/connect
+ * @desc Initiate Google OAuth connection
+ * @access Protected or via ?userId query param
+ */
+router.get('/google/connect', connectGoogleDrive);
+
+/**
+ * @route GET /api/v1/auth/google/callback
+ * @desc OAuth redirect callback
+ * @access Public
+ */
+router.get('/google/callback', handleGoogleCallback);
+
+/**
+ * @route POST /api/v1/auth/google/disconnect
+ * @desc Disconnect Google Drive integration
+ * @access Protected
+ */
+router.post('/google/disconnect', verifyToken, disconnectGoogleDriveRoute);
+
+/**
+ * @route GET /api/v1/auth/google/status
+ * @desc Check Google Drive integration connection status
+ * @access Protected
+ */
+router.get('/google/status', verifyToken, getGoogleDriveStatus);
+
+/**
+ * @route POST /api/v1/auth/google/mock-connect
+ * @desc Mock connect Google Drive for integration testing
+ * @access Protected
+ */
+router.post('/google/mock-connect', verifyToken, mockConnectGoogleDriveRoute);
+
+/**
  * @route GET /api/v1/auth/google
  * @route POST /api/v1/auth/google
- * @desc Google authentication placeholder stub.
+ * @desc Legacy Google authentication placeholder stub.
  * @access Public
  */
 router.get('/google', googleAuthStub);
