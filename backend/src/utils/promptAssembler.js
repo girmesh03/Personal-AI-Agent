@@ -24,10 +24,10 @@ export const DEFAULT_PERSONA = CHAT_CONSTANTS.DEFAULT_PERSONA;
  * Default fallback Single-Branch Amharic report template.
  */
 export const DEFAULT_SINGLE_BRANCH_TEMPLATE = [
-  'ቀን: [DD/MM/YY]',
+  'ቀን: [ቀን]',
   'ብራንች: [ብራንች ስም]',
   'ስም: [ሙሉ ስም]',
-  'ስራ የገባሁበት ሰዓት: [HH:mm]',
+  'ስራ የገባሁበት ሰዓት: [ሰዓት]',
   '',
   'የተሰሩ ስራዎች:',
   '• [ስራ 1]',
@@ -39,19 +39,19 @@ export const DEFAULT_SINGLE_BRANCH_TEMPLATE = [
   'አጠቃላይ አስተያየት:',
   '• [አስተያየት 1]',
   '',
-  'ከስራ የወጣሁበት ሰዓት: [HH:mm]',
+  'ከስራ የወጣሁበት ሰዓት: [ሰዓት]',
 ].join('\n');
 
 /**
  * Default fallback Multi-Branch Amharic report template.
  */
 export const DEFAULT_MULTI_BRANCH_TEMPLATE = [
-  'ቀን: [DD/MM/YY]',
+  'ቀን: [ቀን]',
   'ብራንች: [የመጀመሪያ ብራንች]፣ [ሁለተኛ ብራንች] እና [ሶስተኛ ብራንች]',
   'ስም: [ሙሉ ስም]',
-  'ስራ የገባሁበት ሰዓት: [HH:mm]',
-  '• ከ [HH:mm] እስከ [HH:mm] [የመጀመሪያ ብራንች]',
-  '• ከ [HH:mm] እስከ [HH:mm] [ሁለተኛ ብራንች]',
+  'ስራ የገባሁበት ሰዓት: [ሰዓት]',
+  '• ከ [መነሻ ሰዓት] እስከ [መድረሻ ሰዓት] [የመጀመሪያ ብራንች]',
+  '• ከ [መነሻ ሰዓት] እስከ [መድረሻ ሰዓት] [ሁለተኛ ብራንች]',
   '',
   'የተሰሩ ስራዎች:',
   '• [ስራ 1]',
@@ -63,7 +63,7 @@ export const DEFAULT_MULTI_BRANCH_TEMPLATE = [
   'አጠቃላይ አስተያየት:',
   '• [አስተያየት 1]',
   '',
-  'ከስራ የወጣሁበት ሰዓት: [HH:mm]',
+  'ከስራ የወጣሁበት ሰዓት: [ሰዓት]',
 ].join('\n');
 
 /**
@@ -94,7 +94,7 @@ export function formatSingleBranchTemplate(
     `ቀን: ${ethiopianDate}`,
     `ብራንች: ${branchName}`,
     `ስም: ${supervisorName}`,
-    'ስራ የገባሁበት ሰዓት: [HH:mm]',
+    'ስራ የገባሁበት ሰዓት: [ሰዓት]',
     '',
     'የተሰሩ ስራዎች:',
     '• [ስራ 1]',
@@ -106,7 +106,7 @@ export function formatSingleBranchTemplate(
     'አጠቃላይ አስተያየት:',
     '• [አስተያየት 1]',
     '',
-    'ከስራ የወጣሁበት ሰዓት: [HH:mm]',
+    'ከስራ የወጣሁበት ሰዓት: [ሰዓት]',
   ].join('\n');
 }
 
@@ -127,9 +127,9 @@ export function formatMultiBranchTemplate(
     `ቀን: ${ethiopianDate}`,
     `ብራንች: ${branchesText}`,
     `ስም: ${supervisorName}`,
-    'ስራ የገባሁበት ሰዓት: [HH:mm]',
-    '• ከ [HH:mm] እስከ [HH:mm] [የመጀመሪያ ብራንች]',
-    '• ከ [HH:mm] እስከ [HH:mm] [ሁለተኛ ብራንች]',
+    'ስራ የገባሁበት ሰዓት: [ሰዓት]',
+    '• ከ [መነሻ ሰዓት] እስከ [መድረሻ ሰዓት] [የመጀመሪያ ብራንች]',
+    '• ከ [መነሻ ሰዓት] እስከ [መድረሻ ሰዓት] [ሁለተኛ ብራንች]',
     '',
     'የተሰሩ ስራዎች:',
     '• [ስራ 1]',
@@ -141,7 +141,7 @@ export function formatMultiBranchTemplate(
     'አጠቃላይ አስተያየት:',
     '• [አስተያየት 1]',
     '',
-    'ከስራ የወጣሁበት ሰዓት: [HH:mm]',
+    'ከስራ የወጣሁበት ሰዓት: [ሰዓት]',
   ].join('\n');
 }
 
@@ -277,7 +277,7 @@ export async function assembleSystemPrompt({
     '- Dynamic Presentation Freedom: If no custom template is configured, you are free to present the operational information dynamically, cleanly, and naturally in response to the user\'s specific request (e.g. structured markdown, tables, bullet points, or executive briefs).',
     '- Presentation Layer & Bullet Integrity: When formatting operational reports, ensure every list item starts on its own line using clean bullets ("• " or "- "). In list sections (የተሰሩ ስራዎች:, መፍትሄ የሚፈልጉ ጉዳዮች:, አጠቃላይ አስተያየት:), place a newline ("\\n") after the section heading before the first bullet item. Strictly NEVER use Markdown headers ("#", "##") inside the report body.',
     '- Compact Header Block Geometry: The Header metadata block (ቀን:, ብራንች:, ስም:, ስራ የገባሁበት ሰዓት:) is a single compact unit separated by SINGLE newlines ("\\n"). Strictly NEVER place blank lines ("\\n\\n") between date, branch, name, and clock-in time.',
-    '- Multi-Branch Route Placement: In multi-branch reports, branch transit intervals ("• ከ [HH:mm] እስከ [HH:mm] [ብራንች ስም]") belong strictly and immediately beneath "ስራ የገባሁበት ሰዓት: [HH:mm]" on subsequent single newlines. NEVER place branch route intervals under "የተሰሩ ስራዎች:".',
+    '- Multi-Branch Route Placement: In multi-branch reports, branch transit intervals ("• ከ [መነሻ ሰዓት] እስከ [መድረሻ ሰዓት] [ብራንች ስም]") belong strictly and immediately beneath "ስራ የገባሁበት ሰዓት: [ሰዓት]" on subsequent single newlines. NEVER place branch route intervals under "የተሰሩ ስራዎች:".',
     '- Major Section Separation: Double newlines ("\\n\\n") are placed STRICTLY between major sections: [Header + Route Block] -> \\n\\n -> [የተሰሩ ስራዎች:] -> \\n\\n -> [መፍትሄ የሚፈልጉ ጉዳዮች:] -> \\n\\n -> [አጠቃላይ አስተያየት:] -> \\n\\n -> [ከስራ የወጣሁበት ሰዓት:].',
     '- The Zero Hardcoding Law: Report content (observations, tasks, issues, risks, actions, tomorrow\'s schedule) is NEVER hardcoded or copied from boilerplate. Every detail must be 100% dynamically derived from the user\'s narration, voice notes, or files. If the user mentions "ቼክ ሊስት", dynamically elevate it into formal corporate audit language ("በቼክሊስቱ መሰረት የሚከናወኑ የዕለት ተዕለት ተግባራትን እና የአሰራር ሂደቶችን ተከታትዬ አረጋግጫለሁ"). If they performed inventory or kitchen maintenance, describe those exact activities.',
     '- Issues & The Triad Rule: Deconstruct reported problems into: (1) Defect details, (2) Operational risk/impact, and (3) Recommended action.',
@@ -285,9 +285,9 @@ export async function assembleSystemPrompt({
     `- User Identity Grounding: Always ground the user's name against their official profile name (${supervisorName}), correcting speech-to-text phonetic misspellings (e.g., resolving "ቤዛ እያለው" to "ቤዛ አያሌው").`,
     '- Single-Branch Clarity: In single-branch reports, list clock-in time cleanly without branch interval sub-bullets.',
     '- Tomorrow\'s Schedule: If the user mentions where they plan to work tomorrow, format it as the final bullet under "አጠቃላይ አስተያየት:". If unmentioned, do not invent it.',
-    '- Footer Clock-Out: Always place "ከስራ የወጣሁበት ሰዓት: [HH:mm]" at the bottom as the report\'s closing boundary.',
-    '- Work hours and visit times must use 24-hour HH:mm format (e.g. 08:30, 17:30). Report date uses Ethiopian calendar format DD/MM/YY (or DD-MM-YY).',
-    `- INSPECTION DATE TEMPORAL GROUNDING & CALENDAR CONVERSION LAW: Operational inspection reports document shifts that have ALREADY occurred. The inspection date can NEVER be in the future relative to the Current System Date (Gregorian ${gregorianDateStr} | Ethiopian Calendar ${ethiopianDateStr}). If the shift occurred today, use Current System Date (${gregorianDateStr}). If the supervisor narrates a past Ethiopian date (e.g. "ቀን 16 አንድ አስራ ዘጠኝ" -> Day 16 of Month 1 (Meskerem), Year 2019), that was in the past (e.g. 2026-09-26). You may provide either the past Gregorian ISO date (2026-09-26) or the Ethiopian date string ("16-01-19") to create_report. Strictly NEVER invent or project a future date in the current month.`,
+    '- Footer Clock-Out: Always place "ከስራ የወጣሁበት ሰዓት: [ሰዓት]" at the bottom as the report\'s closing boundary.',
+    '- Time & Date Formatting Precedence Law: Date and time formats must strictly honor active user directives (e.g. Ethiopian 12-hour clock vs. international 24-hour time). If the user or directives specify Ethiopian time, preserve authentic Ethiopian time (e.g. 1:45 or 01:45, 2:00 - 7:30, 12:30). Strictly NEVER force Western 24-hour conversion against user directives.',
+    `- INSPECTION DATE TEMPORAL GROUNDING & CALENDAR CONVERSION LAW: Operational inspection reports document shifts that have ALREADY occurred. The inspection date can NEVER be in the future relative to the Current System Date (Ethiopian Calendar: ${ethiopianDateStr} | Gregorian: ${gregorianDateStr}). Adhere strictly to active user directives for calendar formatting (use Ethiopian calendar format e.g. ${ethiopianDateStr} or "DD/MM/YY" by default unless Gregorian is explicitly requested). If the supervisor narrates a past Ethiopian date (e.g. "ቀን 16 አንድ አስራ ዘጠኝ" -> Day 16 of Month 1 (Meskerem), Year 2019), that was in the past. You may provide either the past Gregorian ISO date (e.g. 2026-09-26) or the Ethiopian date string ("16-01-19") to create_report. Strictly NEVER invent or project a future date.`,
     '- THE "DRAFT FIRST, CONFIRM BEFORE COMMIT" PROTOCOL:',
     '  • EXPLICIT PERSISTENCE COMMANDS: When the user explicitly instructs you to record, save, or commit the report (e.g. using action verbs like "መዝግብልኝ", "መዝግበው", "አስመዝግበው", "አስቀምጠው", "save it", "record it", "commit it", or approving a previously presented draft): invoke create_report autonomously inside the ACID transaction session, AND ALWAYS render the complete formatted report text in your conversational message for the user to review. Never emit just a generic confirmation sentence without displaying the report.',
     '  • RAW NARRATIONS & DRAFT MODE: When the user provides shift notes, raw narrations, or voice memos WITHOUT an explicit command to record/save (e.g. "ይሄንን ሪፖርት አዘጋጅልኝ", or just raw narration text): NEVER create or persist a report behind their back. First synthesize a clean, refined draft in chat, highlight any ambiguities (e.g. audit target branch vs. inventory donor like Medhanialem, single vs. split reports, personal timekeeping), and invite the user to confirm or adjust before saving.',
@@ -326,19 +326,18 @@ export async function assembleSystemPrompt({
     '  2. Agent Configuration: Persona lens, defaultModel (gemini-3.1-flash-lite, gemini-3.8-flash, gemini-3-flash-preview), defaultThinkingBudget (0 to 8192 tokens), defaultLanguage ("am", "en", "auto"), or resetAgentConfig.',
     '  3. Speech-to-Text Engine: sttEngine ("addis_ai", "gemini-3.8-flash", "gemini-3.1-flash-lite").',
     '  4. Report Templates: singleBranchTemplate, multiBranchTemplate, resetSingleBranchTemplate, resetMultiBranchTemplate.',
-    'Whenever the supervisor asks about their current settings, preferences, or rules, execute "get_user_settings".',
-    'Whenever the supervisor expresses persistent preferences across ANY operational or personal pillar (e.g. "From now on...", "Always...", "Never...", "When I say X, write Y...", "Remember that...", "Set my default model to...", "Change persona to..."):',
-    '  1. Autonomously execute "update_user_settings" in the same turn inside an ACID transaction session.',
-    '  2. Clearly confirm the persistence in your response: "I have updated your settings in your permanent profile: [Details]. I will apply this across all future interactions."',
-    '  3. Immediately enforce the updated settings on current and subsequent turns.',
     '',
-    'AUTONOMOUS HEURISTIC DIRECTIVE EXTRACTOR & INTERACTIVE CONFIRMATION GATE:',
-    'Whenever the user sends any input (text, audio memo, document, or image) that contains or expresses a rule, constraint, do, don\'t, regulation, or persistent behavioral instruction (e.g. using normative phrasing or deontic modals like "አለብህ", "አለብሽ", "አይቻልም", "መቼም", "ሁልጊዜ", "ከአሁን ጀምሮ", "እንዳትል", "አትጠቀም", "must", "never", "always", "from now on", "when you create a report, you must show it to me"):',
-    '  1. Execute the immediate user request or answer their inquiry fully and empathetically.',
-    '  2. Extract the candidate directive into a clean, canonical formulation (e.g. "ሪፖርት በሚፈጠርበት ወይም በሚሻሻልበት ጊዜ ሙሉውን የተዘጋጀ ሪፖርት ለተጠቃሚው ማሳየት/ማቅረብ").',
-    '  3. Append an Interactive Confirmation Gate at the conclusion of your conversational response:',
-    '     "\\n\\n---\\n💡 **የመመሪያ ማስታወሻ**፦ ያስተላለፉትን ደንብ አስተውያለሁ፦ *\\"[የተቀነጨበው ደንብ]\\"*። ይህ መመሪያ ወደፊት በቋሚነት በተጠቃሚ ቅንብሮችዎ (User Settings Directives) ውስጥ እንዲቀመጥ ይፈልጋሉ? \'አዎ መዝግበው\' ካሉኝ በቋሚነት አስቀምጠዋለሁ።"',
-    '  4. When the user confirms in the subsequent turn (e.g. "አዎ", "አዎ መዝግበው", "save it", "yes"), immediately execute "update_user_settings" with customInstructionsToAdd: [canonicalDirective] inside an ACID transaction session, persisting it to User.settings.directives.customInstructions.',
+    'MANDATORY DIRECTIVE INSPECTION & EXECUTION PROTOCOL (PRIORITY 0):',
+    '- Active Directive Inspection: Before drafting, creating, or synthesizing reports, processing shift narrations, or resolving date/time conventions, you MUST invoke "get_user_settings" (with section: "directives" or "all") to retrieve and inspect active user directives from MongoDB. This provides the user with visual transparency via the tool execution badge in the UI and guarantees zero deviation from their active directives.',
+    '- Absolute Precedence: All active directives (custom instructions, negative vocabulary, phrase mappings) returned by "get_user_settings" or listed below in <directives> are PRIORITY 0 LAW. They unconditionally supersede all default report formats, 24-hour time conventions, and template placeholders.',
+    '- Whenever the user asks about their current settings, preferences, or rules, execute "get_user_settings".',
+    '',
+    'DYNAMIC USER DIRECTIVE LEARNING & PROACTIVE MEMORY PROTOCOL:',
+    'When the user expresses a rule, behavioral constraint, vocabulary preference, or operational tone across ANY personal or operational pillar (e.g. "always use Ethiopian dates/time", "never say X", "when I say Y, mean Z", or Amharic deontic phrasing like "አለብህ", "አለብሽ", "አይቻልም", "መቼም", "ሁልጊዜ", "ከአሁን ጀምሮ", "እንዳትል", "must", "never", "always", "from now on"):',
+    '  1. DIRECT COMMANDS (e.g. "From now on...", "Save this rule...", "ከአሁን ጀምሮ... መዝግበው", "ይሄን ደንብ ያዝ"): Autonomously invoke "update_user_settings" in the same turn inside an ACID transaction session, and confirm naturally in dialogue: "ተረድቻለሁ! ከአሁን በኋላ [የተቀመጠው ደንብ]። ይህን መመሪያ ወደፊትም እንድከተለው በቋሚ የተጠቃሚ ቅንብሮችዎ ውስጥ መዝግቤዋለሁ።"',
+    '  2. CONVERSATIONAL PREFERENCES / FEEDBACK (e.g. user critiques or expresses a preference without an explicit save command): Immediately adapt your current response to obey the preference, and proactively ask naturally in organic dialogue: "ይህንን ደንብ ወደፊትም በቋሚነት እንድከተለው በተጠቃሚ ቅንብሮችዎ (User Settings) ውስጥ ላስቀምጥልዎ?". When the user confirms in the subsequent turn ("አዎ", "save it", "yes"), invoke "update_user_settings" to commit it to MongoDB.',
+    '  3. ZERO HARDCODED BANNERS LAW: Strictly NEVER output robotic formulaic widgets, confirmation boxes, or canned banners at the conclusion of your response. Always speak in your natural, fluent, and intelligent conversational voice.',
+    '  4. ZERO METADATA LEAKAGE LAW: Strictly NEVER output directive headers, enforcement tags, or internal system codes in your responses.',
   ];
 
   if (negativeVocab.length > 0) {
@@ -363,7 +362,7 @@ export async function assembleSystemPrompt({
   }
 
   if (customInstructions.length > 0) {
-    directiveLines.push('\nCUSTOM CORPORATE OPERATIONAL RULES:');
+    directiveLines.push('\nCUSTOM USER DIRECTIVES & RULES:');
     directiveLines.push(customInstructions.map((inst) => `  - ${inst}`).join('\n'));
   }
 
