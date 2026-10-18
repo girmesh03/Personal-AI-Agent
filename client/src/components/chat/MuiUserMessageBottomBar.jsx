@@ -171,28 +171,40 @@ export const MuiUserMessageBottomBar = ({
             Cancel
           </Button>
 
-          <Button
-            size="small"
-            variant="contained"
-            color="primary"
-            disabled={disabledSubmit}
-            onClick={onSubmitEdit}
-            sx={{
-              textTransform: 'none',
-              fontSize: '0.8125rem',
-              fontWeight: 600,
-              borderRadius: '8px',
-              px: 1.75,
-              py: 0.25,
-              minWidth: 68,
-              boxShadow: 'none',
-              '&:hover': {
-                boxShadow: 'none',
-              },
-            }}
+          <Tooltip
+            title={
+              disabledSubmit
+                ? 'Enter text or attach a file/image to send.'
+                : 'Save and submit edit'
+            }
+            arrow
+            placement="top"
           >
-            Send
-          </Button>
+            <span>
+              <Button
+                size="small"
+                variant="contained"
+                color="primary"
+                disabled={disabledSubmit}
+                onClick={onSubmitEdit}
+                sx={{
+                  textTransform: 'none',
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  borderRadius: '8px',
+                  px: 1.75,
+                  py: 0.25,
+                  minWidth: 68,
+                  boxShadow: 'none',
+                  '&:hover': {
+                    boxShadow: 'none',
+                  },
+                }}
+              >
+                Send
+              </Button>
+            </span>
+          </Tooltip>
         </Box>
       </Box>
     );

@@ -94,8 +94,12 @@ export const sendChatMessageValidation = [
     const hasContinue =
       b.continueTurn === true ||
       b.continueTurn === 'true';
+    const hasEdit =
+      b.isEdit === true ||
+      b.isEdit === 'true' ||
+      (b.editTurnIndex !== undefined && b.editTurnIndex !== null);
 
-    if (!hasText && !hasAudios && !hasAttachments && !hasRetry && !hasContinue) {
+    if (!hasText && !hasAudios && !hasAttachments && !hasRetry && !hasContinue && !hasEdit) {
       throw new Error(
         'Message turn must include at least one input modality: text, audio, or attachment.'
       );
@@ -246,12 +250,16 @@ export const sendChatMessageValidation = [
 
   body('attachments.*.path')
     .if(body('attachments').isArray({ min: 1 }))
-    .trim()
-    .notEmpty()
-    .withMessage('Attachment path is required.')
     .customSanitizer((filePath) => (typeof filePath === 'string' ? filePath.replace(/^\/+/, '') : filePath))
-    .custom((filePath) => {
-      if (typeof filePath === 'string' && (filePath.includes('..') || path.isAbsolute(filePath))) {
+    .custom((filePath, { req }) => {
+      const isEdit = req.body?.isEdit === true || req.body?.isEdit === 'true' || req.body?.editTurnIndex !== undefined;
+      if (!filePath && isEdit) {
+        return true;
+      }
+      if (!filePath || typeof filePath !== 'string' || !filePath.trim()) {
+        throw new Error('Attachment path is required.');
+      }
+      if (filePath.includes('..') || path.isAbsolute(filePath)) {
         throw new Error('Attachment path must be a safe relative storage path.');
       }
       return true;
@@ -259,20 +267,35 @@ export const sendChatMessageValidation = [
 
   body('attachments.*.mimeType')
     .if(body('attachments').isArray({ min: 1 }))
-    .trim()
-    .notEmpty()
-    .withMessage('Attachment mimeType is required.')
-    .isIn(ATTACHMENT_CONSTANTS.ALLOWED_MIME_TYPES)
-    .withMessage('Unsupported attachment MIME format.'),
+    .custom((mimeType, { req }) => {
+      const isEdit = req.body?.isEdit === true || req.body?.isEdit === 'true' || req.body?.editTurnIndex !== undefined;
+      if (!mimeType && isEdit) {
+        return true;
+      }
+      if (!mimeType || typeof mimeType !== 'string' || !mimeType.trim()) {
+        throw new Error('Attachment mimeType is required.');
+      }
+      if (!ATTACHMENT_CONSTANTS.ALLOWED_MIME_TYPES.includes(mimeType.trim())) {
+        throw new Error('Unsupported attachment MIME format.');
+      }
+      return true;
+    }),
 
   body('attachments.*.size')
     .if(body('attachments').isArray({ min: 1 }))
-    .notEmpty()
-    .withMessage('Attachment size is required.')
-    .isInt({ min: 1, max: ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES })
-    .withMessage(
-      `Attachment file size must be between 1 byte and ${ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES} bytes (25MB).`
-    ),
+    .custom((size, { req }) => {
+      const isEdit = req.body?.isEdit === true || req.body?.isEdit === 'true' || req.body?.editTurnIndex !== undefined;
+      if ((size === undefined || size === null || size === 0) && isEdit) {
+        return true;
+      }
+      const num = Number(size);
+      if (isNaN(num) || num < 1 || num > ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES) {
+        throw new Error(
+          `Attachment file size must be between 1 byte and ${ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES} bytes (25MB).`
+        );
+      }
+      return true;
+    }),
 
   // Security Invariants: reject forbidden field injections on chat turns
   body('role').custom((value) => {

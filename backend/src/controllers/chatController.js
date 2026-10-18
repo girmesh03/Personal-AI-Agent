@@ -22,7 +22,7 @@ import { User } from '../models/User.js';
 import { NotFoundError, BadRequestError } from '../errors/CustomError.js';
 import { assembleSystemPrompt } from '../utils/promptAssembler.js';
 import { agentToolDeclarations, executeAgentTool } from '../tools/agentTools.js';
-import { processAttachments } from '../utils/attachmentProcessor.js';
+import { processAttachments, resolveFilePath } from '../utils/attachmentProcessor.js';
 import { transcribeAudioDocument, transcribeAudio as transcribeAudioUtil } from '../utils/audioChunker.js';
 import { dispatchToTelegram } from '../services/telegramService.js';
 import { generatedDocumentRegistry } from '../services/documentGenerationService.js';
@@ -50,7 +50,7 @@ function sendSSE(res, event, data) {
  * @param {object} msg - User turn message subdocument.
  * @returns {Promise<Array<object>>} Gemini Content parts array.
  */
-async function compileUserTurnParts(msg) {
+export async function compileUserTurnParts(msg) {
   const parts = [];
   const textSections = [];
 
@@ -507,12 +507,82 @@ export const streamChat = asyncHandler(async (req, res) => {
       }
     } else {
       // FRESH SEND OR EDIT: Process incoming live audios and attachments
-      if (Array.isArray(b.audios) && b.audios.length > 0) {
+      // If this is an edit turn, snapshot targetTurn BEFORE any history slicing or mutations
+      let editIdx = -1;
+      let targetTurn = null;
+      if (isEdit) {
+        if (b.anchorUserMessageId) {
+          const matchIdx = chat.messages.findIndex(
+            (m) =>
+              String(m.id) === String(b.anchorUserMessageId) ||
+              String(m._id) === String(b.anchorUserMessageId)
+          );
+          if (matchIdx !== -1) {
+            editIdx = matchIdx;
+          }
+        }
+        if (editIdx === -1 && typeof b.editTurnIndex === 'number') {
+          editIdx = b.editTurnIndex;
+        }
+        if (editIdx >= 0 && editIdx < chat.messages.length) {
+          targetTurn = chat.messages[editIdx];
+        }
+      }
+
+      // Re-hydrate attachments and audios on edit turns
+      let effectiveAttachments = Array.isArray(b.attachments) ? [...b.attachments] : [];
+      let effectiveAudios = Array.isArray(b.audios) ? [...b.audios] : [];
+
+      if (isEdit && targetTurn) {
+        if (effectiveAttachments.length > 0) {
+          effectiveAttachments = effectiveAttachments.map((att) => {
+            const diskPath = att.path && !att.path.startsWith('blob:') && !att.path.startsWith('http')
+              ? resolveFilePath(att.path)
+              : null;
+            if (diskPath && fs.existsSync(diskPath)) {
+              return att;
+            }
+            // Match against stored attachments from targetTurn
+            const matchedStored = (targetTurn.attachments || []).find(
+              (m) =>
+                (att._id && String(m._id) === String(att._id)) ||
+                (att.id && String(m._id) === String(att.id)) ||
+                (att.fileName && m.fileName === att.fileName) ||
+                (att.originalName && m.originalName === att.originalName) ||
+                (att.name && m.originalName === att.name) ||
+                (att.fileName && m.originalName === att.fileName)
+            );
+            if (matchedStored) {
+              return {
+                _id: matchedStored._id,
+                fileName: matchedStored.fileName,
+                originalName: matchedStored.originalName,
+                mimeType: matchedStored.mimeType,
+                size: matchedStored.size,
+                path: matchedStored.path,
+                url: matchedStored.url || `/uploads/attachments/${matchedStored.fileName}`,
+              };
+            }
+            return att;
+          });
+        } else if (b.attachments === undefined && Array.isArray(targetTurn.attachments) && targetTurn.attachments.length > 0) {
+          // If attachments omitted from payload on edit, retain targetTurn attachments
+          effectiveAttachments = [...targetTurn.attachments];
+        }
+
+        if (effectiveAudios.length === 0 && b.audios === undefined && Array.isArray(targetTurn.audios) && targetTurn.audios.length > 0) {
+          effectiveAudios = [...targetTurn.audios];
+        }
+      }
+
+      if (effectiveAudios.length > 0) {
         sendSSE(res, 'status', {
           stage: 'transcribing',
           message: `Transcribing audio note with ${sttEngineLabel}...`,
         });
-        for (const audioId of b.audios) {
+        for (const audioItem of effectiveAudios) {
+          const audioId = typeof audioItem === 'object' && audioItem !== null ? (audioItem._id || audioItem.id) : audioItem;
+          if (!audioId) continue;
           try {
             const audioDoc = await Audio.findOne({ _id: audioId, user: req.user._id });
             if (audioDoc) {
@@ -533,34 +603,21 @@ export const streamChat = asyncHandler(async (req, res) => {
         }
       }
 
-      if (Array.isArray(b.attachments) && b.attachments.length > 0) {
+      if (effectiveAttachments.length > 0) {
         sendSSE(res, 'status', {
           stage: 'processing_attachments',
           message: 'Extracting document text...',
         });
-        const attResult = await processAttachments(b.attachments);
+        const attResult = await processAttachments(effectiveAttachments);
         attachmentTextContext = attResult.textContext;
         inlineParts = attResult.inlineParts;
       }
 
-      if (isEdit) {
-        let editIdx = typeof b.editTurnIndex === 'number' ? b.editTurnIndex : -1;
-        if (b.anchorUserMessageId) {
-          const matchIdx = chat.messages.findIndex(
-            (m) =>
-              String(m.id) === String(b.anchorUserMessageId) ||
-              String(m._id) === String(b.anchorUserMessageId)
-          );
-          if (matchIdx !== -1) {
-            editIdx = matchIdx;
-          }
+      if (isEdit && editIdx >= 0) {
+        if (editIdx === 0) {
+          chat.title = null;
         }
-        if (editIdx >= 0) {
-          if (editIdx === 0) {
-            chat.title = null;
-          }
-          chat.messages = chat.messages.slice(0, editIdx);
-        }
+        chat.messages = chat.messages.slice(0, editIdx);
       }
 
       // Defensive Alternation Invariant Enforcement (Pillar 1)
@@ -586,8 +643,8 @@ export const streamChat = asyncHandler(async (req, res) => {
         text: (b.text && typeof b.text === 'string') ? b.text.trim() : '',
         audioTranscriptions,
         documentTextContext: attachmentTextContext || null,
-        audios: Array.isArray(b.audios) ? b.audios : [],
-        attachments: Array.isArray(b.attachments) ? b.attachments : [],
+        audios: effectiveAudios,
+        attachments: effectiveAttachments,
         createdAt: new Date(),
       };
       chat.messages.push(userTurn);
@@ -927,12 +984,26 @@ export const streamChat = asyncHandler(async (req, res) => {
     // 11. First-Turn Auto-Titling (Turn 1 only)
     if (!chat.title && !isContinue) {
       try {
-        const titlePrompt = `Summarize the user's intent in 3 to 5 words as a concise title. Output ONLY the title:\n"${userTurn.text.slice(0, 300)}"`;
-        const titleRes = await ai.models.generateContent({
-          model: AI_MODELS.DEFAULT,
-          contents: [{ text: titlePrompt }],
-        });
-        const derivedTitle = (titleRes.text || 'New Conversation').trim().slice(0, 100);
+        const rawTitleSource =
+          (userTurn?.text && userTurn.text.trim()) ||
+          (Array.isArray(userTurn?.audioTranscriptions) && userTurn.audioTranscriptions.join(' ').trim()) ||
+          (Array.isArray(audioTranscriptions) && audioTranscriptions.join(' ').trim()) ||
+          (userTurn?.documentTextContext && userTurn.documentTextContext.trim()) ||
+          (attachmentTextContext && attachmentTextContext.trim()) ||
+          (compiledUserMessageText && compiledUserMessageText.trim()) ||
+          (userTurn?.attachments?.[0]?.originalName ? `Attachment: ${userTurn.attachments[0].originalName}` : '') ||
+          '';
+
+        let derivedTitle = 'New Conversation';
+        if (rawTitleSource) {
+          const titlePrompt = `Summarize the user's intent in 3 to 5 words as a concise title. Output ONLY the title:\n"${rawTitleSource.slice(0, 300)}"`;
+          const titleRes = await ai.models.generateContent({
+            model: AI_MODELS.DEFAULT,
+            contents: [{ text: titlePrompt }],
+          });
+          const rawText = (titleRes.text || '').trim();
+          derivedTitle = (rawText.replace(/^["']|["']$/g, '') || 'New Conversation').trim().slice(0, 100);
+        }
         chat.title = derivedTitle;
         sendSSE(res, 'title', { title: derivedTitle });
       } catch (titleErr) {

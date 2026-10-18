@@ -99,6 +99,23 @@ export const MuiAgentMessage = ({ messageId }) => {
     const turnIndex = currentIds.indexOf(messageId);
     const anchorUserMessageId = turnIndex > 0 ? currentIds[turnIndex - 1] : null;
 
+    // When an alternate model is specified, bypass native actions.regenerate
+    // (which drops the model parameter) and invoke adapter.retryTurn directly
+    if (alternateModel && adapter && typeof adapter.retryTurn === 'function') {
+      try {
+        await adapter.retryTurn({
+          conversationId: message?.conversationId || adapter.currentChatId,
+          targetAssistantMessageId: messageId,
+          anchorUserMessageId,
+          model: alternateModel,
+          store,
+        });
+        return;
+      } catch (adapterErr) {
+        console.warn('[MuiAgentMessage] adapter.retryTurn error with alternateModel:', adapterErr);
+      }
+    }
+
     if (actions && typeof actions.regenerate === 'function') {
       try {
         await actions.regenerate(messageId);

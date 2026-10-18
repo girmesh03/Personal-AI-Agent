@@ -452,14 +452,23 @@ export class MuiChatAdapter {
       ? `${this.baseUrl}/chat/${targetChatId}/stream`
       : `${this.baseUrl}/chat/stream`;
 
-    const isRetry = Boolean(
-      message?.isRetry ||
-      message?.metadata?.isRetry ||
-      message?.metadata?.anchorUserMessageId ||
-      typeof message?.retryTurnIndex === 'number' ||
-      typeof message?.metadata?.retryTurnIndex === 'number' ||
-      (targetChatId && message?.id && this.sentUserMessageIds?.has(String(message.id)))
+    const isEdit = Boolean(
+      message?.isEdit ||
+      message?.metadata?.isEdit ||
+      typeof message?.editTurnIndex === 'number' ||
+      typeof message?.metadata?.editTurnIndex === 'number'
     );
+
+    const isRetry =
+      !isEdit &&
+      Boolean(
+        message?.isRetry ||
+        message?.metadata?.isRetry ||
+        typeof message?.retryTurnIndex === 'number' ||
+        typeof message?.metadata?.retryTurnIndex === 'number' ||
+        (message?.metadata?.anchorUserMessageId && !isEdit) ||
+        (targetChatId && message?.id && this.sentUserMessageIds?.has(String(message.id)))
+      );
 
     if (message?.id) {
       this.sentUserMessageIds?.add(String(message.id));
@@ -530,22 +539,24 @@ export class MuiChatAdapter {
             if (isAudioItem) {
               const rawId = att._id || att.id;
               if (rawId && /^[0-9a-fA-F]{24}$/.test(String(rawId))) {
-                uploadedAudioIds.push(String(rawId));
+                if (!uploadedAudioIds.includes(String(rawId))) {
+                  uploadedAudioIds.push(String(rawId));
+                }
               }
-            } else if (att.fileName && (att.path || att.url)) {
+            } else if (att.fileName || att.originalName || att.name || att.path || att.url) {
               const rawPath = att.path || (att.url && att.url.replace(/^.*\/uploads\//, 'uploads/')) || att.url;
               const isBlobOrHttp = rawPath && (rawPath.startsWith('blob:') || rawPath.startsWith('http://') || rawPath.startsWith('https://'));
-              if (isBlobOrHttp && !rawPath.includes('/uploads/')) {
-                // Ephemeral client-only blob URL with no server path; ignore
-                return;
-              }
-              const cleanPath = (rawPath ? rawPath.replace(/\\/g, '/').replace(/^.*\/uploads\//, 'uploads/').replace(/^\/+/, '') : '');
+              const cleanPath = (rawPath && !isBlobOrHttp)
+                ? rawPath.replace(/\\/g, '/').replace(/^.*\/uploads\//, 'uploads/').replace(/^\/+/, '')
+                : (att.path && !att.path.startsWith('blob:') && !att.path.startsWith('http') ? att.path.replace(/\\/g, '/').replace(/^\/+/, '') : '');
+
               uploadedAttachments.push({
-                fileName: att.fileName,
-                originalName: att.originalName || att.name || att.fileName,
+                _id: att._id || att.id || undefined,
+                fileName: att.fileName || att.originalName || att.name || 'attachment',
+                originalName: att.originalName || att.name || att.fileName || 'attachment',
                 mimeType: att.mimeType || att.type || 'application/octet-stream',
                 size: Number(att.size) || 1,
-                path: cleanPath,
+                path: cleanPath || undefined,
                 url: att.url || (cleanPath ? `/${cleanPath}` : null),
               });
             }
@@ -634,12 +645,14 @@ export class MuiChatAdapter {
       id: message?.id,
       text: userText,
       chatId: targetChatId,
-      isRetry: isRetry || undefined,
+      isRetry: isRetry ? true : undefined,
       retryTurnIndex,
+      isEdit: isEdit ? true : undefined,
       anchorUserMessageId: message?.metadata?.anchorUserMessageId || (isRetry ? message?.id : undefined),
       targetAssistantMessageId: message?.metadata?.targetAssistantMessageId,
       editTurnIndex,
       model:
+        message?.metadata?.model ||
         (typeof this.getModel === 'function' ? this.getModel() : undefined) ||
         this.activeModel,
       thinkingBudget:
@@ -770,6 +783,7 @@ export class MuiChatAdapter {
                   adapterInstance.dispatch?.(
                     apiSlice.util.invalidateTags([{ type: 'Chat', id: 'LIST' }])
                   );
+                  adapterInstance.dispatch?.(setActiveChatId(data.chatId));
                   adapterInstance.onSessionCreated?.({
                     chatId: data.chatId,
                     title: data.title,
@@ -1357,10 +1371,17 @@ export class MuiChatAdapter {
       throw new Error('Cannot retry: anchor user message not found in store.');
     }
     const targetChatId = conversationId || this.currentChatId;
+    const enrichedMessage = {
+      ...anchorMessage,
+      metadata: {
+        ...(anchorMessage.metadata || {}),
+        model: model || this.activeModel,
+      },
+    };
     return this.regenerate({
       conversationId: targetChatId,
       messageId: targetAssistantMessageId || `asst-retry-${Date.now()}`,
-      message: anchorMessage,
+      message: enrichedMessage,
       messages: currentIds.map((id) => store?.state?.messagesById[id]).filter(Boolean),
       signal,
     });

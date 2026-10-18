@@ -223,9 +223,17 @@ export const Chat = () => {
   const adapter = useMemo(() => {
     return new MuiChatAdapter({
       dispatch,
-      onTurnCompleted: () => {
+      onSessionCreated: ({ chatId }) => {
+        if (chatId) {
+          dispatch(setActiveChatId(chatId));
+        }
+      },
+      onTurnCompleted: ({ chatId }) => {
         // Stream completed: messages stay rendered in store without being wiped by route navigation.
         // The browser URL was already synchronized via replaceState on session creation.
+        if (chatId) {
+          dispatch(setActiveChatId(chatId));
+        }
       },
       onError: (err) => {
         if (err?.name !== 'AbortError') {

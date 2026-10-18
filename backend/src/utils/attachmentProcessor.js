@@ -20,7 +20,7 @@ const XLSX = xlsxModule.default || xlsxModule;
  * @param {string} rawPath - Relative or absolute file path.
  * @returns {string} Absolute normalized file path.
  */
-function resolveFilePath(rawPath) {
+export function resolveFilePath(rawPath) {
   if (!rawPath || typeof rawPath !== 'string') return '';
   if (rawPath.startsWith('blob:') || rawPath.startsWith('http://') || rawPath.startsWith('https://')) {
     return '';

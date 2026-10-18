@@ -57,7 +57,7 @@ router.post('/transcribe-audio', uploadSingleAudioMiddleware, transcribeAudio);
  * @route POST /api/v1/chat/upload-audio
  * @desc Ingest 1 to 5 audio recordings for chat turn grounding
  * @access Protected (Area Supervisor)
- */
+Personal-AI-Agent-V1Personal-AI-Agent-V1 */
 router.post('/upload-audio', uploadReportAudiosMiddleware, uploadChatAudios);
 
 /**

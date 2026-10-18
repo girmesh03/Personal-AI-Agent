@@ -30,6 +30,7 @@ import MuiUserMessageBody from './MuiUserMessageBody.jsx';
 import MuiUserMessageBottomBar from './MuiUserMessageBottomBar.jsx';
 import { useChatAdapter } from '../../contexts/ChatAdapterContext.js';
 import { ATTACHMENT_CONSTANTS, AUDIO_CONSTANTS } from '../../utils/constants.js';
+import { toast } from 'react-toastify';
 
 /**
  * Clamping height threshold in pixels (8 full text lines at 25.6px line-height = 204.8px).
@@ -281,21 +282,44 @@ export const MuiUserMessage = ({ messageId }) => {
     setDraftAttachments((prev) => {
       const currentCount = prev.length;
       const allowedCount = ATTACHMENT_CONSTANTS.MAX_FILES_COUNT - currentCount;
-      if (allowedCount <= 0) return prev;
+      if (allowedCount <= 0) {
+        toast.warning(`Maximum ${ATTACHMENT_CONSTANTS.MAX_FILES_COUNT} files allowed per message.`);
+        return prev;
+      }
 
+      const currentBatchSize = prev.reduce((acc, att) => acc + (Number(att.size) || 0), 0);
       const filesToAdd = newFiles.slice(0, allowedCount);
-      const validFiles = filesToAdd.filter((f) => {
-        // Enforce single file size limit
+      let cumulativeAddedSize = 0;
+      const validFiles = [];
+
+      for (const f of filesToAdd) {
+        // Enforce single file size limit (25MB)
         if (f.size > ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES) {
-          return false;
+          toast.error(`"${f.name}" exceeds the maximum single file size of 25MB.`);
+          continue;
         }
+
         // Enforce extension whitelist
         const name = (f.name || '').toLowerCase();
         const hasValidExt =
           ATTACHMENT_CONSTANTS.ALLOWED_EXTENSIONS.some((ext) => name.endsWith(ext)) ||
           AUDIO_CONSTANTS.ALLOWED_EXTENSIONS.some((ext) => name.endsWith(ext));
-        return hasValidExt;
-      });
+        if (!hasValidExt) {
+          toast.error(`"${f.name}" has an unsupported file format.`);
+          continue;
+        }
+
+        // Enforce cumulative batch size limit (50MB)
+        if (currentBatchSize + cumulativeAddedSize + f.size > ATTACHMENT_CONSTANTS.MAX_BATCH_SIZE_BYTES) {
+          toast.error('Total attachment batch size cannot exceed 50MB.');
+          break;
+        }
+
+        cumulativeAddedSize += f.size;
+        validFiles.push(f);
+      }
+
+      if (validFiles.length === 0) return prev;
 
       const formatted = validFiles.map((f, idx) => ({
         id: `draft-${Date.now()}-${idx}`,
@@ -308,7 +332,9 @@ export const MuiUserMessage = ({ messageId }) => {
         file: f,
       }));
 
-      return [...prev, ...formatted];
+      const next = [...prev, ...formatted];
+      setIsModified(true);
+      return next;
     });
   }, []);
 
@@ -316,6 +342,13 @@ export const MuiUserMessage = ({ messageId }) => {
   const handleSubmitEdit = useCallback(async () => {
     const textToSubmit = (inputRef.current?.value ?? draftTextRef.current ?? '').trim();
     if (!textToSubmit && draftAttachments.length === 0) return;
+
+    // Validate cumulative batch size before submission
+    const totalBatchSize = draftAttachments.reduce((sum, att) => sum + (Number(att.size) || 0), 0);
+    if (totalBatchSize > ATTACHMENT_CONSTANTS.MAX_BATCH_SIZE_BYTES) {
+      toast.error('Total attachment batch size cannot exceed 50MB. Please remove some attachments.');
+      return;
+    }
 
     // Resolve target turn index k in conversation
     const currentIds = Array.isArray(messageIds) ? messageIds : store.state.messageIds;
@@ -371,12 +404,13 @@ export const MuiUserMessage = ({ messageId }) => {
       });
     });
 
-    // Dispatch edited turn through actions.sendMessage with editTurnIndex metadata
+    // Dispatch edited turn through actions.sendMessage with editTurnIndex and isEdit metadata
     if (actions && typeof actions.sendMessage === 'function') {
       await actions.sendMessage({
         parts,
         attachments: draftAttachments,
         metadata: {
+          isEdit: true,
           editTurnIndex: turnIndex >= 0 ? turnIndex : undefined,
           anchorUserMessageId: messageId,
         },
