@@ -11,18 +11,25 @@ import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import { useChatStatus } from '@mui/x-chat-headless';
+import { useGetChatByIdQuery } from '../../redux/features/chatSlice.js';
 
 /**
  * Universal empty state canvas presentation.
  * On root /chat without a conversation ID, displays the onboarding agent greeting.
- * On /chat/:chatId or while history is loading, suppresses the greeting and presents a centered loading indicator.
+ * While history is actively loading, suppresses the greeting and presents a centered loading indicator.
+ * Decoupled from static chatId presence to avoid perpetual spinner traps on 404 or empty conversation threads.
  *
  * @component MuiChatEmptyState
  * @returns {import('react').JSX.Element} Rendered empty state or loading indicator.
  */
 export const MuiChatEmptyState = () => {
   const { chatId } = useParams();
-  let isLoadingHistory;
+  const { isLoading: isQueryLoading, isFetching: isQueryFetching } = useGetChatByIdQuery(
+    { chatId },
+    { skip: !chatId }
+  );
+
+  let isLoadingHistory = false;
 
   try {
     const status = useChatStatus();
@@ -32,8 +39,8 @@ export const MuiChatEmptyState = () => {
     isLoadingHistory = false;
   }
 
-  // Prevent flash of empty state greeting when viewing or loading an existing conversation thread
-  if (chatId || isLoadingHistory) {
+  // Prevent flash of empty state greeting only while actively loading or fetching history
+  if (isLoadingHistory || (chatId && (isQueryLoading || isQueryFetching))) {
     return (
       <Box
         sx={{

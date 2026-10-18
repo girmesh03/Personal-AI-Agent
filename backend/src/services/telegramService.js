@@ -191,6 +191,15 @@ function measureTextWidth(text, fontSize, isBold = false) {
 }
 
 /**
+ * Strips inline markdown tokens for accurate character geometry measurement.
+ * @param {string} [text='']
+ * @returns {string}
+ */
+function stripMarkdown(text = '') {
+  return text.replace(/(\*\*|__|\*|_|~~|\^|~)/g, '');
+}
+
+/**
  * Pixel-aware word wrapping utility respecting exact glyph geometry.
  *
  * @param {string} text - Input text to wrap
@@ -207,7 +216,8 @@ function wrapTextPixels(text, maxWidth, fontSize, isBold = false) {
 
   for (let i = 0; i < words.length; i++) {
     const word = words[i];
-    const wordWidth = measureTextWidth(word, fontSize, isBold);
+    const cleanWord = stripMarkdown(word);
+    const wordWidth = measureTextWidth(cleanWord, fontSize, isBold);
     const spaceWidth = curLine ? measureTextWidth(' ', fontSize, isBold) : 0;
 
     if (curWidth + spaceWidth + wordWidth <= maxWidth) {
@@ -247,19 +257,22 @@ function wrapTextPixels(text, maxWidth, fontSize, isBold = false) {
 
 /**
  * Dynamically generates a high-contrast, mobile-optimized document sheet image card
+ * for ANY text payload (reports, ad-hoc announcements, executive memos, daily logs)
  * at standard non-negotiable 1440px 2K resolution using sharp and SVG vector rendering.
+ * Implements Single Formatting Pipeline to completely eliminate nested stroke bloating.
  *
- * @param {string} reportText - Formatted report text or ad-hoc message
+ * @param {string} text - Content text (reports, memos, or ad-hoc messages)
  * @param {Object} [options={}] - Dynamic styling options
  * @returns {Promise<Buffer>} PNG image buffer
  */
-export async function generateReportImageCard(reportText = '', options = {}) {
+export async function generateTextImageCard(text = '', options = {}) {
+  const reportText = text;
   const C = TELEGRAM_CONSTANTS.IMAGE_CARD;
   const width = options.width || C.WIDTH;
   const paddingX = options.paddingX || C.PADDING_X;
   const baseFontSize = options.fontSize || C.BASE_FONT_SIZE;
-  const sectionFontSize = options.sectionFontSize || C.SECTION_FONT_SIZE;
-  const lineHeight = options.lineHeight || C.LINE_HEIGHT;
+  const sectionFontSize = options.sectionFontSize || Math.round(baseFontSize * 1.16);
+  const lineHeight = options.lineHeight || Math.round(baseFontSize * 1.26);
   const sectionTopGap = options.sectionTopGap !== undefined ? options.sectionTopGap : C.SECTION_TOP_GAP;
   const sectionBottomGap = options.sectionBottomGap !== undefined ? options.sectionBottomGap : C.SECTION_BOTTOM_GAP;
   const paragraphGap = options.paragraphGap !== undefined ? options.paragraphGap : C.PARAGRAPH_GAP;
@@ -269,6 +282,11 @@ export async function generateReportImageCard(reportText = '', options = {}) {
   const textColor = options.textColor || C.TEXT_COLOR;
   const bgColor = options.bgColor || C.BG_COLOR;
   const fontFamily = options.fontFamily || C.FONT_FAMILY;
+  const letterSpacingAttr = options.letterSpacing ? ` letter-spacing="${options.letterSpacing}px"` : '';
+
+  const align = options.align || 'left';
+  const textAnchorAttr = align === 'center' ? ' text-anchor="middle"' : (align === 'right' ? ' text-anchor="end"' : '');
+  const anchorX = align === 'center' ? Math.round(width / 2) : (align === 'right' ? width - paddingX : paddingX);
 
   // Synthetic bold stroke settings ensuring cross-platform Ethiopic bolding
   const boldStrokeBody = `stroke="${textColor}" stroke-width="1.1" paint-order="stroke fill"`;
@@ -282,19 +300,55 @@ export async function generateReportImageCard(reportText = '', options = {}) {
   const elements = [];
   let currentY = paddingX + 15;
 
-  function formatInlineSpans(text) {
-    if (!text || !text.includes('**')) {
-      return escapeHtml(text || '');
-    }
-    const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  /**
+   * Single Formatting Pipeline: Parses inline Markdown tokens without nested stroke stacking.
+   * Disambiguates bold, italic, underline, strikethrough, superscript, and subscript.
+   *
+   * @param {string} text - Raw text containing inline markdown
+   * @param {boolean} [isParentBold=false] - Whether enclosing <text> already has bold stroke
+   * @returns {string} Sanitized SVG <tspan> markup
+   */
+  function formatInlineSpans(text, isParentBold = false) {
+    if (!text) return '';
+    const regex = /(\*\*[^*]+\*\*|(?<!\*)\*[^*]+\*(?!\*)|(?<!_)_[^_]+_(?!_)|__[^_]+__|~~[^~]+~~|\^[^^]+\^|~[^~]+~)/g;
+    const parts = text.split(regex);
     return parts.map((part) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
+      if (!part) return '';
+      if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
         const inner = part.slice(2, -2);
-        return `<tspan font-weight="bold" ${boldStrokeBody}>${escapeHtml(inner)}</tspan>`;
+        const stroke = isParentBold ? '' : ` ${boldStrokeBody}`;
+        return `<tspan font-weight="bold"${stroke}>${escapeHtml(inner)}</tspan>`;
+      }
+      if (
+        (part.startsWith('*') && part.endsWith('*') && part.length > 2) ||
+        (part.startsWith('_') && part.endsWith('_') && part.length > 2)
+      ) {
+        const inner = part.slice(1, -1);
+        return `<tspan font-style="italic">${escapeHtml(inner)}</tspan>`;
+      }
+      if (part.startsWith('__') && part.endsWith('__') && part.length > 4) {
+        const inner = part.slice(2, -2);
+        return `<tspan text-decoration="underline">${escapeHtml(inner)}</tspan>`;
+      }
+      if (part.startsWith('~~') && part.endsWith('~~') && part.length > 4) {
+        const inner = part.slice(2, -2);
+        return `<tspan text-decoration="line-through">${escapeHtml(inner)}</tspan>`;
+      }
+      if (part.startsWith('^') && part.endsWith('^') && part.length > 2) {
+        const inner = part.slice(1, -1);
+        return `<tspan font-size="${Math.round(baseFontSize * 0.72)}" baseline-shift="super">${escapeHtml(inner)}</tspan>`;
+      }
+      if (part.startsWith('~') && part.endsWith('~') && part.length > 2) {
+        const inner = part.slice(1, -1);
+        return `<tspan font-size="${Math.round(baseFontSize * 0.72)}" baseline-shift="sub">${escapeHtml(inner)}</tspan>`;
       }
       return escapeHtml(part);
     }).join('');
   }
+
+  const isAllBold = Boolean(options.allBold || options.bold);
+  const defaultWeight = isAllBold ? 'bold' : 'normal';
+  const bodyStroke = isAllBold ? ` ${boldStrokeBody}` : '';
 
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i].trim();
@@ -308,21 +362,21 @@ export async function generateReportImageCard(reportText = '', options = {}) {
 
     // Markdown-compliant Bullet Detection:
     // A bullet must start with '•', '- ', or an asterisk followed by space ('* ')
-    // Note: Double asterisk '**' indicates Markdown bold, NOT a bullet list!
     const isBullet = rawLine.startsWith('•') || rawLine.startsWith('- ') || /^\*\s+/.test(rawLine);
 
+    // Numbered list detection: '1. ', '2. ', etc.
+    const numMatch = !isBullet ? rawLine.match(/^(\d+)[\.\)]\s+(.*)$/) : null;
+
     // Zero-Hardcoding Section Header Detection:
-    // A line is a section header if it is not a bullet, and ends with ':' (or Ethiopic '፡' / '፦')
+    // A line is a section header if it is not a bullet/number, and ends with ':' (or Ethiopic '፡' / '፦')
     // with no following value on the same line.
     const isSectionHeader = (
       !isBullet &&
+      !numMatch &&
       (cleanLine.endsWith(':') || cleanLine.endsWith('፡') || cleanLine.endsWith('፦')) &&
       !cleanLine.slice(0, -1).includes(':')
     );
 
-    const isAllBold = Boolean(options.allBold || options.bold);
-    const defaultWeight = isAllBold ? 'bold' : 'normal';
-    const bodyStroke = isAllBold ? ` ${boldStrokeBody}` : '';
     const underlineAttr = (options.underline || (isSectionHeader && options.underlineHeaders))
       ? ' text-decoration="underline"'
       : '';
@@ -330,7 +384,7 @@ export async function generateReportImageCard(reportText = '', options = {}) {
     if (isSectionHeader) {
       currentY += sectionTopGap;
       elements.push(
-        `<text x="${paddingX}" y="${currentY}" font-family='${fontFamily}' font-size="${sectionFontSize}" font-weight="bold" fill="${textColor}" ${boldStrokeHeader} xml:space="preserve"${underlineAttr}>${escapeHtml(cleanLine)}</text>`
+        `<text x="${anchorX}" y="${currentY}" font-family='${fontFamily}' font-size="${sectionFontSize}" font-weight="bold" fill="${textColor}" ${boldStrokeHeader} xml:space="preserve"${underlineAttr}${letterSpacingAttr}${textAnchorAttr}>${escapeHtml(cleanLine)}</text>`
       );
       currentY += lineHeight + sectionBottomGap;
     } else if (isBullet) {
@@ -347,7 +401,26 @@ export async function generateReportImageCard(reportText = '', options = {}) {
 
       for (let j = 0; j < wrapped.length; j++) {
         elements.push(
-          `<text x="${textIndentX}" y="${currentY}" font-family='${fontFamily}' font-size="${baseFontSize}" font-weight="${defaultWeight}" fill="${textColor}"${bodyStroke} xml:space="preserve">${formatInlineSpans(wrapped[j])}</text>`
+          `<text x="${textIndentX}" y="${currentY}" font-family='${fontFamily}' font-size="${baseFontSize}" font-weight="${defaultWeight}" fill="${textColor}"${bodyStroke} xml:space="preserve"${letterSpacingAttr}>${formatInlineSpans(wrapped[j], isAllBold)}</text>`
+        );
+        currentY += lineHeight;
+      }
+      currentY += bulletGap;
+    } else if (numMatch) {
+      const numLabel = `${numMatch[1]}. `;
+      const numContent = numMatch[2].trim();
+      const numWidth = measureTextWidth(numLabel, baseFontSize, true);
+      const numIndentX = paddingX + Math.max(bulletIndent, numWidth + 10);
+      const wrapped = wrapTextPixels(numContent, usableWidth - (numIndentX - paddingX) - maxLineSafety, baseFontSize, isAllBold);
+
+      elements.push(
+        `<text x="${paddingX}" y="${currentY}" font-family='${fontFamily}' font-size="${baseFontSize}" font-weight="bold" fill="${textColor}"${bodyStroke} xml:space="preserve"${letterSpacingAttr}>${escapeHtml(numLabel)}</text>`
+      );
+
+      for (let j = 0; j < wrapped.length; j++) {
+        const lineX = j === 0 ? paddingX + numWidth : numIndentX;
+        elements.push(
+          `<text x="${lineX}" y="${currentY}" font-family='${fontFamily}' font-size="${baseFontSize}" font-weight="${defaultWeight}" fill="${textColor}"${bodyStroke} xml:space="preserve"${letterSpacingAttr}>${formatInlineSpans(wrapped[j], isAllBold)}</text>`
         );
         currentY += lineHeight;
       }
@@ -355,26 +428,27 @@ export async function generateReportImageCard(reportText = '', options = {}) {
     } else {
       // Key-Value Line Detection (supporting optional markdown bold syntax like **Key:** Value or Key: Value)
       const kvMatch = rawLine.match(/^(\*{0,2})([^:\n፡፦]+?)(:|፦|፡)(\*{0,2})\s+(.*)$/);
-      if (kvMatch && kvMatch[2].trim().length < 35) {
+      if (kvMatch && kvMatch[2].trim().length < 35 && align === 'left') {
         const keyPart = `${kvMatch[2].trim()}${kvMatch[3]}`;
         const valuePart = kvMatch[5].replace(/\*{1,2}$/, '').trim();
 
         const keyW = measureTextWidth(keyPart + ' ', baseFontSize, true);
         const wrappedVal = wrapTextPixels(valuePart, usableWidth - keyW - maxLineSafety, baseFontSize, isAllBold);
 
+        const keyStroke = isAllBold ? '' : ` ${boldStrokeBody}`;
         if (wrappedVal.length <= 1) {
           elements.push(
-            `<text x="${paddingX}" y="${currentY}" font-family='${fontFamily}' font-size="${baseFontSize}" fill="${textColor}" xml:space="preserve"><tspan font-weight="bold" ${boldStrokeBody}>${escapeHtml(keyPart)} </tspan><tspan font-weight="${defaultWeight}"${bodyStroke}>${formatInlineSpans(wrappedVal[0] || valuePart)}</tspan></text>`
+            `<text x="${paddingX}" y="${currentY}" font-family='${fontFamily}' font-size="${baseFontSize}" fill="${textColor}" xml:space="preserve"${letterSpacingAttr}><tspan font-weight="bold"${keyStroke}>${escapeHtml(keyPart)} </tspan><tspan font-weight="${defaultWeight}"${bodyStroke}>${formatInlineSpans(wrappedVal[0] || valuePart, isAllBold)}</tspan></text>`
           );
           currentY += lineHeight;
         } else {
           elements.push(
-            `<text x="${paddingX}" y="${currentY}" font-family='${fontFamily}' font-size="${baseFontSize}" fill="${textColor}" xml:space="preserve"><tspan font-weight="bold" ${boldStrokeBody}>${escapeHtml(keyPart)} </tspan><tspan font-weight="${defaultWeight}"${bodyStroke}>${formatInlineSpans(wrappedVal[0])}</tspan></text>`
+            `<text x="${paddingX}" y="${currentY}" font-family='${fontFamily}' font-size="${baseFontSize}" fill="${textColor}" xml:space="preserve"${letterSpacingAttr}><tspan font-weight="bold"${keyStroke}>${escapeHtml(keyPart)} </tspan><tspan font-weight="${defaultWeight}"${bodyStroke}>${formatInlineSpans(wrappedVal[0], isAllBold)}</tspan></text>`
           );
           currentY += lineHeight;
           for (let j = 1; j < wrappedVal.length; j++) {
             elements.push(
-              `<text x="${paddingX + keyW}" y="${currentY}" font-family='${fontFamily}' font-size="${baseFontSize}" font-weight="${defaultWeight}" fill="${textColor}"${bodyStroke} xml:space="preserve">${formatInlineSpans(wrappedVal[j])}</text>`
+              `<text x="${paddingX + keyW}" y="${currentY}" font-family='${fontFamily}' font-size="${baseFontSize}" font-weight="${defaultWeight}" fill="${textColor}"${bodyStroke} xml:space="preserve"${letterSpacingAttr}>${formatInlineSpans(wrappedVal[j], isAllBold)}</text>`
             );
             currentY += lineHeight;
           }
@@ -383,7 +457,7 @@ export async function generateReportImageCard(reportText = '', options = {}) {
         const wrapped = wrapTextPixels(rawLine, usableWidth - maxLineSafety, baseFontSize, isAllBold);
         for (let j = 0; j < wrapped.length; j++) {
           elements.push(
-            `<text x="${paddingX}" y="${currentY}" font-family='${fontFamily}' font-size="${baseFontSize}" font-weight="${defaultWeight}" fill="${textColor}"${bodyStroke} xml:space="preserve">${formatInlineSpans(wrapped[j])}</text>`
+            `<text x="${anchorX}" y="${currentY}" font-family='${fontFamily}' font-size="${baseFontSize}" font-weight="${defaultWeight}" fill="${textColor}"${bodyStroke} xml:space="preserve"${letterSpacingAttr}${textAnchorAttr}>${formatInlineSpans(wrapped[j], isAllBold)}</text>`
           );
           currentY += lineHeight;
         }
@@ -392,8 +466,19 @@ export async function generateReportImageCard(reportText = '', options = {}) {
   }
 
   const finalHeight = Math.ceil(currentY + paddingX);
+
+  // Render card border if requested
+  const borderMarkup = options.border ? (() => {
+    const bWidth = options.borderWidth || 3;
+    const bColor = options.borderColor || textColor;
+    const bRadius = options.borderRadius || 16;
+    const bMargin = Math.max(16, Math.round(paddingX * 0.35));
+    return `<rect x="${bMargin}" y="${bMargin}" width="${width - 2 * bMargin}" height="${finalHeight - 2 * bMargin}" fill="none" stroke="${bColor}" stroke-width="${bWidth}" rx="${bRadius}"/>`;
+  })() : '';
+
   const svg = `<svg width="${width}" height="${finalHeight}" viewBox="0 0 ${width} ${finalHeight}" xmlns="http://www.w3.org/2000/svg" xml:space="preserve">
     <rect width="${width}" height="${finalHeight}" fill="${bgColor}"/>
+    ${borderMarkup}
     ${elements.join('\n    ')}
   </svg>`;
 
@@ -401,6 +486,12 @@ export async function generateReportImageCard(reportText = '', options = {}) {
     .png({ quality: 100, compressionLevel: 6 })
     .toBuffer();
 }
+
+/**
+ * Backward compatibility alias for generateTextImageCard.
+ * @constant
+ */
+export const generateReportImageCard = generateTextImageCard;
 
 /**
  * Resolves destination Telegram chat ID for a given operational channel.
@@ -493,11 +584,11 @@ export async function dispatchToTelegram({
         ...(user?.settings?.telegram?.imageCardOptions || {}),
         ...options,
       };
-      const imageBuffer = await generateReportImageCard(cleanText, mergedOptions);
+      const imageBuffer = await generateTextImageCard(cleanText, mergedOptions);
       const blob = new Blob([imageBuffer], { type: 'image/png' });
       const formData = new FormData();
       formData.append('chat_id', chatId);
-      formData.append('photo', blob, 'operational_report.png');
+      formData.append('photo', blob, 'telegram_message_card.png');
       if (hasCustomNote) {
         formData.append('caption', noteText);
       }
@@ -613,6 +704,7 @@ export default {
   escapeHtml,
   markdownToTelegramHtml,
   chunkTelegramMessage,
+  generateTextImageCard,
   generateReportImageCard,
   resolveChannelChatId,
   resolveBotToken,

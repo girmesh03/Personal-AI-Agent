@@ -888,6 +888,30 @@ export const agentToolDeclarations = [
           type: Type.STRING,
           description: 'Optional color theme: "light" (default white paper) or "dark".',
         },
+        fontFamily: {
+          type: Type.STRING,
+          description: 'Optional font family for rendering (e.g. "Segoe UI, Arial, sans-serif", "Georgia, serif").',
+        },
+        textColor: {
+          type: Type.STRING,
+          description: 'Optional font color hex (e.g. "#000000", "#1E293B", "#1E40AF").',
+        },
+        bgColor: {
+          type: Type.STRING,
+          description: 'Optional card background color / shading hex (e.g. "#FFFFFF", "#F8FAFC", "#1E1E1E").',
+        },
+        align: {
+          type: Type.STRING,
+          description: 'Optional text alignment: "left" (default), "center", or "right".',
+        },
+        border: {
+          type: Type.BOOLEAN,
+          description: 'Optional card border outline flag.',
+        },
+        letterSpacing: {
+          type: Type.NUMBER,
+          description: 'Optional character spacing in pixels (e.g. 1, 2).',
+        },
         saveAsDefault: {
           type: Type.BOOLEAN,
           description: 'Optional flag to save these layout and formatting preferences permanently into supervisor settings for future posts.',
@@ -2096,32 +2120,46 @@ export const toolHandlers = {
         if (report.transcription && typeof report.transcription === 'string' && report.transcription.trim()) {
           payloadText = report.transcription.trim();
         } else {
-          // Clean fallback serialization if transcription missing (zero fake headers)
+          // Dynamic report serialization respecting user.settings.reportTemplates (Zero Hardcoding)
+          let customTpl = null;
+          if (user?.settings?.reportTemplates) {
+            const isMulti = (report.visits || []).length > 1;
+            customTpl = isMulti
+              ? user.settings.reportTemplates.multiBranch
+              : user.settings.reportTemplates.singleBranch;
+          }
+
           const ethDate = toEthiopianDateString(report.date);
           const visits = (report.visits || [])
-            .map((v) => `• ${v.branch?.name || 'Branch'} (${v.clockIn} - ${v.clockOut})`)
+            .map((v) => `• ${v.branch?.name || 'Branch'} (${v.clockIn || '--:--'} - ${v.clockOut || '--:--'})`)
             .join('\n');
-          const activities = (report.activities || [])
-            .map((a) => `• ${a.text}`)
-            .join('\n');
-          const issues = (report.issues || [])
-            .map((i) => `• ${i.text} (${i.status})`)
-            .join('\n');
-          const comments = (report.comments || [])
-            .map((c) => `• ${c.text}`)
-            .join('\n');
+          const activities = (report.activities || []).map((a) => `• ${a.text}`).join('\n');
+          const issues = (report.issues || []).map((i) => `• ${i.text} (${i.status})`).join('\n');
+          const comments = (report.comments || []).map((c) => `• ${c.text}`).join('\n');
 
-          const parts = [
-            `ቀን: ${ethDate}`,
-            visits ? `ጉብኝት:\n${visits}` : null,
-            `ስራ የገባሁበት ሰዓት: ${report.clockIn}`,
-            activities ? `የተሰሩ ስራዎች:\n${activities}` : null,
-            issues ? `መፍትሄ የሚፈልጉ ጉዳዮች:\n${issues}` : null,
-            comments ? `አጠቃላይ አስተያየት:\n${comments}` : null,
-            `ከስራ የወጣሁበት ሰዓት: ${report.clockOut}`,
-          ].filter(Boolean);
+          if (customTpl && typeof customTpl === 'string' && customTpl.trim()) {
+            payloadText = customTpl
+              .replace(/\{\{date\}\}/g, ethDate)
+              .replace(/\{\{clockIn\}\}/g, report.clockIn || '')
+              .replace(/\{\{clockOut\}\}/g, report.clockOut || '')
+              .replace(/\{\{visits\}\}/g, visits)
+              .replace(/\{\{activities\}\}/g, activities)
+              .replace(/\{\{issues\}\}/g, issues)
+              .replace(/\{\{comments\}\}/g, comments)
+              .trim();
+          } else {
+            const parts = [
+              `ቀን: ${ethDate}`,
+              visits ? `ጉብኝት:\n${visits}` : null,
+              report.clockIn ? `ስራ የገባሁበት ሰዓት: ${report.clockIn}` : null,
+              activities ? `የተሰሩ ስራዎች:\n${activities}` : null,
+              issues ? `መፍትሄ የሚፈልጉ ጉዳዮች:\n${issues}` : null,
+              comments ? `አጠቃላይ አስተያየት:\n${comments}` : null,
+              report.clockOut ? `ከስራ የወጣሁበት ሰዓት: ${report.clockOut}` : null,
+            ].filter(Boolean);
 
-          payloadText = parts.join('\n\n');
+            payloadText = parts.join('\n\n');
+          }
         }
       } else {
         throw new NotFoundError('Report could not be found for Telegram sharing.');
@@ -2220,6 +2258,28 @@ export const toolHandlers = {
         imageOptions.bgColor = '#FFFFFF';
         imageOptions.textColor = '#000000';
       }
+    }
+
+    if (args.fontFamily && typeof args.fontFamily === 'string' && args.fontFamily.trim()) {
+      imageOptions.fontFamily = args.fontFamily.trim();
+    }
+    if (args.textColor && typeof args.textColor === 'string' && args.textColor.trim()) {
+      imageOptions.textColor = args.textColor.trim();
+    }
+    if (args.bgColor && typeof args.bgColor === 'string' && args.bgColor.trim()) {
+      imageOptions.bgColor = args.bgColor.trim();
+    }
+    if (args.align && typeof args.align === 'string') {
+      const al = args.align.toLowerCase().trim();
+      if (['left', 'center', 'right'].includes(al)) {
+        imageOptions.align = al;
+      }
+    }
+    if (args.border !== undefined && args.border !== null) {
+      imageOptions.border = Boolean(args.border);
+    }
+    if (args.letterSpacing !== undefined && args.letterSpacing !== null) {
+      imageOptions.letterSpacing = Number(args.letterSpacing) || 0;
     }
 
     // Persist formatting preferences to user settings if requested

@@ -219,8 +219,51 @@ export const Chat = () => {
     }
   }, [location.search, location.pathname]);
 
+  // Instantiates the idiomatic MuiChatAdapter with live store dispatcher and lifecycle callbacks
+  const adapter = useMemo(() => {
+    return new MuiChatAdapter({
+      dispatch,
+      onTurnCompleted: () => {
+        // Stream completed: messages stay rendered in store without being wiped by route navigation.
+        // The browser URL was already synchronized via replaceState on session creation.
+      },
+      onError: (err) => {
+        if (err?.name !== 'AbortError') {
+          console.warn('[Chat] Stream notice:', err?.message || err);
+        }
+      },
+    });
+  }, [dispatch]);
+
   // Hydrate config if opening an existing chat thread
-  const { data: chatData } = useGetChatByIdQuery({ chatId }, { skip: !chatId });
+  const {
+    data: chatData,
+    error: chatError,
+    isError: isChatError,
+  } = useGetChatByIdQuery({ chatId }, { skip: !chatId });
+
+  // Handle non-existent or inaccessible chat session (404 / 400)
+  useEffect(() => {
+    if (chatId && isChatError) {
+      const isNotFound =
+        chatError?.status === 404 ||
+        chatError?.status === 400 ||
+        chatError?.data?.message?.toLowerCase()?.includes('not found') ||
+        chatError?.data?.message?.toLowerCase()?.includes('invalid');
+
+      const errorMessage =
+        chatError?.data?.message ||
+        (isNotFound ? 'Chat not found or has been deleted.' : 'Failed to load chat.');
+
+      toast.error(errorMessage, { toastId: 'chat-not-found-error' });
+
+      if (isNotFound || chatError?.status === 404) {
+        dispatch(setActiveChatId(null));
+        adapter.clearActiveChatId?.();
+        navigate('/chat', { replace: true, state: { newChatAt: Date.now() } });
+      }
+    }
+  }, [chatId, isChatError, chatError, dispatch, adapter, navigate]);
 
   useEffect(() => {
     if (chatId && chatData?.chat?.config) {
@@ -286,21 +329,6 @@ export const Chat = () => {
     [navigate],
   );
 
-  // Instantiates the idiomatic MuiChatAdapter with live store dispatcher and lifecycle callbacks
-  const adapter = useMemo(() => {
-    return new MuiChatAdapter({
-      dispatch,
-      onTurnCompleted: () => {
-        // Stream completed: messages stay rendered in store without being wiped by route navigation.
-        // The browser URL was already synchronized via replaceState on session creation.
-      },
-      onError: (err) => {
-        if (err?.name !== 'AbortError') {
-          console.warn('[Chat] Stream notice:', err?.message || err);
-        }
-      },
-    });
-  }, [dispatch]);
 
   // Keep active chat ID, current user, model, thinkingBudget, language, and sttEngine synchronized on state changes
   useEffect(() => {

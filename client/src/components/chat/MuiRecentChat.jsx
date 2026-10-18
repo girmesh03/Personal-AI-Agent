@@ -7,7 +7,7 @@
 
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import List from '@mui/material/List';
@@ -38,6 +38,7 @@ import {
   useDeleteChatMutation,
   usePinChatMutation,
   useRenameChatMutation,
+  setActiveChatId,
 } from '../../redux/features/chatSlice.js';
 import { MuiConfirmDialog } from '../reusable/MuiConfirmDialog.jsx';
 import { ROUTES } from '../../utils/constants.js';
@@ -54,7 +55,9 @@ import { ROUTES } from '../../utils/constants.js';
 export const MuiRecentChat = ({ isMini = false, onMobileClose }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const user = useSelector(selectCurrentUser);
+  const reduxActiveChatId = useSelector((state) => state.chat?.activeChatId);
 
   // RTK Query: chat list query & lifecycle mutations
   const { data: chatData, isLoading: isLoadingChats } = useGetChatsQuery(undefined, { skip: !user });
@@ -164,11 +167,20 @@ export const MuiRecentChat = ({ isMini = false, onMobileClose }) => {
 
   const handleConfirmDelete = async () => {
     if (!activeMenuChat) return;
-    const targetId = activeMenuChat._id;
+    const targetId = String(activeMenuChat._id);
     try {
       await deleteChat(targetId).unwrap();
-      if (location.pathname === `/chat/${targetId}`) {
-        navigate(ROUTES.CHAT, { state: { newChatAt: Date.now() } });
+      const currentBrowserPath = typeof window !== 'undefined' ? window.location.pathname : '';
+      const isViewingTarget =
+        currentBrowserPath === `/chat/${targetId}` ||
+        currentBrowserPath.startsWith(`/chat/${targetId}/`) ||
+        location.pathname === `/chat/${targetId}` ||
+        location.pathname.startsWith(`/chat/${targetId}/`) ||
+        reduxActiveChatId === targetId;
+
+      if (isViewingTarget) {
+        dispatch(setActiveChatId(null));
+        navigate(ROUTES.CHAT, { replace: true, state: { newChatAt: Date.now() } });
       }
     } catch (err) {
       console.error('[MuiRecentChat] Failed to delete chat:', err);
