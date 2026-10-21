@@ -572,7 +572,6 @@ export class MuiChatAdapter {
 
         // 1.1 Upload audio files to /chat/upload-audio under field 'audios' with re-auth protection
         if (audioFiles.length > 0) {
-          this.dispatch?.(setPipelineStatus('Uploading audio note...'));
           const audioFormData = new FormData();
           audioFiles.forEach((f) => audioFormData.append('audios', f));
           const effectiveStt =
@@ -603,7 +602,6 @@ export class MuiChatAdapter {
 
         // 1.2 Upload document and image files to /chat/upload-attachments under field 'attachments' with re-auth protection
         if (docFiles.length > 0) {
-          this.dispatch?.(setPipelineStatus('Uploading attachments...'));
           const docFormData = new FormData();
           docFiles.forEach((f) => docFormData.append('attachments', f));
           const uploadRes = await executeWithReauth(

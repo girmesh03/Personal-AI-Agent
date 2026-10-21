@@ -232,13 +232,18 @@ export const connectGoogleDrive = asyncHandler(async (req, res) => {
     throw new UnauthenticatedError('User authentication is required to connect Google Drive.');
   }
 
-  // Create signed state parameter
-  const state = jwt.sign({ userId: String(userId) }, env.JWT_ACCESS_SECRET, { expiresIn: '15m' });
+  // Create signed state parameter with dynamic returnUrl
+  const returnUrl = req.query.returnUrl || '/profile?tab=cloud-integrations';
+  const state = jwt.sign({ userId: String(userId), returnUrl }, env.JWT_ACCESS_SECRET, { expiresIn: '15m' });
   const authUrl = getAuthorizationUrl(state);
 
   if (req.query.json === 'true' || req.headers.accept?.includes('application/json')) {
     return res.status(HTTP_STATUS.OK).json({
       success: true,
+      data: {
+        authUrl,
+        url: authUrl,
+      },
       authUrl,
     });
   }
@@ -254,20 +259,26 @@ export const connectGoogleDrive = asyncHandler(async (req, res) => {
 export const handleGoogleCallback = asyncHandler(async (req, res) => {
   const { code, state, error } = req.query;
 
+  let decoded;
+  if (state) {
+    try {
+      decoded = jwt.verify(state, env.JWT_ACCESS_SECRET);
+    } catch (_err) {
+      // Handled below if state is invalid
+    }
+  }
+
+  const dest = decoded?.returnUrl || '/profile?tab=cloud-integrations';
+
   if (error) {
     logger.warn(`[authController] Google OAuth error returned: ${error}`);
-    return res.redirect(`${env.CLIENT_ORIGIN}/chat?google_auth=error&error=${encodeURIComponent(error)}`);
+    return res.redirect(
+      `${env.CLIENT_ORIGIN}${dest}${dest.includes('?') ? '&' : '?'}google_auth=error&error=${encodeURIComponent(error)}`
+    );
   }
 
-  if (!code || !state) {
-    throw new BadRequestError('Authorization code and state token are required.');
-  }
-
-  let decoded;
-  try {
-    decoded = jwt.verify(state, env.JWT_ACCESS_SECRET);
-  } catch (err) {
-    throw new BadRequestError('Invalid or expired OAuth state parameter.');
+  if (!code || !state || !decoded) {
+    throw new BadRequestError('Invalid or expired OAuth authorization code or state token.');
   }
 
   const userId = decoded.userId;
@@ -281,7 +292,7 @@ export const handleGoogleCallback = asyncHandler(async (req, res) => {
     });
   }
 
-  res.redirect(`${env.CLIENT_ORIGIN}/chat?google_auth=success`);
+  res.redirect(`${env.CLIENT_ORIGIN}${dest}${dest.includes('?') ? '&' : '?'}google_auth=success`);
 });
 
 /**
@@ -311,9 +322,41 @@ export const getGoogleDriveStatus = asyncHandler(async (req, res) => {
     success: true,
     data: {
       connected: Boolean(drive.connected),
+      enabled: drive.enabled !== false,
       email: drive.email || null,
       rootFolderId: drive.rootFolderId || null,
       connectedAt: drive.connectedAt || null,
+    },
+  });
+});
+
+/**
+ * Toggles Google Drive integration enabled state for authenticated user.
+ *
+ * @route POST /api/v1/auth/google/toggle
+ */
+export const toggleGoogleDriveRoute = asyncHandler(async (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') {
+    throw new BadRequestError('Field "enabled" must be a boolean.');
+  }
+
+  const user = await User.findById(req.user._id);
+  if (!user) throw new NotFoundError('User not found.');
+
+  if (!user.integrations?.googleDrive?.connected) {
+    throw new BadRequestError('Google Drive is not connected. Please connect your Google account first.');
+  }
+
+  user.integrations.googleDrive.enabled = enabled;
+  await user.save();
+
+  res.status(HTTP_STATUS.OK).json({
+    success: true,
+    message: `Google Drive integration ${enabled ? 'enabled' : 'disabled'} successfully.`,
+    data: {
+      connected: user.integrations.googleDrive.connected,
+      enabled: user.integrations.googleDrive.enabled,
     },
   });
 });
@@ -343,5 +386,6 @@ export default {
   handleGoogleCallback,
   disconnectGoogleDriveRoute,
   getGoogleDriveStatus,
+  toggleGoogleDriveRoute,
   mockConnectGoogleDriveRoute,
 };

@@ -92,6 +92,7 @@ export async function exchangeCodeAndSaveTokens(userId, code) {
 
   user.integrations.googleDrive = {
     connected: true,
+    enabled: true,
     email: email || user.email,
     accessToken: tokens.access_token,
     refreshToken: tokens.refresh_token || (user.integrations.googleDrive?.refreshToken || null),
@@ -122,6 +123,7 @@ export async function disconnectGoogleDrive(userId) {
 
   if (user.integrations?.googleDrive) {
     user.integrations.googleDrive.connected = false;
+    user.integrations.googleDrive.enabled = true;
     user.integrations.googleDrive.accessToken = null;
     user.integrations.googleDrive.refreshToken = null;
     user.integrations.googleDrive.expiryDate = null;
@@ -148,6 +150,7 @@ export async function connectMockGoogleDrive(userId, email = 'mock-user@gmail.co
   if (!user.integrations) user.integrations = {};
   user.integrations.googleDrive = {
     connected: true,
+    enabled: true,
     email,
     accessToken: 'mock_access_token_' + Date.now(),
     refreshToken: 'mock_refresh_token_' + Date.now(),
@@ -215,6 +218,12 @@ export async function getValidGoogleClient(userId) {
     );
   }
 
+  if (integration.enabled === false) {
+    throw new BadRequestError(
+      'Google Drive integration is temporarily disabled in your Settings. Please re-enable it in Settings to allow cloud operations.'
+    );
+  }
+
   // Detect Mock Mode
   const isMock =
     integration.accessToken?.startsWith('mock_') ||
@@ -278,6 +287,21 @@ export async function getValidGoogleClient(userId) {
             }
           );
           logger.info(`[googleDriveService] Successfully refreshed Google OAuth token for user ${userId}.`);
+        } catch (refreshErr) {
+          logger.error(`[googleDriveService] Failed to refresh Google OAuth token: ${refreshErr.message}`);
+          const isRevokedOrInvalid =
+            refreshErr.message?.includes('invalid_grant') ||
+            refreshErr.response?.data?.error === 'invalid_grant' ||
+            refreshErr.message?.includes('revoked');
+          if (isRevokedOrInvalid) {
+            await User.updateOne(
+              { _id: userId },
+              { $set: { 'integrations.googleDrive.connected': false } }
+            );
+          }
+          throw new BadRequestError(
+            'Google Drive authentication expired or was revoked. Please reconnect your Google account in Settings.'
+          );
         } finally {
           tokenRefreshLocks.delete(String(userId));
         }

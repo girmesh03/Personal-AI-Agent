@@ -13,6 +13,7 @@ import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
+import CircularProgress from '@mui/material/CircularProgress';
 import CloseIcon from '@mui/icons-material/Close';
 import DescriptionIcon from '@mui/icons-material/Description';
 import GraphicEqIcon from '@mui/icons-material/GraphicEq';
@@ -268,6 +269,7 @@ export const MuiUserAttachmentShelf = ({
                         ? 'info.main'
                         : 'primary.main',
                   flexShrink: 0,
+                  position: 'relative',
                 }}
               >
                 {category === 'audio' ? (
@@ -276,6 +278,31 @@ export const MuiUserAttachmentShelf = ({
                   <ImageIcon sx={{ fontSize: 20 }} />
                 ) : (
                   <DescriptionIcon sx={{ fontSize: 20 }} />
+                )}
+
+                {(item.isUploading || item.uploadProgress !== undefined) && (
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: '100%',
+                      borderRadius: '8px',
+                      bgcolor: 'rgba(0, 0, 0, 0.45)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <CircularProgress
+                      size={18}
+                      thickness={5}
+                      variant={typeof item.uploadProgress === 'number' ? 'determinate' : 'indeterminate'}
+                      value={typeof item.uploadProgress === 'number' ? item.uploadProgress : undefined}
+                      sx={{ color: '#fff' }}
+                    />
+                  </Box>
                 )}
               </Box>
 

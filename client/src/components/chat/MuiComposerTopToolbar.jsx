@@ -12,6 +12,7 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import CloseIcon from '@mui/icons-material/Close';
+import CircularProgress from '@mui/material/CircularProgress';
 import AudioFileIcon from '@mui/icons-material/AudioFile';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import { useChatComposer } from '@mui/x-chat-headless';
@@ -112,53 +113,79 @@ export const MuiComposerTopToolbar = forwardRef((props, ref) => {
               transition: 'none !important',
             }}
           >
-            {/* Visual Icon / Thumbnail */}
-            {isImage && attachment.previewUrl ? (
-              <Box
-                component="img"
-                src={attachment.previewUrl}
-                alt={fileName}
-                sx={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 1,
-                  objectFit: 'cover',
-                  flexShrink: 0,
-                }}
-              />
-            ) : isAudio ? (
-              <Box
-                sx={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 1,
-                  bgcolor: 'primary.main',
-                  color: 'primary.contrastText',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                <AudioFileIcon sx={{ fontSize: 16 }} />
-              </Box>
-            ) : (
-              <Box
-                sx={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 1,
-                  bgcolor: 'action.selected',
-                  color: 'text.secondary',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                <InsertDriveFileIcon sx={{ fontSize: 16 }} />
-              </Box>
-            )}
+            {/* Visual Icon / Thumbnail with Progress Ring */}
+            <Box sx={{ position: 'relative', width: 28, height: 28, flexShrink: 0 }}>
+              {isImage && attachment.previewUrl ? (
+                <Box
+                  component="img"
+                  src={attachment.previewUrl}
+                  alt={fileName}
+                  sx={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 1,
+                    objectFit: 'cover',
+                    display: 'block',
+                  }}
+                />
+              ) : isAudio ? (
+                <Box
+                  sx={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 1,
+                    bgcolor: 'primary.main',
+                    color: 'primary.contrastText',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <AudioFileIcon sx={{ fontSize: 16 }} />
+                </Box>
+              ) : (
+                <Box
+                  sx={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 1,
+                    bgcolor: 'action.selected',
+                    color: 'text.secondary',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <InsertDriveFileIcon sx={{ fontSize: 16 }} />
+                </Box>
+              )}
+
+              {/* Consumer-Grade Inline Upload Progress Ring */}
+              {(attachment.isUploading || attachment.uploadProgress !== undefined) && (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: 1,
+                    bgcolor: 'rgba(0, 0, 0, 0.45)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <CircularProgress
+                    size={16}
+                    thickness={5}
+                    variant={typeof attachment.uploadProgress === 'number' ? 'determinate' : 'indeterminate'}
+                    value={typeof attachment.uploadProgress === 'number' ? attachment.uploadProgress : undefined}
+                    sx={{ color: '#fff' }}
+                  />
+                </Box>
+              )}
+            </Box>
 
             {/* Truncated File Name & Formatted Size */}
             <Box sx={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>

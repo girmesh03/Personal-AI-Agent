@@ -453,6 +453,34 @@ export async function assembleSystemPrompt({
   const turnPrompt = customTurnPrompt || chatConfig.prompt || '';
   const sanitizedTurnPrompt = sanitizeConfigString(turnPrompt);
 
+  const isGoogleDriveConnected = Boolean(user?.integrations?.googleDrive?.connected);
+  const isGoogleDriveEnabled = user?.integrations?.googleDrive?.enabled !== false;
+  const googleDriveEmail = user?.integrations?.googleDrive?.email;
+
+  let driveStatusPrompt = '';
+  if (isGoogleDriveConnected && isGoogleDriveEnabled) {
+    driveStatusPrompt = [
+      'GOOGLE WORKSPACE INTEGRATION STATUS: ACTIVE & CONNECTED.',
+      `- Connected Google Account: "${googleDriveEmail || 'Authorized Account'}"`,
+      `- Default Root Workspace Folder: "Personal AI Agent"`,
+      '- You have full autonomous capabilities to create native Google Docs, Google Sheets, upload files, and manage folders via manage_google_drive, create_cloud_document, and generate_document_file (with destination: "google_drive").',
+    ].join('\n');
+  } else if (isGoogleDriveConnected && !isGoogleDriveEnabled) {
+    driveStatusPrompt = [
+      'GOOGLE WORKSPACE INTEGRATION STATUS: TEMPORARILY DISABLED BY USER IN SETTINGS.',
+      '- Google Drive is authorized, but the user has temporarily toggled agent access OFF in Settings.',
+      '- DO NOT invoke manage_google_drive, create_cloud_document, or generate_document_file with destination: "google_drive".',
+      '- If the user asks to save to Google Drive or create cloud documents, politely explain that Google Drive integration is currently disabled in their Settings, and offer to generate a local document file for direct download instead.',
+    ].join('\n');
+  } else {
+    driveStatusPrompt = [
+      'GOOGLE WORKSPACE INTEGRATION STATUS: NOT CONNECTED.',
+      '- Google Drive is not connected for this account.',
+      '- DO NOT invoke manage_google_drive, create_cloud_document, or generate_document_file with destination: "google_drive".',
+      '- If the user asks to save to Google Drive or create cloud documents, politely inform them that Google Drive is not connected yet, and direct them to connect their account under Settings > Cloud Workspace & Google Drive (/profile?tab=cloud-integrations). Offer to generate a local document file for direct download instead.',
+    ].join('\n');
+  }
+
   const block6TurnPrompt = [
     '=== BLOCK 6: TURN GUIDANCE & 4-QUADRANT INTENT ROUTING PROTOCOL ===',
     sanitizedTurnPrompt
@@ -501,15 +529,17 @@ export async function assembleSystemPrompt({
     '- The settings tools (get_user_settings, update_user_settings, save_supervisor_directive) are universally accessible across ALL quadrants. Even during casual, personal, or advisory dialogue, if the user asks to save a rule, adjust default models or budget, change persona, or view settings, execute the tool immediately.',
     '',
     'UNIVERSAL CROSS-QUADRANT CLOUD WORKSPACE & DOCUMENT GENERATION EXEMPTION (PURE DYNAMIC AGENCY):',
-    '- The tools "manage_google_drive", "create_cloud_document", and "generate_document_file" are UNIVERSALLY accessible across ALL quadrants (Quadrants 1, 2, 3, and 4).',
+    driveStatusPrompt,
+    '- The tools "manage_google_drive", "create_cloud_document", and "generate_document_file" are UNIVERSALLY accessible across ALL quadrants (Quadrants 1, 2, 3, and 4) adhering strictly to the Google Workspace integration status above.',
     '- The Personal AI Agent is completely dynamic and unconstrained by rigid schemas or domain boundaries:',
     '  1. If the user asks for ANY document file (resume, cover letter, operational audit, budget spreadsheet, contract, recipe book, invoice, notes, calculations):',
     '     Autonomously call generate_document_file(format: "pdf"|"docx"|"xlsx"|"csv"|"markdown"|"json", title, destination: "download"|"google_drive", content, data).',
+    '     - Note: If Google Drive is not connected or is disabled, destination defaults to "download" so the user can download it directly.',
     '     - For rich text or markdown notes, pass open-ended content.',
     '     - For spreadsheets or structured tables, pass open-ended data with arbitrary headers, rows, formulas, or cell structures. You have full dynamic control without hardcoded limits.',
-    '  2. If the user requests a live Google Doc or Google Spreadsheet in Google Drive:',
+    '  2. If the user requests a live Google Doc or Google Spreadsheet in Google Drive (when active):',
     '     Autonomously call create_cloud_document(type: "doc"|"sheet", title, content, data, folderId).',
-    '  3. If the user requests to manage, organize, search, or share their Google Drive:',
+    '  3. If the user requests to manage, organize, search, or share their Google Drive (when active):',
     '     Autonomously call manage_google_drive(action: "list"|"create_folder"|"search"|"get_metadata"|"share", folderName, query, folderId, fileId, role, emailAddress).',
     '  4. Unsupported file formats: If the user requests an unsupported format (e.g. AutoCAD .dwg, Photoshop .psd), naturally explain your supported formats (PDF, Word DOCX, Excel XLSX, CSV, Markdown, JSON, Google Docs, Google Sheets) in conversational prose without crashing or attempting to invoke invalid tools.',
     '',

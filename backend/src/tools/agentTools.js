@@ -1079,6 +1079,10 @@ export const agentToolDeclarations = [
           type: Type.BOOLEAN,
           description: 'Reset multi-branch report template to system default.',
         },
+        googleDriveEnabled: {
+          type: Type.BOOLEAN,
+          description: 'Enable or disable Google Drive integration without disconnecting.',
+        },
       },
     },
   },
@@ -2359,6 +2363,13 @@ export const toolHandlers = {
 
     const sttEngine = settings.sttEngine || CHAT_CONSTANTS.DEFAULT_STT_ENGINE;
 
+    const googleDrive = {
+      connected: Boolean(user.integrations?.googleDrive?.connected),
+      enabled: user.integrations?.googleDrive?.enabled !== false,
+      email: user.integrations?.googleDrive?.email || null,
+      rootFolderId: user.integrations?.googleDrive?.rootFolderId || null,
+    };
+
     if (section === 'directives') {
       return { directives: normalizedDirectives };
     }
@@ -2371,12 +2382,16 @@ export const toolHandlers = {
     if (section === 'sttengine') {
       return { sttEngine };
     }
+    if (section === 'googledrive' || section === 'integrations') {
+      return { googleDrive };
+    }
 
     return {
       directives: normalizedDirectives,
       agentConfig,
       reportTemplates,
       sttEngine,
+      googleDrive,
     };
   },
 
@@ -2567,6 +2582,12 @@ export const toolHandlers = {
         changed = true;
       }
 
+      // --- Google Drive Integration Enabled Toggle ---
+      if (typeof args.googleDriveEnabled === 'boolean' && user.integrations?.googleDrive) {
+        user.integrations.googleDrive.enabled = args.googleDriveEnabled;
+        changed = true;
+      }
+
       if (changed) {
         await user.save({ session: activeSession });
       }
@@ -2585,6 +2606,11 @@ export const toolHandlers = {
         agentConfig: user.settings.agentConfig,
         sttEngine: user.settings.sttEngine,
         reportTemplates: user.settings.reportTemplates || {},
+        googleDrive: {
+          connected: Boolean(user.integrations?.googleDrive?.connected),
+          enabled: user.integrations?.googleDrive?.enabled !== false,
+          email: user.integrations?.googleDrive?.email || null,
+        },
         message: 'User settings successfully updated in MongoDB Single Source of Truth.',
       };
     });

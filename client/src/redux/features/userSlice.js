@@ -148,6 +148,14 @@ export const userSlice = apiSlice.injectEndpoints({
       }),
       invalidatesTags: ['User'],
     }),
+    toggleGoogleDrive: builder.mutation({
+      query: (body) => ({
+        url: '/auth/google/toggle',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['User'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -165,6 +173,7 @@ export const {
   useGetGoogleDriveStatusQuery,
   useLazyGetGoogleDriveConnectUrlQuery,
   useDisconnectGoogleDriveMutation,
+  useToggleGoogleDriveMutation,
   useMockConnectGoogleDriveMutation,
 } = userSlice;
 

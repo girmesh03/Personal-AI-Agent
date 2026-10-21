@@ -145,24 +145,43 @@ export async function generateDocumentFile(userId, args = {}) {
 
   // If destination is Google Drive, dispatch upload to drive
   if (destination === 'google_drive') {
-    const driveUpload = await uploadFileToDrive(userId, {
-      filePath,
-      fileName,
-      mimeType,
-      folderId,
-    });
+    try {
+      const driveUpload = await uploadFileToDrive(userId, {
+        filePath,
+        fileName,
+        mimeType,
+        folderId,
+      });
 
-    return {
-      success: true,
-      format: cleanFormat,
-      destination: 'google_drive',
-      title,
-      fileName,
-      size,
-      fileId: driveUpload.fileId,
-      webViewLink: driveUpload.webViewLink,
-      message: `Document "${title}" (${cleanFormat.toUpperCase()}) created and uploaded directly to Google Drive.`,
-    };
+      return {
+        success: true,
+        format: cleanFormat,
+        destination: 'google_drive',
+        title,
+        fileName,
+        size,
+        fileId: driveUpload.fileId,
+        webViewLink: driveUpload.webViewLink,
+        downloadUrl: `/api/v1/chat/downloads/${fileId}`,
+        message: `Document "${title}" (${cleanFormat.toUpperCase()}) created and uploaded directly to Google Drive.`,
+      };
+    } catch (driveErr) {
+      logger.warn(
+        `[documentGenerationService] Drive upload failed: ${driveErr.message}. Falling back to direct browser download.`
+      );
+      return {
+        success: true,
+        format: cleanFormat,
+        destination: 'download',
+        title,
+        fileName,
+        fileId,
+        downloadUrl: `/api/v1/chat/downloads/${fileId}`,
+        size,
+        googleDriveError: driveErr.message,
+        message: `Document "${title}" (${cleanFormat.toUpperCase()}) was generated successfully and is ready for direct download. (Note: Google Drive upload failed: ${driveErr.message})`,
+      };
+    }
   }
 
   // Default: browser download delivery

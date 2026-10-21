@@ -165,6 +165,7 @@ const userSchema = new mongoose.Schema(
     integrations: {
       googleDrive: {
         connected: { type: Boolean, default: false },
+        enabled: { type: Boolean, default: true },
         email: { type: String, default: null },
         accessToken: { type: String, default: null, select: false },
         refreshToken: { type: String, default: null, select: false },

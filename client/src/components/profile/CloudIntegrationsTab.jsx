@@ -5,14 +5,17 @@
  * connected account scopes, dedicated root folder display, and secure disconnection controls.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
+import Grid from '@mui/material/Grid';
 import Divider from '@mui/material/Divider';
+import Switch from '@mui/material/Switch';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import CircularProgress from '@mui/material/CircularProgress';
 import CloudQueueIcon from '@mui/icons-material/CloudQueue';
 import CloudDoneIcon from '@mui/icons-material/CloudDone';
@@ -29,6 +32,7 @@ import {
   useGetGoogleDriveStatusQuery,
   useLazyGetGoogleDriveConnectUrlQuery,
   useDisconnectGoogleDriveMutation,
+  useToggleGoogleDriveMutation,
   useMockConnectGoogleDriveMutation,
 } from '../../redux/features/userSlice.js';
 
@@ -45,10 +49,12 @@ export const CloudIntegrationsTab = () => {
   const { data: driveStatus, isLoading: isStatusLoading, refetch } = useGetGoogleDriveStatusQuery();
   const [getConnectUrl] = useLazyGetGoogleDriveConnectUrlQuery();
   const [disconnectDrive, { isLoading: isDisconnecting }] = useDisconnectGoogleDriveMutation();
+  const [toggleDrive, { isLoading: isToggling }] = useToggleGoogleDriveMutation();
   const [mockConnect, { isLoading: isMockConnecting }] = useMockConnectGoogleDriveMutation();
 
   const statusPayload = driveStatus?.data || driveStatus;
   const isConnected = Boolean(statusPayload?.connected);
+  const isEnabled = statusPayload?.enabled !== false;
   const accountEmail = statusPayload?.email || null;
   const rootFolder = 'Personal AI Agent';
   const connectedAt = statusPayload?.connectedAt
@@ -59,6 +65,32 @@ export const CloudIntegrationsTab = () => {
     })
     : null;
 
+  const handleToggleEnabled = async (_event, checked) => {
+    try {
+      await toggleDrive({ enabled: checked }).unwrap();
+      toast.success(`Google Drive integration ${checked ? 'enabled' : 'paused'}.`);
+      refetch();
+    } catch (err) {
+      toast.error(err?.data?.message || err?.message || 'Failed to update Google Drive integration setting.');
+    }
+  };
+
+  // Listen for OAuth redirect parameters and refresh status
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('google_auth') === 'success') {
+      toast.success('Google Drive connected successfully!');
+      refetch();
+      const newUrl = window.location.pathname + (params.get('tab') ? `?tab=${params.get('tab')}` : '');
+      window.history.replaceState({}, document.title, newUrl);
+    } else if (params.get('google_auth') === 'error') {
+      const err = params.get('error') || 'Failed to authenticate with Google.';
+      toast.error(`Google connection failed: ${err}`);
+      const newUrl = window.location.pathname + (params.get('tab') ? `?tab=${params.get('tab')}` : '');
+      window.history.replaceState({}, document.title, newUrl);
+    }
+  }, [refetch]);
+
   /**
    * Initiates Google OAuth consent screen redirect.
    */
@@ -66,7 +98,7 @@ export const CloudIntegrationsTab = () => {
     try {
       setIsConnecting(true);
       const res = await getConnectUrl().unwrap();
-      const authUrl = res?.data?.url || res?.url;
+      const authUrl = res?.data?.authUrl || res?.data?.url || res?.authUrl || res?.url;
       if (authUrl) {
         window.location.href = authUrl;
       } else {
@@ -191,66 +223,168 @@ export const CloudIntegrationsTab = () => {
                 Docs, Google Sheets, and organize operational documents directly inside your account.
               </Typography>
 
+              {/* Integration Enable/Disable Toggle Card */}
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  p: 1.5,
+                  borderRadius: '8px',
+                  bgcolor: (theme) =>
+                    theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.01)',
+                  border: 1,
+                  borderColor: isEnabled ? 'success.main' : 'divider',
+                  flexWrap: 'wrap',
+                  gap: 1.5,
+                }}
+              >
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
+                    Workspace Agent Access
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                    {isEnabled
+                      ? 'Autonomous authoring of Google Docs, Sheets, and file management is active.'
+                      : 'Google Drive integration is temporarily paused. The agent will not access your Drive.'}
+                  </Typography>
+                </Box>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={isEnabled}
+                      onChange={handleToggleEnabled}
+                      disabled={isToggling}
+                      color="success"
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                      {isEnabled ? 'Active' : 'Paused'}
+                    </Typography>
+                  }
+                  sx={{ m: 0 }}
+                />
+              </Box>
+
               {/* Connected Details Grid */}
               <Box
                 sx={{
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
-                  gap: 1.5,
                   p: 2,
                   borderRadius: '8px',
                   bgcolor: (theme) =>
                     theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
                   border: 1,
                   borderColor: 'divider',
+                  minWidth: 0,
                 }}
               >
-                {/* Account Email */}
-                <Box>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.25 }}>
-                    Connected Account
-                  </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                    <CheckCircleOutlineIcon sx={{ fontSize: 16, color: 'success.main' }} />
-                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
-                      {accountEmail || 'Authorized Account'}
+                <Grid container spacing={2}>
+                  {/* Account Email */}
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.25 }}>
+                      Connected Account
                     </Typography>
-                  </Box>
-                </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+                      <CheckCircleOutlineIcon sx={{ fontSize: 16, color: 'success.main', flexShrink: 0 }} />
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontWeight: 600,
+                          fontSize: '0.85rem',
+                          wordBreak: 'break-all',
+                          minWidth: 0,
+                        }}
+                      >
+                        {accountEmail || 'Authorized Account'}
+                      </Typography>
+                    </Box>
+                  </Grid>
 
-                {/* Root Workspace Folder */}
-                <Box>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.25 }}>
-                    Default Workspace Folder
-                  </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                    <FolderIcon sx={{ fontSize: 16, color: 'primary.main' }} />
-                    <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
-                      {rootFolder}
+                  {/* Root Workspace Folder */}
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.25 }}>
+                      Default Workspace Folder
                     </Typography>
-                  </Box>
-                </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+                      <FolderIcon sx={{ fontSize: 16, color: 'primary.main', flexShrink: 0 }} />
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontWeight: 600,
+                          fontSize: '0.85rem',
+                          wordBreak: 'break-word',
+                          minWidth: 0,
+                        }}
+                      >
+                        {rootFolder}
+                      </Typography>
+                    </Box>
+                  </Grid>
 
-                {/* Scopes */}
-                <Box sx={{ gridColumn: { xs: 'span 1', sm: 'span 2' } }}>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
-                    Active OAuth Permissions
-                  </Typography>
-                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                    <Chip label="Google Drive Files (drive.file)" size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
-                    <Chip label="Google Docs (documents)" size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
-                    <Chip label="Google Sheets (spreadsheets)" size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
-                  </Stack>
-                </Box>
-
-                {/* Connection Date */}
-                {connectedAt && (
-                  <Box sx={{ gridColumn: { xs: 'span 1', sm: 'span 2' } }}>
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      Connected on {connectedAt}
+                  {/* Scopes */}
+                  <Grid size={12}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+                      Active OAuth Permissions
                     </Typography>
-                  </Box>
-                )}
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 1,
+                        width: '100%',
+                        minWidth: 0,
+                      }}
+                    >
+                      <Chip
+                        label="Google Drive Files (drive.file)"
+                        size="small"
+                        variant="outlined"
+                        sx={{
+                          fontSize: '0.7rem',
+                          maxWidth: '100%',
+                          height: 'auto',
+                          py: 0.25,
+                          '& .MuiChip-label': { whiteSpace: 'normal', wordBreak: 'break-word' },
+                        }}
+                      />
+                      <Chip
+                        label="Google Docs (documents)"
+                        size="small"
+                        variant="outlined"
+                        sx={{
+                          fontSize: '0.7rem',
+                          maxWidth: '100%',
+                          height: 'auto',
+                          py: 0.25,
+                          '& .MuiChip-label': { whiteSpace: 'normal', wordBreak: 'break-word' },
+                        }}
+                      />
+                      <Chip
+                        label="Google Sheets (spreadsheets)"
+                        size="small"
+                        variant="outlined"
+                        sx={{
+                          fontSize: '0.7rem',
+                          maxWidth: '100%',
+                          height: 'auto',
+                          py: 0.25,
+                          '& .MuiChip-label': { whiteSpace: 'normal', wordBreak: 'break-word' },
+                        }}
+                      />
+                    </Box>
+                  </Grid>
+
+                  {/* Connection Date */}
+                  {connectedAt && (
+                    <Grid size={12}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                        Connected on {connectedAt}
+                      </Typography>
+                    </Grid>
+                  )}
+                </Grid>
               </Box>
 
               {/* Action Buttons */}

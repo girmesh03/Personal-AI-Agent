@@ -106,7 +106,7 @@ export const Profile = () => {
                 <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.875rem', mb: 0.5 }}>
                   {user?.email || 'user@example.com'}
                 </Typography>
-                <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
                   <Chip
                     label={user?.position || 'Area Supervisor'}
                     size="small"
@@ -120,7 +120,7 @@ export const Profile = () => {
                     variant="filled"
                     sx={{ fontSize: '0.75rem', height: 22, fontWeight: 600 }}
                   />
-                </Stack>
+                </Box>
               </Box>
             </Box>
           </CardContent>
@@ -131,6 +131,9 @@ export const Profile = () => {
           <Tabs
             value={activeTab}
             onChange={(_e, newValue) => setActiveTab(newValue)}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
             aria-label="Profile and Settings Tabs"
             sx={{
               '& .MuiTab-root': {
@@ -139,6 +142,7 @@ export const Profile = () => {
                 fontSize: '0.9rem',
                 minHeight: 44,
                 py: 1,
+                whiteSpace: 'nowrap',
               },
             }}
           >

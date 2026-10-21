@@ -273,6 +273,9 @@ export const streamChat = asyncHandler(async (req, res) => {
     res.flushHeaders();
   }
 
+  // Immediate SSE priming ping to defeat proxy and browser socket buffering
+  res.write(': ping\n\n');
+
   let isClientAborted = false;
   let persistAbortState = null;
   let userTurn = null;
@@ -368,10 +371,6 @@ export const streamChat = asyncHandler(async (req, res) => {
         audioTranscriptions.push(...userTurn.audioTranscriptions);
       } else if (Array.isArray(userTurn.audios) && userTurn.audios.length > 0) {
         try {
-          sendSSE(res, 'status', {
-            stage: 'transcribing',
-            message: `Transcribing audio note with ${sttEngineLabel}...`,
-          });
           const existingAudios = await Audio.find({ _id: { $in: userTurn.audios }, user: req.user._id });
           for (const audioDoc of existingAudios) {
             if (!audioDoc.transcription || audioDoc.status !== 'transcribed') {
@@ -459,10 +458,6 @@ export const streamChat = asyncHandler(async (req, res) => {
         audioTranscriptions.push(...userTurn.audioTranscriptions);
       } else if (Array.isArray(userTurn.audios) && userTurn.audios.length > 0) {
         try {
-          sendSSE(res, 'status', {
-            stage: 'transcribing',
-            message: `Transcribing audio note with ${sttEngineLabel}...`,
-          });
           const existingAudios = await Audio.find({ _id: { $in: userTurn.audios }, user: req.user._id });
           for (const audioDoc of existingAudios) {
             if (!audioDoc.transcription || audioDoc.status !== 'transcribed' || shouldReTranscribe) {
@@ -490,10 +485,6 @@ export const streamChat = asyncHandler(async (req, res) => {
       }
       if (Array.isArray(userTurn.attachments) && userTurn.attachments.length > 0) {
         try {
-          sendSSE(res, 'status', {
-            stage: 'processing_attachments',
-            message: 'Extracting document text...',
-          });
           const attResult = await processAttachments(userTurn.attachments);
           if (!attachmentTextContext && attResult.textContext) {
             attachmentTextContext = attResult.textContext;
@@ -576,10 +567,6 @@ export const streamChat = asyncHandler(async (req, res) => {
       }
 
       if (effectiveAudios.length > 0) {
-        sendSSE(res, 'status', {
-          stage: 'transcribing',
-          message: `Transcribing audio note with ${sttEngineLabel}...`,
-        });
         for (const audioItem of effectiveAudios) {
           const audioId = typeof audioItem === 'object' && audioItem !== null ? (audioItem._id || audioItem.id) : audioItem;
           if (!audioId) continue;
@@ -604,10 +591,6 @@ export const streamChat = asyncHandler(async (req, res) => {
       }
 
       if (effectiveAttachments.length > 0) {
-        sendSSE(res, 'status', {
-          stage: 'processing_attachments',
-          message: 'Extracting document text...',
-        });
         const attResult = await processAttachments(effectiveAttachments);
         attachmentTextContext = attResult.textContext;
         inlineParts = attResult.inlineParts;
@@ -793,6 +776,30 @@ export const streamChat = asyncHandler(async (req, res) => {
         const textBeforeAttempt = fullText;
         const thoughtBeforeAttempt = fullThought;
 
+        const ttftStartTime = Date.now();
+        logger.info(
+          `[chatController] Dispatched prompt to Gemini (${activeModel}, thinkingBudget: ${thinkingBudget}). Awaiting TTFT...`
+        );
+
+        let firstTokenReceived = false;
+        const watchdogController = new AbortController();
+        const watchdogTimeout = setTimeout(() => {
+          if (!firstTokenReceived && !isClientAborted) {
+            logger.warn(
+              `[chatController] TTFT watchdog triggered: No tokens received from ${activeModel} within 12s. Aborting attempt ${streamAttempts}...`
+            );
+            watchdogController.abort(new Error(`TTFT watchdog timeout: No tokens received from ${activeModel} within 12s`));
+          }
+        }, 12000);
+
+        const clientCloseListener = () => {
+          clearTimeout(watchdogTimeout);
+          try {
+            watchdogController.abort();
+          } catch (_) {}
+        };
+        req.on('close', clientCloseListener);
+
         try {
           const responseStream = await ai.models.generateContentStream({
             model: activeModel,
@@ -802,12 +809,20 @@ export const streamChat = asyncHandler(async (req, res) => {
               thinkingConfig: thinkingBudget > 0 ? { thinkingBudget, includeThoughts: true } : undefined,
               tools: [{ functionDeclarations: agentToolDeclarations }],
               temperature: chat.config?.temperature,
+              abortSignal: watchdogController.signal,
             },
           });
 
           for await (const chunk of responseStream) {
             if (isClientAborted) {
               break;
+            }
+
+            if (!firstTokenReceived) {
+              firstTokenReceived = true;
+              clearTimeout(watchdogTimeout);
+              const ttftDuration = Date.now() - ttftStartTime;
+              logger.info(`[chatController] First token received from ${activeModel} in ${ttftDuration}ms`);
             }
 
             if (chunk.usageMetadata) {
@@ -841,17 +856,46 @@ export const streamChat = asyncHandler(async (req, res) => {
             }
           }
 
+          clearTimeout(watchdogTimeout);
+          req.removeListener('close', clientCloseListener);
+
           if (isClientAborted) {
             break;
           }
 
           streamSuccess = true;
         } catch (streamErr) {
+          clearTimeout(watchdogTimeout);
+          req.removeListener('close', clientCloseListener);
+
           if (isClientAborted) {
             break;
           }
           fullText = textBeforeAttempt;
           fullThought = thoughtBeforeAttempt;
+
+          const isWatchdogTimeout =
+            watchdogController.signal.aborted &&
+            !isClientAborted &&
+            (streamErr.message?.includes('TTFT watchdog timeout') || streamErr.name === 'AbortError');
+
+          if (isWatchdogTimeout) {
+            const mappedFallback = AI_MODELS.QUOTA_RETRY_MAP[activeModel] || AI_MODELS.FALLBACK;
+            logger.warn(
+              `[chatController] Model ${activeModel} stalled (>12s TTFT). Failing over to ${mappedFallback} (attempt ${streamAttempts}/${maxStreamAttempts})...`
+            );
+            sendSSE(res, 'reset_stream', {
+              stage: 'model_failover',
+              failedModel: activeModel,
+              alternateModel: mappedFallback,
+              attempt: streamAttempts,
+              maxAttempts: maxStreamAttempts,
+              reason: 'ttft_watchdog_timeout',
+            });
+            activeModel = mappedFallback;
+            await new Promise((r) => setTimeout(r, 500));
+            continue;
+          }
 
           const isQuota =
             streamErr.message?.includes('429') ||

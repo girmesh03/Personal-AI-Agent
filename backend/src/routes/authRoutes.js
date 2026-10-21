@@ -14,6 +14,7 @@ import {
   handleGoogleCallback,
   disconnectGoogleDriveRoute,
   getGoogleDriveStatus,
+  toggleGoogleDriveRoute,
   mockConnectGoogleDriveRoute,
 } from '../controllers/authController.js';
 import {
@@ -56,9 +57,9 @@ router.post('/logout', logout);
 /**
  * @route GET /api/v1/auth/google/connect
  * @desc Initiate Google OAuth connection
- * @access Protected or via ?userId query param
+ * @access Protected
  */
-router.get('/google/connect', connectGoogleDrive);
+router.get('/google/connect', verifyToken, connectGoogleDrive);
 
 /**
  * @route GET /api/v1/auth/google/callback
@@ -80,6 +81,13 @@ router.post('/google/disconnect', verifyToken, disconnectGoogleDriveRoute);
  * @access Protected
  */
 router.get('/google/status', verifyToken, getGoogleDriveStatus);
+
+/**
+ * @route POST /api/v1/auth/google/toggle
+ * @desc Enable or disable Google Drive integration without disconnecting
+ * @access Protected
+ */
+router.post('/google/toggle', verifyToken, toggleGoogleDriveRoute);
 
 /**
  * @route POST /api/v1/auth/google/mock-connect
