@@ -437,7 +437,7 @@ export class MuiChatAdapter {
    * @param {AbortSignal} [input.signal] - External stop signal.
    * @returns {Promise<ReadableStream>}
    */
-  async sendMessage({ conversationId, message, messages, attachments, signal }) {
+  async sendMessage({ conversationId, message, attachments, signal }) {
     const userText =
       message?.parts?.find((p) => p.type === 'text')?.text ||
       (typeof message?.content === 'string' ? message.content : '') ||

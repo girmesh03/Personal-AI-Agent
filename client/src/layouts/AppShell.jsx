@@ -3,20 +3,22 @@
  * @description Protected application shell layout integrating sidebar drawer, app-bar, and outlet.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { Outlet, useLocation, useNavigation } from 'react-router';
 import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
 import MenuIcon from '@mui/icons-material/Menu';
 import MuiAppbar from '../components/reusable/MuiAppbar.jsx';
 import LoadingSpinner from '../components/reusable/LoadingSpinner.jsx';
+import GlobalSearchModal from '../components/search/GlobalSearchModal.jsx';
 import MuiSidebar from './MuiSidebar.jsx';
 import ThemeToggle from './ThemeToggle.jsx';
 import AvatarMenu from './AvatarMenu.jsx';
 
 /**
  * Primary authenticated application shell layout.
- * Manages responsive sidebar state, top app-bar integration, and navigation loading transitions.
+ * Manages responsive sidebar state, top app-bar integration, global search modal,
+ * and navigation loading transitions.
  *
  * @component AppShell
  * @returns {JSX.Element} Rendered protected application shell.
@@ -33,6 +35,8 @@ export const AppShell = () => {
     }
   });
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
   const toggleMode = useCallback(() => {
     setMode((prev) => {
       const next = prev === 'mini' ? 'full' : 'mini';
@@ -44,7 +48,22 @@ export const AppShell = () => {
       return next;
     });
   }, []);
+
   const closeMobile = useCallback(() => setMobileOpen(false), []);
+  const openSearch = useCallback(() => setSearchOpen(true), []);
+  const closeSearch = useCallback(() => setSearchOpen(false), []);
+
+  // Global Ctrl+K / Cmd+K listener
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <Box sx={{ display: 'flex', height: '100vh', width: '100vw', maxWidth: '100%', overflow: 'hidden' }}>
@@ -66,6 +85,7 @@ export const AppShell = () => {
       >
         <MuiAppbar
           variant="protected"
+          onOpenSearch={openSearch}
           leading={
             /* Hamburger only below md — the permanent sidebar md+
                carries the brand in its own header. */
@@ -106,6 +126,9 @@ export const AppShell = () => {
           )}
         </Box>
       </Box>
+
+      {/* Decoupled Command-Palette Global Search Modal */}
+      <GlobalSearchModal open={searchOpen} onClose={closeSearch} />
     </Box>
   );
 };

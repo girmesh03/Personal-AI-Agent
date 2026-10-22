@@ -29,7 +29,7 @@ export const MuiChatEmptyState = () => {
     { skip: !chatId }
   );
 
-  let isLoadingHistory = false;
+  let isLoadingHistory;
 
   try {
     const status = useChatStatus();

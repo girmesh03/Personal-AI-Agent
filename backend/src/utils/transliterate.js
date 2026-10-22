@@ -15,6 +15,17 @@ const CURATED_LOCATIONS = Object.freeze({
   'ቦሌ': { latin: ['bole'], amharic: 'ቦሌ' },
   'ቦሌ መድኃኔዓለም': { latin: ['bole medhanialem', 'bole medhanealem'], amharic: 'ቦሌ መድኃኔዓለም' },
   'ቦሌ መድሃኒአለም': { latin: ['bole medhanialem', 'bole medhanealem'], amharic: 'ቦሌ መድኃኔዓለም' },
+  'መድኃኔዓለም': { latin: ['medhanialem', 'medhanealem'], amharic: 'መድኃኔዓለም' },
+  'መድኃኒዓለም': { latin: ['medhanialem', 'medhanealem'], amharic: 'መድኃኒዓለም' },
+  'መድሃኒአለም': { latin: ['medhanialem', 'medhanealem'], amharic: 'መድኃኔዓለም' },
+  'መድሃኔአለም': { latin: ['medhanialem', 'medhanealem'], amharic: 'መድኃኔዓለም' },
+  'መድሃኒዓለም': { latin: ['medhanialem', 'medhanealem'], amharic: 'መድኃኔዓለም' },
+  'መድሃኔዓለም': { latin: ['medhanialem', 'medhanealem'], amharic: 'መድኃኔዓለም' },
+  'ጎላጎል': { latin: ['golagol', 'gola gol'], amharic: 'ጎላጎል' },
+  'ኤርፖርት': { latin: ['airport', 'bole airport'], amharic: 'ኤርፖርት' },
+  'መስቀል ፍላወር': { latin: ['meskel flower', 'meskelflower'], amharic: 'መስቀል ፍላወር' },
+  'መስቀል አደባባይ': { latin: ['meskel square', 'meskel adebabay'], amharic: 'መስቀል አደባባይ' },
+  'ቱሉ ዲምቱ': { latin: ['tulu dimtu', 'tuludimtu'], amharic: 'ቱሉ ዲምቱ' },
   'ፒያሳ': { latin: ['piassa', 'piazza', 'piyasa'], amharic: 'ፒያሳ' },
   'መገናኛ': { latin: ['megnagna', 'megenagna', 'megenanya'], amharic: 'መገናኛ' },
   'ሲኤምሲ': { latin: ['cmc'], amharic: 'ሲኤምሲ' },
@@ -307,6 +318,18 @@ export const normalizeEthiopicSpelling = (text) => {
 };
 
 /**
+ * Escapes regex special characters in a string for safe use in RegExp constructors.
+ *
+ * @function escapeRegex
+ * @param {string} str - Raw input string.
+ * @returns {string} Sanitized string with regex special characters escaped.
+ */
+export const escapeRegex = (str) => {
+  if (!str || typeof str !== 'string') return '';
+  return str.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+};
+
+/**
  * Generates an expanded set of bilingual search terms for a given query.
  * For Amharic input, returns Amharic, normalized Fidel spelling, and Latin transliteration.
  * For English input, returns English and matched Amharic location equivalents.
@@ -326,9 +349,39 @@ export const getBilingualSearchTerms = (query) => {
     const normalized = normalizeEthiopicSpelling(trimmed);
     if (normalized) terms.add(normalized);
 
-    if (CURATED_LOCATIONS[trimmed]) {
-      CURATED_LOCATIONS[trimmed].latin.forEach((l) => terms.add(l));
+    // Common Amharic orthographic variations (e.g. 3rd order ኒ vs 5th order ኔ in names like Medhanialem)
+    if (trimmed.includes('ኔ')) {
+      const niVariant = trimmed.replace(/ኔ/g, 'ኒ');
+      terms.add(niVariant);
+      terms.add(normalizeEthiopicSpelling(niVariant));
+      const niTransliterated = transliterateFidelToLatin(niVariant);
+      if (niTransliterated) terms.add(niTransliterated.toLowerCase());
     }
+    if (trimmed.includes('ኒ')) {
+      const neVariant = trimmed.replace(/ኒ/g, 'ኔ');
+      terms.add(neVariant);
+      terms.add(normalizeEthiopicSpelling(neVariant));
+      const neTransliterated = transliterateFidelToLatin(neVariant);
+      if (neTransliterated) terms.add(neTransliterated.toLowerCase());
+    }
+
+    // Bidirectional curated location matching for Amharic
+    for (const [amharicKey, entry] of Object.entries(CURATED_LOCATIONS)) {
+      const normKey = normalizeEthiopicSpelling(amharicKey);
+      if (
+        amharicKey === trimmed ||
+        amharicKey.includes(trimmed) ||
+        trimmed.includes(amharicKey) ||
+        normKey.includes(normalized) ||
+        normalized.includes(normKey)
+      ) {
+        terms.add(amharicKey);
+        terms.add(entry.amharic);
+        terms.add(normKey);
+        entry.latin.forEach((l) => terms.add(l));
+      }
+    }
+
     const transliterated = transliterateFidelToLatin(trimmed);
     if (transliterated) {
       terms.add(transliterated.toLowerCase());
@@ -336,14 +389,31 @@ export const getBilingualSearchTerms = (query) => {
   } else {
     // If query is Latin, find Amharic equivalents
     for (const [amharicKey, entry] of Object.entries(CURATED_LOCATIONS)) {
-      if (entry.latin.some((l) => l.toLowerCase() === lower || lower.includes(l.toLowerCase()))) {
+      if (
+        entry.latin.some(
+          (l) =>
+            l.toLowerCase() === lower ||
+            lower.includes(l.toLowerCase()) ||
+            l.toLowerCase().includes(lower)
+        )
+      ) {
         terms.add(amharicKey);
+        terms.add(entry.amharic);
         terms.add(normalizeEthiopicSpelling(amharicKey));
+        entry.latin.forEach((l) => terms.add(l));
       }
+    }
+
+    // Common Latin transliteration variations (e.g. medhanealem <-> medhanialem)
+    if (lower.includes('medhania')) {
+      terms.add(lower.replace(/medhania/g, 'medhanea'));
+    }
+    if (lower.includes('medhanea')) {
+      terms.add(lower.replace(/medhanea/g, 'medhania'));
     }
   }
 
-  return Array.from(terms);
+  return Array.from(terms).filter(Boolean);
 };
 
 /**
@@ -362,4 +432,5 @@ export default {
   generateBranchCode,
   normalizeEthiopicSpelling,
   getBilingualSearchTerms,
+  escapeRegex,
 };

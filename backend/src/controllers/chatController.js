@@ -26,6 +26,7 @@ import { processAttachments, resolveFilePath } from '../utils/attachmentProcesso
 import { transcribeAudioDocument, transcribeAudio as transcribeAudioUtil } from '../utils/audioChunker.js';
 import { dispatchToTelegram } from '../services/telegramService.js';
 import { generatedDocumentRegistry } from '../services/documentGenerationService.js';
+import { getBilingualSearchTerms, escapeRegex } from '../utils/transliterate.js';
 
 /**
  * Helper to emit a formatted Server-Sent Event frame.
@@ -1185,8 +1186,11 @@ export const getChats = asyncHandler(async (req, res) => {
     query.isPinned = true;
   }
 
-  if (req.query.search && typeof req.query.search === 'string') {
-    query.title = { $regex: req.query.search.trim(), $options: 'i' };
+  if (req.query.search && typeof req.query.search === 'string' && req.query.search.trim()) {
+    const searchTerms = getBilingualSearchTerms(req.query.search.trim());
+    query.$or = searchTerms.map((term) => ({
+      title: { $regex: escapeRegex(term), $options: 'i' },
+    }));
   }
 
   const options = {

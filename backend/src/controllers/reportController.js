@@ -18,6 +18,7 @@ import { Audio } from '../models/Audio.js';
 import { HTTP_STATUS, REPORT_CONSTANTS, AUDIO_CONSTANTS } from '../utils/constants.js';
 import { NotFoundError, BadRequestError } from '../errors/CustomError.js';
 import { logger } from '../config/logger.js';
+import { getBilingualSearchTerms, escapeRegex } from '../utils/transliterate.js';
 
 
 /**
@@ -192,16 +193,43 @@ export const getReports = asyncHandler(async (req, res) => {
     filter.date = { $gte: startOfDay, $lte: endOfDay };
   }
 
-  // Bilingual full-text search filter across transcription, activities, issues, and comments
+  // Bilingual full-text search filter across branches, transcription, activities, issues, and comments
   if (query.search && typeof query.search === 'string' && query.search.trim()) {
-    const escapeRegex = (s) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-    const searchRegex = new RegExp(escapeRegex(query.search.trim()), 'i');
-    filter.$or = [
-      { transcription: searchRegex },
-      { 'activities.text': searchRegex },
-      { 'issues.text': searchRegex },
-      { 'comments.text': searchRegex },
-    ];
+    const searchTerms = getBilingualSearchTerms(query.search.trim());
+
+    // Resolve any branches matching the search query to include their reports
+    const branchOrConditions = searchTerms.flatMap((term) => {
+      const termRegex = new RegExp(escapeRegex(term), 'i');
+      return [
+        { name: termRegex },
+        { code: termRegex },
+        { aliases: termRegex },
+      ];
+    });
+
+    const matchingBranches = await Branch.find({
+      user: req.user._id,
+      $or: branchOrConditions,
+    }).select('_id').lean();
+
+    const matchingBranchIds = matchingBranches.map((b) => b._id);
+
+    const searchOrConditions = [];
+    if (matchingBranchIds.length > 0) {
+      searchOrConditions.push({ 'visits.branch': { $in: matchingBranchIds } });
+    }
+
+    searchTerms.forEach((term) => {
+      const termRegex = new RegExp(escapeRegex(term), 'i');
+      searchOrConditions.push(
+        { transcription: termRegex },
+        { 'activities.text': termRegex },
+        { 'issues.text': termRegex },
+        { 'comments.text': termRegex }
+      );
+    });
+
+    filter.$or = searchOrConditions;
   }
 
   const options = {
@@ -225,6 +253,7 @@ export const getReports = asyncHandler(async (req, res) => {
     message: 'Reports retrieved successfully',
     data: {
       docs: result.docs,
+      reports: result.docs,
       totalDocs: result.totalDocs,
       limit: result.limit,
       page: result.page,

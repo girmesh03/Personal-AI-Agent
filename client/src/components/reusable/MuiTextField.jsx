@@ -111,12 +111,18 @@ export const MuiTextField = memo(
       return <InputAdornment position="end">{rawEnd}</InputAdornment>;
     }, [isPassword, showPassword, togglePassword, onClear, rest.value, rawEnd]);
 
+    // Resolve helper text: suppress helperText space if explicitly null, false, or empty string
+    const resolvedHelperText =
+      helperText === null || helperText === false || helperText === ''
+        ? undefined
+        : (helperText ?? ' ');
+
     return (
       <TextField
         inputRef={effectiveInputRef}
         type={resolvedType}
         error={error}
-        helperText={helperText ?? ' '}
+        helperText={resolvedHelperText}
         size={size}
         fullWidth={fullWidth}
         variant={variant}
@@ -127,12 +133,16 @@ export const MuiTextField = memo(
             startAdornment: resolvedStartAdornment,
             endAdornment: resolvedEndAdornment,
           },
-          formHelperText: {
-            ...slotProps.formHelperText,
-            sx: error
-              ? { color: 'error.main', ...slotProps.formHelperText?.sx }
-              : slotProps.formHelperText?.sx,
-          },
+          ...(resolvedHelperText !== undefined
+            ? {
+                formHelperText: {
+                  ...slotProps.formHelperText,
+                  sx: error
+                    ? { color: 'error.main', ...slotProps.formHelperText?.sx }
+                    : slotProps.formHelperText?.sx,
+                },
+              }
+            : {}),
         }}
         {...rest}
       />

@@ -116,6 +116,47 @@ export const userSlice = apiSlice.injectEndpoints({
                     ...(currentUser.settings?.agentConfig || {}),
                     ...(resData.agentConfig || {}),
                   },
+                  reportTemplates: {
+                    ...(currentUser.settings?.reportTemplates || {}),
+                    ...(resData.reportTemplates || {}),
+                  },
+                  telegram: {
+                    ...(currentUser.settings?.telegram || {}),
+                    ...(resData.telegram || {}),
+                  },
+                },
+              };
+              dispatch(updateUserProfile({ user: updatedUser }));
+            }
+          }
+        } catch {
+          // Handled by caller UI
+        }
+      },
+    }),
+    getUserAgentConfig: builder.query({
+      query: () => '/users/agent-config',
+      providesTags: ['User'],
+    }),
+    updateDirectives: builder.mutation({
+      query: (directivesData) => ({
+        url: '/users/directives',
+        method: 'PATCH',
+        body: directivesData,
+      }),
+      invalidatesTags: ['User'],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled, getState }) {
+        try {
+          const { data } = await queryFulfilled;
+          const directives = data?.data?.directives || data?.directives;
+          if (directives) {
+            const currentUser = getState().auth.user;
+            if (currentUser) {
+              const updatedUser = {
+                ...currentUser,
+                settings: {
+                  ...(currentUser.settings || {}),
+                  directives,
                 },
               };
               dispatch(updateUserProfile({ user: updatedUser }));
@@ -170,6 +211,8 @@ export const {
   useRemoveAvatarMutation,
   useUpdatePasswordMutation,
   useUpdateAgentConfigMutation,
+  useGetUserAgentConfigQuery,
+  useUpdateDirectivesMutation,
   useGetGoogleDriveStatusQuery,
   useLazyGetGoogleDriveConnectUrlQuery,
   useDisconnectGoogleDriveMutation,
