@@ -46,6 +46,7 @@ import {
 } from '../../redux/features/userSlice.js';
 import MuiButton from '../reusable/MuiButton.jsx';
 import MuiTextField from '../reusable/MuiTextField.jsx';
+import ProfileReportTemplatesSection from './ProfileReportTemplatesSection.jsx';
 import { REPORT_CONSTANTS } from '../../utils/constants.js';
 
 /**
@@ -83,13 +84,18 @@ export const ProfileDirectivesTab = ({ user }) => {
   const [editingRuleIndex, setEditingRuleIndex] = useState(null);
   const editRuleInputRef = useRef(null);
 
-  // Report Templates State
-  const [singleBranchTemplate, setSingleBranchTemplate] = useState(
-    initialTemplates.singleBranch || ''
-  );
-  const [multiBranchTemplate, setMultiBranchTemplate] = useState(
-    initialTemplates.multiBranch || ''
-  );
+  // Report Templates State (Isolated Uncontrolled Refs for Zero-Lag Typing)
+  const [resetCounter, setResetCounter] = useState(0);
+  const singleTemplateRef = useRef(initialTemplates.singleBranch || '');
+  const multiTemplateRef = useRef(initialTemplates.multiBranch || '');
+
+  const handleSingleChange = useCallback((val) => {
+    singleTemplateRef.current = val;
+  }, []);
+
+  const handleMultiChange = useCallback((val) => {
+    multiTemplateRef.current = val;
+  }, []);
 
   // Uncontrolled Input Refs for Zero-Lag Typing
   const newWordInputRef = useRef(null);
@@ -97,11 +103,11 @@ export const ProfileDirectivesTab = ({ user }) => {
   const mappingValInputRef = useRef(null);
   const newInstructionInputRef = useRef(null);
 
-  // Boundary-Only hasContent State for Clear Buttons (Zero re-renders while typing)
-  const [hasNewWord, setHasNewWord] = useState(false);
-  const [hasMappingKey, setHasMappingKey] = useState(false);
-  const [hasMappingVal, setHasMappingVal] = useState(false);
-  const [hasNewInstruction, setHasNewInstruction] = useState(false);
+  // Direct DOM Refs for Clear Buttons (100% Zero-Lag: Zero React state updates while typing)
+  const clearWordBtnRef = useRef(null);
+  const clearMappingKeyBtnRef = useRef(null);
+  const clearMappingValBtnRef = useRef(null);
+  const clearInstructionBtnRef = useRef(null);
 
   // 1. Negative Vocabulary Handlers
   const handleAddNegativeWord = () => {
@@ -116,7 +122,9 @@ export const ProfileDirectivesTab = ({ user }) => {
       newWordInputRef.current.value = '';
       newWordInputRef.current.focus();
     }
-    setHasNewWord(false);
+    if (clearWordBtnRef.current) {
+      clearWordBtnRef.current.style.display = 'none';
+    }
   };
 
   const handleClearNegativeWord = () => {
@@ -124,7 +132,9 @@ export const ProfileDirectivesTab = ({ user }) => {
       newWordInputRef.current.value = '';
       newWordInputRef.current.focus();
     }
-    setHasNewWord(false);
+    if (clearWordBtnRef.current) {
+      clearWordBtnRef.current.style.display = 'none';
+    }
   };
 
   const handleRemoveNegativeWord = (targetWord) => {
@@ -142,8 +152,8 @@ export const ProfileDirectivesTab = ({ user }) => {
     setPhraseMappings((prev) => ({ ...prev, [key]: val }));
     if (mappingKeyInputRef.current) mappingKeyInputRef.current.value = '';
     if (mappingValInputRef.current) mappingValInputRef.current.value = '';
-    setHasMappingKey(false);
-    setHasMappingVal(false);
+    if (clearMappingKeyBtnRef.current) clearMappingKeyBtnRef.current.style.display = 'none';
+    if (clearMappingValBtnRef.current) clearMappingValBtnRef.current.style.display = 'none';
   };
 
   const handleClearMappingKey = () => {
@@ -151,7 +161,9 @@ export const ProfileDirectivesTab = ({ user }) => {
       mappingKeyInputRef.current.value = '';
       mappingKeyInputRef.current.focus();
     }
-    setHasMappingKey(false);
+    if (clearMappingKeyBtnRef.current) {
+      clearMappingKeyBtnRef.current.style.display = 'none';
+    }
   };
 
   const handleClearMappingVal = () => {
@@ -159,7 +171,9 @@ export const ProfileDirectivesTab = ({ user }) => {
       mappingValInputRef.current.value = '';
       mappingValInputRef.current.focus();
     }
-    setHasMappingVal(false);
+    if (clearMappingValBtnRef.current) {
+      clearMappingValBtnRef.current.style.display = 'none';
+    }
   };
 
   const handleRemovePhraseMapping = (targetKey) => {
@@ -179,7 +193,9 @@ export const ProfileDirectivesTab = ({ user }) => {
       newInstructionInputRef.current.value = '';
       newInstructionInputRef.current.focus();
     }
-    setHasNewInstruction(false);
+    if (clearInstructionBtnRef.current) {
+      clearInstructionBtnRef.current.style.display = 'none';
+    }
   };
 
   const handleClearInstruction = () => {
@@ -187,7 +203,9 @@ export const ProfileDirectivesTab = ({ user }) => {
       newInstructionInputRef.current.value = '';
       newInstructionInputRef.current.focus();
     }
-    setHasNewInstruction(false);
+    if (clearInstructionBtnRef.current) {
+      clearInstructionBtnRef.current.style.display = 'none';
+    }
   };
 
   const handleRemoveInstruction = (indexToRemove) => {
@@ -221,11 +239,12 @@ export const ProfileDirectivesTab = ({ user }) => {
   };
 
   // 4. Template Reset
-  const handleResetTemplates = () => {
-    setSingleBranchTemplate('');
-    setMultiBranchTemplate('');
+  const handleResetTemplates = useCallback(() => {
+    singleTemplateRef.current = '';
+    multiTemplateRef.current = '';
+    setResetCounter((c) => c + 1);
     toast.info('Report templates reset to system defaults. Click Save to persist.');
-  };
+  }, []);
 
   // 5. Submit All Changes
   const handleSaveAll = async () => {
@@ -238,8 +257,8 @@ export const ProfileDirectivesTab = ({ user }) => {
 
       await updateAgentConfig({
         reportTemplates: {
-          singleBranch: singleBranchTemplate.trim() || null,
-          multiBranch: multiBranchTemplate.trim() || null,
+          singleBranch: (singleTemplateRef.current || '').trim() || null,
+          multiBranch: (multiTemplateRef.current || '').trim() || null,
         },
       }).unwrap();
 
@@ -253,26 +272,30 @@ export const ProfileDirectivesTab = ({ user }) => {
 
   const isSaving = isUpdatingDirectives || isUpdatingTemplates;
 
-  // Zero-Lag Native Input Listeners for Boundary Transitions Only
-  const onWordInput = useCallback(() => {
-    const nowHas = Boolean(newWordInputRef.current?.value);
-    setHasNewWord((prev) => (prev !== nowHas ? nowHas : prev));
-  }, []);
+  // Zero-Lag Native Input Listeners: Pure DOM ref style toggling (0 React state updates while typing)
+  const onWordInput = (e) => {
+    if (clearWordBtnRef.current) {
+      clearWordBtnRef.current.style.display = e.target.value ? 'inline-flex' : 'none';
+    }
+  };
 
-  const onMappingKeyInput = useCallback(() => {
-    const nowHas = Boolean(mappingKeyInputRef.current?.value);
-    setHasMappingKey((prev) => (prev !== nowHas ? nowHas : prev));
-  }, []);
+  const onMappingKeyInput = (e) => {
+    if (clearMappingKeyBtnRef.current) {
+      clearMappingKeyBtnRef.current.style.display = e.target.value ? 'inline-flex' : 'none';
+    }
+  };
 
-  const onMappingValInput = useCallback(() => {
-    const nowHas = Boolean(mappingValInputRef.current?.value);
-    setHasMappingVal((prev) => (prev !== nowHas ? nowHas : prev));
-  }, []);
+  const onMappingValInput = (e) => {
+    if (clearMappingValBtnRef.current) {
+      clearMappingValBtnRef.current.style.display = e.target.value ? 'inline-flex' : 'none';
+    }
+  };
 
-  const onInstructionInput = useCallback(() => {
-    const nowHas = Boolean(newInstructionInputRef.current?.value);
-    setHasNewInstruction((prev) => (prev !== nowHas ? nowHas : prev));
-  }, []);
+  const onInstructionInput = (e) => {
+    if (clearInstructionBtnRef.current) {
+      clearInstructionBtnRef.current.style.display = e.target.value ? 'inline-flex' : 'none';
+    }
+  };
 
   return (
     <Card
@@ -358,13 +381,18 @@ export const ProfileDirectivesTab = ({ user }) => {
                   }
                 }}
                 endAdornment={
-                  hasNewWord ? (
-                    <InputAdornment position="end">
-                      <IconButton size="small" onClick={handleClearNegativeWord} edge="end" aria-label="Clear word input">
-                        <ClearIcon sx={{ fontSize: '1rem' }} />
-                      </IconButton>
-                    </InputAdornment>
-                  ) : null
+                  <InputAdornment position="end">
+                    <IconButton
+                      ref={clearWordBtnRef}
+                      size="small"
+                      onClick={handleClearNegativeWord}
+                      edge="end"
+                      aria-label="Clear word input"
+                      sx={{ display: 'none' }}
+                    >
+                      <ClearIcon sx={{ fontSize: '1rem' }} />
+                    </IconButton>
+                  </InputAdornment>
                 }
               />
               <MuiButton
@@ -375,7 +403,6 @@ export const ProfileDirectivesTab = ({ user }) => {
                 sx={{
                   display: { xs: 'none', sm: 'inline-flex' },
                   whiteSpace: 'nowrap',
-                  height: 40,
                   flexShrink: 0,
                 }}
               >
@@ -389,8 +416,6 @@ export const ProfileDirectivesTab = ({ user }) => {
                     display: { xs: 'inline-flex', sm: 'none' },
                     border: 1,
                     borderColor: 'divider',
-                    height: 40,
-                    width: 40,
                     flexShrink: 0,
                   }}
                 >
@@ -494,13 +519,18 @@ export const ProfileDirectivesTab = ({ user }) => {
                 onInput={onMappingKeyInput}
                 sx={{ flex: { sm: 1 }, width: { xs: '100%', sm: 'auto' } }}
                 endAdornment={
-                  hasMappingKey ? (
-                    <InputAdornment position="end">
-                      <IconButton size="small" onClick={handleClearMappingKey} edge="end" aria-label="Clear key">
-                        <ClearIcon sx={{ fontSize: '1rem' }} />
-                      </IconButton>
-                    </InputAdornment>
-                  ) : null
+                  <InputAdornment position="end">
+                    <IconButton
+                      ref={clearMappingKeyBtnRef}
+                      size="small"
+                      onClick={handleClearMappingKey}
+                      edge="end"
+                      aria-label="Clear key"
+                      sx={{ display: 'none' }}
+                    >
+                      <ClearIcon sx={{ fontSize: '1rem' }} />
+                    </IconButton>
+                  </InputAdornment>
                 }
               />
               <MuiTextField
@@ -517,13 +547,18 @@ export const ProfileDirectivesTab = ({ user }) => {
                   }
                 }}
                 endAdornment={
-                  hasMappingVal ? (
-                    <InputAdornment position="end">
-                      <IconButton size="small" onClick={handleClearMappingVal} edge="end" aria-label="Clear value">
-                        <ClearIcon sx={{ fontSize: '1rem' }} />
-                      </IconButton>
-                    </InputAdornment>
-                  ) : null
+                  <InputAdornment position="end">
+                    <IconButton
+                      ref={clearMappingValBtnRef}
+                      size="small"
+                      onClick={handleClearMappingVal}
+                      edge="end"
+                      aria-label="Clear value"
+                      sx={{ display: 'none' }}
+                    >
+                      <ClearIcon sx={{ fontSize: '1rem' }} />
+                    </IconButton>
+                  </InputAdornment>
                 }
               />
               <MuiButton
@@ -532,7 +567,6 @@ export const ProfileDirectivesTab = ({ user }) => {
                 startIcon={<AddIcon />}
                 onClick={handleAddPhraseMapping}
                 sx={{
-                  height: 40,
                   whiteSpace: 'nowrap',
                   flexShrink: 0,
                   width: { xs: '100%', sm: 'auto' },
@@ -685,13 +719,18 @@ export const ProfileDirectivesTab = ({ user }) => {
                   }
                 }}
                 endAdornment={
-                  hasNewInstruction ? (
-                    <InputAdornment position="end">
-                      <IconButton size="small" onClick={handleClearInstruction} edge="end" aria-label="Clear rule input">
-                        <ClearIcon sx={{ fontSize: '1rem' }} />
-                      </IconButton>
-                    </InputAdornment>
-                  ) : null
+                  <InputAdornment position="end">
+                    <IconButton
+                      ref={clearInstructionBtnRef}
+                      size="small"
+                      onClick={handleClearInstruction}
+                      edge="end"
+                      aria-label="Clear rule input"
+                      sx={{ display: 'none' }}
+                    >
+                      <ClearIcon sx={{ fontSize: '1rem' }} />
+                    </IconButton>
+                  </InputAdornment>
                 }
               />
               <MuiButton
@@ -702,7 +741,6 @@ export const ProfileDirectivesTab = ({ user }) => {
                 sx={{
                   display: { xs: 'none', sm: 'inline-flex' },
                   whiteSpace: 'nowrap',
-                  height: 40,
                   flexShrink: 0,
                 }}
               >
@@ -716,8 +754,6 @@ export const ProfileDirectivesTab = ({ user }) => {
                     display: { xs: 'inline-flex', sm: 'none' },
                     border: 1,
                     borderColor: 'divider',
-                    height: 40,
-                    width: 40,
                     flexShrink: 0,
                   }}
                 >
@@ -729,68 +765,15 @@ export const ProfileDirectivesTab = ({ user }) => {
 
           <Divider />
 
-          {/* Section 4: Report Templates SSOT */}
-          <Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <DescriptionOutlinedIcon fontSize="small" color="primary" />
-                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                  Corporate Report Templates (SSOT)
-                </Typography>
-              </Box>
-              <MuiButton
-                variant="text"
-                color="inherit"
-                size="small"
-                startIcon={<RestartAltIcon fontSize="small" />}
-                onClick={handleResetTemplates}
-                sx={{ color: 'text.secondary' }}
-              >
-                Reset Defaults
-              </MuiButton>
-            </Box>
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 2 }}>
-              Authoritative Amharic report layouts applied when synthesizing inspection records (up to {REPORT_CONSTANTS.TEMPLATE_MAX_LENGTH.toLocaleString()} characters each). Leave blank to use system standard templates.
-            </Typography>
-
-            <Grid container spacing={{ xs: 2, sm: 2.5 }}>
-              <Grid size={{ xs: 12 }}>
-                <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                  Single-Branch Inspection Template
-                </Typography>
-                <MuiTextField
-                  multiline
-                  rows={4}
-                  fullWidth
-                  value={singleBranchTemplate}
-                  onChange={(e) => setSingleBranchTemplate(e.target.value)}
-                  placeholder="Enter custom Single-Branch report header and section layout..."
-                  helperText={`${singleBranchTemplate.length}/${REPORT_CONSTANTS.TEMPLATE_MAX_LENGTH.toLocaleString()} characters`}
-                  slotProps={{
-                    htmlInput: { maxLength: REPORT_CONSTANTS.TEMPLATE_MAX_LENGTH },
-                  }}
-                />
-              </Grid>
-
-              <Grid size={{ xs: 12 }}>
-                <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
-                  Multi-Branch Consolidated Inspection Template
-                </Typography>
-                <MuiTextField
-                  multiline
-                  rows={4}
-                  fullWidth
-                  value={multiBranchTemplate}
-                  onChange={(e) => setMultiBranchTemplate(e.target.value)}
-                  placeholder="Enter custom Multi-Branch report header and branch-separated layout..."
-                  helperText={`${multiBranchTemplate.length}/${REPORT_CONSTANTS.TEMPLATE_MAX_LENGTH.toLocaleString()} characters`}
-                  slotProps={{
-                    htmlInput: { maxLength: REPORT_CONSTANTS.TEMPLATE_MAX_LENGTH },
-                  }}
-                />
-              </Grid>
-            </Grid>
-          </Box>
+          {/* Section 4: Report Templates SSOT (Memoized Zero-Lag Subcomponent) */}
+          <ProfileReportTemplatesSection
+            initialSingle={initialTemplates.singleBranch || ''}
+            initialMulti={initialTemplates.multiBranch || ''}
+            onSingleChange={handleSingleChange}
+            onMultiChange={handleMultiChange}
+            onReset={handleResetTemplates}
+            resetCounter={resetCounter}
+          />
 
           {/* Save Action Deck */}
           <Box

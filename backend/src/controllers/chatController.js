@@ -19,12 +19,12 @@ import { Chat } from '../models/Chat.js';
 import { Audio } from '../models/Audio.js';
 import { HTTP_STATUS, CHAT_CONSTANTS, ATTACHMENT_CONSTANTS, AUDIO_CONSTANTS, AI_MODELS, formatSttEngineDisplayName } from '../utils/constants.js';
 import { User } from '../models/User.js';
-import { NotFoundError, BadRequestError } from '../errors/CustomError.js';
+import { NotFoundError, BadRequestError, UnauthenticatedError } from '../errors/CustomError.js';
 import { assembleSystemPrompt } from '../utils/promptAssembler.js';
 import { agentToolDeclarations, executeAgentTool } from '../tools/agentTools.js';
 import { processAttachments, resolveFilePath } from '../utils/attachmentProcessor.js';
 import { transcribeAudioDocument, transcribeAudio as transcribeAudioUtil } from '../utils/audioChunker.js';
-import { dispatchToTelegram } from '../services/telegramService.js';
+import { dispatchToTelegram, resolveChannelChatId } from '../services/telegramService.js';
 import { generatedDocumentRegistry } from '../services/documentGenerationService.js';
 import { getBilingualSearchTerms, escapeRegex } from '../utils/transliterate.js';
 
@@ -337,6 +337,10 @@ export const streamChat = asyncHandler(async (req, res) => {
     userTurn = null;
     stoppedTurn = null;
 
+    // Extract user BYOK credentials if configured
+    const userAddisKey = req.user.settings?.apiKeys?.addisApiKey || null;
+    const userGeminiKey = req.user.settings?.apiKeys?.geminiApiKey || null;
+
     if (isContinue) {
       // CONTINUATION CONTRACT: Never create a new user turn.
       // Resume generating from the stopped assistant turn in chat.messages
@@ -377,6 +381,8 @@ export const streamChat = asyncHandler(async (req, res) => {
             if (!audioDoc.transcription || audioDoc.status !== 'transcribed') {
               const updated = await transcribeAudioDocument(audioDoc._id, {
                 sttEngine: activeSttEngine,
+                addisApiKey: userAddisKey,
+                geminiApiKey: userGeminiKey,
               });
               if (updated?.transcription && updated.transcription.trim()) {
                 audioTranscriptions.push(updated.transcription.trim());
@@ -464,6 +470,8 @@ export const streamChat = asyncHandler(async (req, res) => {
             if (!audioDoc.transcription || audioDoc.status !== 'transcribed' || shouldReTranscribe) {
               const updated = await transcribeAudioDocument(audioDoc._id, {
                 sttEngine: activeSttEngine,
+                addisApiKey: userAddisKey,
+                geminiApiKey: userGeminiKey,
               });
               if (updated?.transcription && updated.transcription.trim()) {
                 audioTranscriptions.push(updated.transcription.trim());
@@ -577,6 +585,8 @@ export const streamChat = asyncHandler(async (req, res) => {
               if (!audioDoc.transcription || audioDoc.status !== 'transcribed') {
                 const updated = await transcribeAudioDocument(audioDoc._id, {
                   sttEngine: activeSttEngine,
+                  addisApiKey: userAddisKey,
+                  geminiApiKey: userGeminiKey,
                 });
                 if (updated.transcription && updated.transcription.trim()) {
                   audioTranscriptions.push(updated.transcription.trim());
@@ -683,9 +693,23 @@ export const streamChat = asyncHandler(async (req, res) => {
     });
 
     // 10. Multi-Step Autonomous Tool Execution Loop (maxSteps: 5)
-    const apiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+    // BYOK Resolution: User-custom key takes precedence -> Server .env fallback -> Clean SSE error frame
+    let userApiKey = req.user.settings?.apiKeys?.geminiApiKey;
+    if (!userApiKey) {
+      const userWithKey = await User.findById(req.user._id).select('+settings.apiKeys.geminiApiKey').lean();
+      userApiKey = userWithKey?.settings?.apiKeys?.geminiApiKey;
+    }
+    const apiKey = userApiKey || env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+
     if (!apiKey) {
-      throw new Error('GEMINI_API_KEY is not configured in environment settings.');
+      res.write(`event: error\ndata: ${JSON.stringify({
+        message: 'A Google Gemini API Key is required to chat with your Personal AI Agent. Please enter your free API key in Profile > AI Agent Settings.',
+        code: 'MISSING_GEMINI_KEY',
+        actionRequired: 'CONFIGURE_GEMINI_KEY',
+      })}\n\n`);
+      res.write(`event: done\ndata: ${JSON.stringify({ isError: true, chat: chat?.toJSON ? chat.toJSON() : chat })}\n\n`);
+      res.end();
+      return;
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -1557,10 +1581,22 @@ export const transcribeAudio = asyncHandler(async (req, res) => {
   }
 
   try {
+    let userAddisKey = req.user?.settings?.apiKeys?.addisApiKey;
+    let userGeminiKey = req.user?.settings?.apiKeys?.geminiApiKey;
+    if ((!userAddisKey || !userGeminiKey) && req.user?._id) {
+      const userWithKeys = await User.findById(req.user._id).select('+settings.apiKeys.addisApiKey +settings.apiKeys.geminiApiKey').lean();
+      if (userWithKeys?.settings?.apiKeys) {
+        userAddisKey = userWithKeys.settings.apiKeys.addisApiKey;
+        userGeminiKey = userWithKeys.settings.apiKeys.geminiApiKey;
+      }
+    }
+
     const result = await transcribeAudioUtil(file.path, {
       sttEngine: engine,
       language,
       mimeType: file.mimetype,
+      addisApiKey: userAddisKey,
+      geminiApiKey: userGeminiKey,
     });
 
     const text = (result.text || '').trim();
@@ -1614,7 +1650,27 @@ export const shareToTelegramDirect = asyncHandler(async (req, res) => {
   if (bold) mergedOptions.allBold = true;
   if (underlineHeaders) mergedOptions.underlineHeaders = true;
 
-  const user = await User.findById(req.user._id).lean();
+  const user = await User.findById(req.user._id)
+    .select('+integrations.telegram.botToken')
+    .lean();
+  if (!user) {
+    throw new UnauthenticatedError('User account not found.');
+  }
+
+  const telegram = user.integrations?.telegram;
+  if (!telegram?.connected || !telegram?.botToken) {
+    throw new BadRequestError('Telegram integration is not connected. Please connect your bot in Profile Settings.');
+  }
+
+  if (telegram.enabled === false) {
+    throw new BadRequestError('Telegram integration is currently paused in Profile Settings.');
+  }
+
+  const chatId = resolveChannelChatId(user, targetChannel);
+  if (!chatId) {
+    throw new BadRequestError(`Target channel "${targetChannel}" does not have a configured Chat ID in Profile Settings.`);
+  }
+
   const result = await dispatchToTelegram({
     user,
     targetChannel,
@@ -1624,8 +1680,12 @@ export const shareToTelegramDirect = asyncHandler(async (req, res) => {
     options: mergedOptions,
   });
 
+  if (!result.success && !result.ok) {
+    throw new BadRequestError(result.error || `Failed to broadcast message to Telegram channel "${targetChannel}".`);
+  }
+
   res.status(HTTP_STATUS.OK).json({
-    success: result.ok || result.success || false,
+    success: true,
     data: result,
   });
 });

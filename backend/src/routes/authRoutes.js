@@ -9,13 +9,13 @@ import {
   login,
   refreshToken,
   logout,
-  googleAuthStub,
+  initiateGoogleSso,
+  handleGoogleSsoCallback,
   connectGoogleDrive,
   handleGoogleCallback,
   disconnectGoogleDriveRoute,
   getGoogleDriveStatus,
   toggleGoogleDriveRoute,
-  mockConnectGoogleDriveRoute,
 } from '../controllers/authController.js';
 import {
   registerValidation,
@@ -90,19 +90,17 @@ router.get('/google/status', verifyToken, getGoogleDriveStatus);
 router.post('/google/toggle', verifyToken, toggleGoogleDriveRoute);
 
 /**
- * @route POST /api/v1/auth/google/mock-connect
- * @desc Mock connect Google Drive for integration testing
- * @access Protected
- */
-router.post('/google/mock-connect', verifyToken, mockConnectGoogleDriveRoute);
-
-/**
- * @route GET /api/v1/auth/google
- * @route POST /api/v1/auth/google
- * @desc Legacy Google authentication placeholder stub.
+ * @route GET /api/v1/auth/google/sso
+ * @desc Initiate Google Single Sign-On (SSO) login/register flow.
  * @access Public
  */
-router.get('/google', googleAuthStub);
-router.post('/google', googleAuthStub);
+router.get('/google/sso', initiateGoogleSso);
+
+/**
+ * @route GET /api/v1/auth/google/sso/callback
+ * @desc Google Single Sign-On (SSO) OAuth callback.
+ * @access Public
+ */
+router.get('/google/sso/callback', handleGoogleSsoCallback);
 
 export default router;

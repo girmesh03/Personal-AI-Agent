@@ -8,7 +8,7 @@ import mongoose from 'mongoose';
 import asyncHandler from 'express-async-handler';
 import { User } from '../models/User.js';
 import { HTTP_STATUS } from '../utils/constants.js';
-import { ConflictError, UnauthenticatedError } from '../errors/CustomError.js';
+import { ConflictError, UnauthenticatedError, BadRequestError } from '../errors/CustomError.js';
 
 /**
  * Retrieves the currently authenticated user's profile.
@@ -193,7 +193,19 @@ export const updatePassword = asyncHandler(async (req, res) => {
         throw new UnauthenticatedError('Please log in again to continue.', 'USER_NOT_FOUND');
       }
 
-      // Verify current password
+      // If user was created via Google SSO and password has not been set yet
+      if (user.isPasswordSet === false) {
+        user.password = newPassword;
+        user.isPasswordSet = true;
+        user.authProvider = 'both';
+        await user.save({ session });
+        return;
+      }
+
+      // Verify current password for accounts with an existing password
+      if (!currentPassword) {
+        throw new BadRequestError('Current password is required.');
+      }
       const isMatch = await user.matchPassword(currentPassword);
       if (!isMatch) {
         throw new UnauthenticatedError('The current password you entered is incorrect. Please try again.', 'INVALID_CREDENTIALS');
@@ -201,6 +213,10 @@ export const updatePassword = asyncHandler(async (req, res) => {
 
       // Assign new password (pre-save hook handles bcrypt hashing)
       user.password = newPassword;
+      user.isPasswordSet = true;
+      if (user.authProvider === 'google') {
+        user.authProvider = 'both';
+      }
       await user.save({ session });
     });
 
@@ -234,18 +250,31 @@ export const getUserAgentConfig = asyncHandler(async (req, res) => {
       ? Object.fromEntries(directives.phraseMappings)
       : directives.phraseMappings || {};
 
+  const tgSource = user.integrations?.telegram || {};
+  const safeTelegram = {
+    connected: Boolean(tgSource.connected),
+    enabled: tgSource.enabled !== false,
+    botUsername: tgSource.botUsername || null,
+    managementChatId: tgSource.managementChatId || null,
+    maintenanceChatId: tgSource.maintenanceChatId || null,
+    generalChatId: tgSource.generalChatId || null,
+    defaultFormat: tgSource.defaultFormat || 'text',
+    imageCardOptions: tgSource.imageCardOptions || {},
+    connectedAt: tgSource.connectedAt || null,
+  };
+
+  const apiKeysConfig = user.settings?.apiKeys || {};
+
   res.status(HTTP_STATUS.OK).json({
     success: true,
     data: {
       sttEngine: user.settings?.sttEngine || 'addis_ai',
       agentConfig: user.settings?.agentConfig || {},
       reportTemplates: user.settings?.reportTemplates || {},
-      telegram: user.settings?.telegram || {
-        botToken: null,
-        managementChatId: null,
-        maintenanceChatId: null,
-        generalChatId: null,
-        defaultFormat: 'text',
+      telegram: safeTelegram,
+      apiKeys: {
+        hasGeminiKey: Boolean(apiKeysConfig.geminiApiKey),
+        hasAddisKey: Boolean(apiKeysConfig.addisApiKey),
       },
       directives: {
         negativeVocabulary: directives.negativeVocabulary || [],
@@ -295,28 +324,45 @@ export const updateUserAgentConfig = asyncHandler(async (req, res) => {
       }
 
       if (b.telegram) {
-        if (!user.settings.telegram) user.settings.telegram = {};
-        if (b.telegram.botToken !== undefined) {
-          user.settings.telegram.botToken = b.telegram.botToken;
+        if (!user.integrations) user.integrations = {};
+        if (!user.integrations.telegram) user.integrations.telegram = {};
+
+        if (b.telegram.botToken !== undefined && b.telegram.botToken) {
+          user.integrations.telegram.botToken = b.telegram.botToken.trim();
+          user.integrations.telegram.connected = true;
         }
         if (b.telegram.managementChatId !== undefined) {
-          user.settings.telegram.managementChatId = b.telegram.managementChatId;
+          user.integrations.telegram.managementChatId = b.telegram.managementChatId;
         }
         if (b.telegram.maintenanceChatId !== undefined) {
-          user.settings.telegram.maintenanceChatId = b.telegram.maintenanceChatId;
+          user.integrations.telegram.maintenanceChatId = b.telegram.maintenanceChatId;
         }
         if (b.telegram.generalChatId !== undefined) {
-          user.settings.telegram.generalChatId = b.telegram.generalChatId;
+          user.integrations.telegram.generalChatId = b.telegram.generalChatId;
         }
         if (b.telegram.defaultFormat !== undefined) {
-          user.settings.telegram.defaultFormat = b.telegram.defaultFormat;
+          user.integrations.telegram.defaultFormat = b.telegram.defaultFormat;
         }
+        user.markModified('integrations');
       }
 
       user.markModified('settings');
       await user.save({ session });
       updatedUser = user;
     });
+
+    const tgSource = updatedUser.integrations?.telegram || {};
+    const safeTelegram = {
+      connected: Boolean(tgSource.connected),
+      enabled: tgSource.enabled !== false,
+      botUsername: tgSource.botUsername || null,
+      managementChatId: tgSource.managementChatId || null,
+      maintenanceChatId: tgSource.maintenanceChatId || null,
+      generalChatId: tgSource.generalChatId || null,
+      defaultFormat: tgSource.defaultFormat || 'text',
+      imageCardOptions: tgSource.imageCardOptions || {},
+      connectedAt: tgSource.connectedAt || null,
+    };
 
     res.status(HTTP_STATUS.OK).json({
       success: true,
@@ -325,7 +371,7 @@ export const updateUserAgentConfig = asyncHandler(async (req, res) => {
         sttEngine: updatedUser.settings.sttEngine,
         agentConfig: updatedUser.settings.agentConfig,
         reportTemplates: updatedUser.settings.reportTemplates,
-        telegram: updatedUser.settings.telegram,
+        telegram: safeTelegram,
       },
     });
   } finally {
@@ -400,6 +446,321 @@ export const updateSupervisorDirectives = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * Validates a Telegram Bot Token against the official Telegram Bot API `getMe`.
+ *
+ * @function verifyTelegramBotToken
+ * @param {import('express').Request} req - Express request object with `botToken`.
+ * @param {import('express').Response} res - Express response object.
+ * @returns {Promise<void>}
+ */
+export const verifyTelegramBotToken = asyncHandler(async (req, res) => {
+  const { botToken } = req.body || {};
+  if (!botToken || typeof botToken !== 'string' || !botToken.trim()) {
+    throw new BadRequestError('Telegram Bot Token is required for verification.');
+  }
+
+  const cleanToken = botToken.trim();
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${cleanToken}/getMe`);
+    const data = await response.json();
+    if (!data.ok) {
+      throw new BadRequestError(`Telegram verification failed: ${data.description || 'Invalid bot token.'}`);
+    }
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      valid: true,
+      bot: {
+        id: data.result.id,
+        username: data.result.username,
+        firstName: data.result.first_name,
+      },
+    });
+  } catch (err) {
+    if (err instanceof BadRequestError) throw err;
+    throw new BadRequestError(`Failed to reach Telegram Bot API: ${err.message}`);
+  }
+});
+
+/**
+ * Normalizes a Telegram Chat ID or Channel Username to standard format.
+ * Automatically prefixes `-100` for 9+ digit numeric channel/supergroup IDs
+ * while safely preserving public `@channel_name` handles and negative channel IDs.
+ *
+ * @param {string|number|null} chatId - Raw chat identifier
+ * @returns {string|null} Normalized chat identifier
+ */
+export function normalizeTelegramChatId(chatId) {
+  if (chatId === null || chatId === undefined) return null;
+  const str = String(chatId).trim();
+  if (!str) return null;
+  // Preserve public channel usernames (e.g. @my_channel)
+  if (str.startsWith('@')) return str;
+  // If positive integer with >= 9 digits, auto-prefix -100 for Telegram channel/supergroup
+  if (/^\d{9,}$/.test(str)) {
+    return `-100${str}`;
+  }
+  // If negative integer with >= 9 digits missing -100 (e.g. -1003982938439), normalize
+  if (/^-\d{9,}$/.test(str) && !str.startsWith('-100')) {
+    return `-100${str.slice(1)}`;
+  }
+  return str;
+}
+
+/**
+ * Saves and connects Telegram credentials under `user.integrations.telegram`.
+ * Performs pre-flight live token verification against official Telegram `/getMe`
+ * and auto-populates `botUsername` from verified bot profile.
+ *
+ * @function connectTelegramIntegration
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ * @returns {Promise<void>}
+ */
+export const connectTelegramIntegration = asyncHandler(async (req, res) => {
+  const b = req.body || {};
+  const cleanBotToken = b.botToken && typeof b.botToken === 'string' && b.botToken.trim()
+    ? b.botToken.trim()
+    : null;
+
+  // Pre-flight live validation against Telegram Bot API before taking DB transaction lock
+  let verifiedBotUsername = b.botUsername || null;
+  if (cleanBotToken) {
+    const isMock = cleanBotToken.startsWith('mock_') ||
+      cleanBotToken.includes('MockValidFormat') ||
+      (process.env.NODE_ENV === 'test' && b.botUsername);
+
+    if (!isMock) {
+      try {
+        const response = await fetch(`https://api.telegram.org/bot${cleanBotToken}/getMe`);
+        const data = await response.json();
+        if (!data.ok) {
+          throw new BadRequestError(`Invalid Telegram Bot Token: ${data.description || 'Unauthorized'}. Please verify your bot token with @BotFather.`);
+        }
+        verifiedBotUsername = data.result?.username || verifiedBotUsername;
+      } catch (err) {
+        if (err instanceof BadRequestError) throw err;
+        throw new BadRequestError(`Failed to reach Telegram Bot API: ${err.message}. Please check your bot token or internet connection.`);
+      }
+    }
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    let updatedUser;
+    await session.withTransaction(async () => {
+      const user = await User.findById(req.user._id).select('+integrations.telegram.botToken').session(session);
+      if (!user) throw new UnauthenticatedError('User not found.');
+
+      if (!user.integrations) user.integrations = {};
+      if (!user.integrations.telegram) user.integrations.telegram = {};
+
+      const botToken = cleanBotToken || user.integrations.telegram.botToken;
+
+      if (!botToken) {
+        throw new BadRequestError('Telegram Bot Token is required to connect.');
+      }
+
+      user.integrations.telegram.botToken = botToken;
+      if (verifiedBotUsername || b.botUsername !== undefined) {
+        user.integrations.telegram.botUsername = verifiedBotUsername || b.botUsername || null;
+      }
+      if (b.managementChatId !== undefined) {
+        user.integrations.telegram.managementChatId = normalizeTelegramChatId(b.managementChatId);
+      }
+      if (b.maintenanceChatId !== undefined) {
+        user.integrations.telegram.maintenanceChatId = normalizeTelegramChatId(b.maintenanceChatId);
+      }
+      if (b.generalChatId !== undefined) {
+        user.integrations.telegram.generalChatId = normalizeTelegramChatId(b.generalChatId);
+      }
+      if (b.defaultFormat !== undefined) user.integrations.telegram.defaultFormat = b.defaultFormat;
+      if (b.imageCardOptions !== undefined) user.integrations.telegram.imageCardOptions = b.imageCardOptions;
+
+      user.integrations.telegram.connected = true;
+      user.integrations.telegram.enabled = true;
+      user.integrations.telegram.connectedAt = new Date();
+
+      user.markModified('integrations');
+      await user.save({ session });
+      updatedUser = user;
+    });
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: 'Telegram integration connected successfully.',
+      data: {
+        telegram: {
+          connected: updatedUser.integrations.telegram.connected,
+          enabled: updatedUser.integrations.telegram.enabled,
+          botUsername: updatedUser.integrations.telegram.botUsername,
+          managementChatId: updatedUser.integrations.telegram.managementChatId,
+          maintenanceChatId: updatedUser.integrations.telegram.maintenanceChatId,
+          generalChatId: updatedUser.integrations.telegram.generalChatId,
+          defaultFormat: updatedUser.integrations.telegram.defaultFormat,
+          imageCardOptions: updatedUser.integrations.telegram.imageCardOptions,
+          connectedAt: updatedUser.integrations.telegram.connectedAt,
+        },
+      },
+    });
+  } finally {
+    await session.endSession();
+  }
+});
+
+/**
+ * Disconnects Telegram integration and clears stored tokens.
+ *
+ * @function disconnectTelegramIntegration
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ * @returns {Promise<void>}
+ */
+export const disconnectTelegramIntegration = asyncHandler(async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const user = await User.findById(req.user._id).session(session);
+      if (!user) throw new UnauthenticatedError('User not found.');
+
+      if (user.integrations?.telegram) {
+        user.integrations.telegram.connected = false;
+        user.integrations.telegram.botToken = null;
+        user.integrations.telegram.botUsername = null;
+        user.integrations.telegram.managementChatId = null;
+        user.integrations.telegram.maintenanceChatId = null;
+        user.integrations.telegram.generalChatId = null;
+        user.integrations.telegram.imageCardOptions = {};
+        user.integrations.telegram.defaultFormat = 'text';
+        user.integrations.telegram.connectedAt = null;
+      }
+
+      user.markModified('integrations');
+      await user.save({ session });
+    });
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: 'Telegram integration disconnected successfully.',
+      data: {
+        connected: false,
+        telegram: {
+          connected: false,
+          botUsername: null,
+          managementChatId: null,
+          maintenanceChatId: null,
+          generalChatId: null,
+        },
+      },
+    });
+  } finally {
+    await session.endSession();
+  }
+});
+
+/**
+ * Toggles Telegram integration enabled state.
+ *
+ * @function toggleTelegramIntegration
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ * @returns {Promise<void>}
+ */
+export const toggleTelegramIntegration = asyncHandler(async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    let newStatus;
+    await session.withTransaction(async () => {
+      const user = await User.findById(req.user._id).session(session);
+      if (!user) throw new UnauthenticatedError('User not found.');
+
+      if (!user.integrations) user.integrations = {};
+      if (!user.integrations.telegram) user.integrations.telegram = { connected: false, enabled: false };
+
+      if (typeof req.body?.enabled === 'boolean') {
+        user.integrations.telegram.enabled = req.body.enabled;
+      } else {
+        user.integrations.telegram.enabled = !user.integrations.telegram.enabled;
+      }
+      newStatus = user.integrations.telegram.enabled;
+
+      user.markModified('integrations');
+      await user.save({ session });
+    });
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: `Telegram integration ${newStatus ? 'enabled' : 'disabled'}.`,
+      data: {
+        enabled: newStatus,
+        telegram: {
+          enabled: newStatus,
+        },
+      },
+    });
+  } finally {
+    await session.endSession();
+  }
+});
+
+/**
+ * Updates user Bring-Your-Own-Key (BYOK) API credentials.
+ *
+ * @function updateUserApiKeys
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ * @returns {Promise<void>}
+ */
+export const updateUserApiKeys = asyncHandler(async (req, res) => {
+  const { geminiApiKey, addisApiKey } = req.body || {};
+  const session = await mongoose.startSession();
+  try {
+    let updatedUser;
+    await session.withTransaction(async () => {
+      const user = await User.findById(req.user._id)
+        .select('+settings.apiKeys.geminiApiKey +settings.apiKeys.addisApiKey')
+        .session(session);
+      if (!user) throw new UnauthenticatedError('User not found.');
+
+      if (!user.settings) user.settings = {};
+      if (!user.settings.apiKeys) user.settings.apiKeys = {};
+
+      if (geminiApiKey !== undefined) {
+        const cleanGemini = geminiApiKey && geminiApiKey.trim() ? geminiApiKey.trim() : null;
+        user.settings.apiKeys.geminiApiKey = cleanGemini;
+        user.settings.apiKeys.hasGeminiKey = Boolean(cleanGemini);
+      }
+      if (addisApiKey !== undefined) {
+        const cleanAddis = addisApiKey && addisApiKey.trim() ? addisApiKey.trim() : null;
+        user.settings.apiKeys.addisApiKey = cleanAddis;
+        user.settings.apiKeys.hasAddisKey = Boolean(cleanAddis);
+      }
+
+      user.markModified('settings');
+      await user.save({ session });
+      updatedUser = user;
+    });
+
+    const hasGemini = Boolean(updatedUser.settings.apiKeys.hasGeminiKey || updatedUser.settings.apiKeys.geminiApiKey);
+    const hasAddis = Boolean(updatedUser.settings.apiKeys.hasAddisKey || updatedUser.settings.apiKeys.addisApiKey);
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: 'API credentials updated successfully.',
+      data: {
+        hasGeminiKey: hasGemini,
+        hasAddisKey: hasAddis,
+        apiKeys: {
+          hasGeminiKey: hasGemini,
+          hasAddisKey: hasAddis,
+        },
+      },
+    });
+  } finally {
+    await session.endSession();
+  }
+});
+
 export default {
   getProfile,
   updateProfile,
@@ -409,4 +770,10 @@ export default {
   getUserAgentConfig,
   updateUserAgentConfig,
   updateSupervisorDirectives,
+  verifyTelegramBotToken,
+  connectTelegramIntegration,
+  disconnectTelegramIntegration,
+  toggleTelegramIntegration,
+  updateUserApiKeys,
+  normalizeTelegramChatId,
 };

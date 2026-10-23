@@ -177,7 +177,7 @@ export const Profile = () => {
         {/* Tab 1: Security & Password Management */}
         {activeTab === 1 && (
           <Box role="tabpanel" id="profile-tabpanel-1" aria-labelledby="profile-tab-1">
-            <ProfileSecurityTab />
+            <ProfileSecurityTab user={user} />
           </Box>
         )}
 

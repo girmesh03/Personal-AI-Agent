@@ -11,17 +11,29 @@ import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Typography from '@mui/material/Typography';
 import Grid from '@mui/material/Grid';
+import Chip from '@mui/material/Chip';
+import Switch from '@mui/material/Switch';
 import RadioGroup from '@mui/material/RadioGroup';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Radio from '@mui/material/Radio';
 import CircularProgress from '@mui/material/CircularProgress';
+import Alert from '@mui/material/Alert';
+import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
 import SendIcon from '@mui/icons-material/Send';
 import SaveIcon from '@mui/icons-material/Save';
 import SignalCellularAltIcon from '@mui/icons-material/SignalCellularAlt';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
+import LinkOffIcon from '@mui/icons-material/LinkOff';
 import PropTypes from 'prop-types';
 import { toast } from 'react-toastify';
 
-import { useUpdateAgentConfigMutation } from '../../redux/features/userSlice.js';
+import {
+  useVerifyTelegramBotTokenMutation,
+  useConnectTelegramMutation,
+  useDisconnectTelegramMutation,
+  useToggleTelegramMutation,
+} from '../../redux/features/userSlice.js';
 import MuiButton from '../reusable/MuiButton.jsx';
 import MuiTextField from '../reusable/MuiTextField.jsx';
 
@@ -34,16 +46,22 @@ import MuiTextField from '../reusable/MuiTextField.jsx';
  * @returns {import('react').JSX.Element} Rendered telegram tab.
  */
 export const ProfileTelegramTab = ({ user }) => {
-  const [updateAgentConfig, { isLoading: isSaving }] = useUpdateAgentConfigMutation();
-  const [isPinging, setIsPinging] = useState(false);
+  const [verifyToken, { isLoading: isPinging }] = useVerifyTelegramBotTokenMutation();
+  const [connectTelegram, { isLoading: isSaving }] = useConnectTelegramMutation();
+  const [disconnectTelegram, { isLoading: isDisconnecting }] = useDisconnectTelegramMutation();
+  const [toggleTelegram, { isLoading: isToggling }] = useToggleTelegramMutation();
 
-  const initialTelegram = user?.settings?.telegram || {};
+  const initialTelegram = user?.integrations?.telegram || {};
+  const isConnected = Boolean(initialTelegram.connected);
+  const isEnabled = initialTelegram.enabled !== false;
+  const botUsername = initialTelegram.botUsername || null;
 
   const {
     register,
     handleSubmit,
     control,
     getValues,
+    reset,
   } = useForm({
     mode: 'onBlur',
     defaultValues: {
@@ -70,29 +88,52 @@ export const ProfileTelegramTab = ({ user }) => {
       return;
     }
 
-    setIsPinging(true);
     try {
-      // Diagnostic format check and latency emulation
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      toast.success('Telegram Bot Token verified with valid Telegram Bot API format.');
-    } finally {
-      setIsPinging(false);
+      const res = await verifyToken({ botToken: token }).unwrap();
+      if (res?.valid) {
+        toast.success(`Telegram Bot verified: @${res.bot.username || 'bot'} (${res.bot.firstName || 'Bot'})`);
+      }
+    } catch (err) {
+      toast.error(err?.data?.message || err?.message || 'Invalid Telegram Bot Token.');
+    }
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      await disconnectTelegram().unwrap();
+      reset({
+        botToken: '',
+        managementChatId: '',
+        maintenanceChatId: '',
+        generalChatId: '',
+        defaultFormat: 'text',
+      });
+      toast.success('Telegram integration disconnected successfully.');
+    } catch (err) {
+      toast.error(err?.data?.message || err?.message || 'Failed to disconnect Telegram.');
+    }
+  };
+
+  const handleToggle = async () => {
+    try {
+      const res = await toggleTelegram().unwrap();
+      toast.success(`Telegram integration ${res?.data?.enabled ? 'enabled' : 'paused'}.`);
+    } catch (err) {
+      toast.error(err?.data?.message || err?.message || 'Failed to toggle Telegram.');
     }
   };
 
   const onSubmit = async (values) => {
     try {
-      await updateAgentConfig({
-        telegram: {
-          botToken: values.botToken?.trim() || null,
-          managementChatId: values.managementChatId?.trim() || null,
-          maintenanceChatId: values.maintenanceChatId?.trim() || null,
-          generalChatId: values.generalChatId?.trim() || null,
-          defaultFormat: values.defaultFormat || 'text',
-        },
+      await connectTelegram({
+        botToken: values.botToken?.trim() || undefined,
+        managementChatId: values.managementChatId?.trim() || null,
+        maintenanceChatId: values.maintenanceChatId?.trim() || null,
+        generalChatId: values.generalChatId?.trim() || null,
+        defaultFormat: values.defaultFormat || 'text',
       }).unwrap();
 
-      toast.success('Telegram operational channels saved successfully.');
+      toast.success('Telegram operational channels connected and saved successfully.');
     } catch (err) {
       const errorMsg =
         err?.data?.message || err?.message || 'Failed to update Telegram settings.';
@@ -107,16 +148,95 @@ export const ProfileTelegramTab = ({ user }) => {
         borderRadius: '12px',
         bgcolor: 'background.paper',
         border: 1,
-        borderColor: 'divider',
+        borderColor: isConnected ? 'primary.light' : 'divider',
         boxShadow: 'none',
       }}
     >
       <CardContent sx={{ p: { xs: 1.5, sm: 2.5 } }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-          <SendIcon color="primary" fontSize="small" />
-          <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', sm: '1.05rem' }, fontWeight: 600 }}>
-            Telegram Operational Broadcast Channels
-          </Typography>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            alignItems: { xs: 'flex-start', sm: 'center' },
+            justifyContent: 'space-between',
+            gap: 1.5,
+            mb: 1,
+          }}
+        >
+          {/* Tier 1: Title and Bot Status Chip */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0, width: { xs: '100%', sm: 'auto' } }}>
+            <SendIcon color="primary" fontSize="small" sx={{ flexShrink: 0 }} />
+            <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', sm: '1.05rem' }, fontWeight: 600 }}>
+              Telegram Operational Broadcast Channels
+            </Typography>
+            <Chip
+              icon={isConnected ? <CheckCircleOutlineIcon fontSize="small" /> : undefined}
+              label={isConnected ? (botUsername ? `@${botUsername}` : 'Connected') : 'Not Connected'}
+              color={isConnected ? (isEnabled ? 'success' : 'default') : 'default'}
+              size="small"
+              variant={isConnected ? 'filled' : 'outlined'}
+              sx={{
+                maxWidth: { xs: 150, sm: 220 },
+                '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' },
+              }}
+            />
+          </Box>
+
+          {/* Tier 2: Controls cluster (Enabled toggle + Disconnect) */}
+          {isConnected && (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: { xs: 'space-between', sm: 'flex-end' },
+                width: { xs: '100%', sm: 'auto' },
+                gap: 1.5,
+              }}
+            >
+              <FormControlLabel
+                control={<Switch checked={isEnabled} onChange={handleToggle} disabled={isToggling} size="small" />}
+                label={isEnabled ? 'Enabled' : 'Paused'}
+                sx={{ m: 0 }}
+              />
+
+              {/* Desktop/Tablet Disconnect Button */}
+              <Box sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
+                <MuiButton
+                  variant="outlined"
+                  color="error"
+                  size="small"
+                  startIcon={isDisconnecting ? <CircularProgress size={12} color="inherit" /> : <LinkOffIcon fontSize="small" />}
+                  onClick={handleDisconnect}
+                  disabled={isDisconnecting}
+                  sx={{ fontSize: '0.75rem' }}
+                >
+                  Disconnect
+                </MuiButton>
+              </Box>
+
+              {/* Mobile xs Iconified Disconnect Button with Tooltip */}
+              <Box sx={{ display: { xs: 'inline-flex', sm: 'none' } }}>
+                <Tooltip title="Disconnect Telegram" arrow>
+                  <span>
+                    <IconButton
+                      color="error"
+                      size="small"
+                      onClick={handleDisconnect}
+                      disabled={isDisconnecting}
+                      sx={{
+                        border: 1,
+                        borderColor: 'error.main',
+                        borderRadius: 1,
+                        p: 0.5,
+                      }}
+                    >
+                      {isDisconnecting ? <CircularProgress size={16} color="inherit" /> : <LinkOffIcon fontSize="small" />}
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </Box>
+            </Box>
+          )}
         </Box>
         <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: { xs: '0.8rem', sm: '0.875rem' }, mb: { xs: 2, sm: 2.5 } }}>
           Connect your Telegram Bot to instantly dispatch synthesized inspection dossiers, incident alerts, and executive briefings to operations channels.
@@ -176,6 +296,31 @@ export const ProfileTelegramTab = ({ user }) => {
                 helperText="All-hands or branch operations chat"
                 {...register('generalChatId')}
               />
+            </Grid>
+
+            {/* Telegram Channel Setup Guidance */}
+            <Grid size={{ xs: 12 }}>
+              <Alert
+                severity="info"
+                variant="outlined"
+                sx={{
+                  borderRadius: '8px',
+                  bgcolor: 'action.hover',
+                  '& .MuiAlert-message': { fontSize: '0.8125rem', lineHeight: 1.5 },
+                }}
+              >
+                <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5, fontSize: '0.8125rem' }}>
+                  Important Telegram Channel Setup Requirements:
+                </Typography>
+                <Box component="ul" sx={{ m: 0, pl: 2 }}>
+                  <li>
+                    <strong>Administrator Rights:</strong> You must add your bot to the channel/group as an <em>Administrator</em> with <strong>&quot;Post Messages&quot;</strong> permission enabled. Otherwise, Telegram will reject broadcast attempts.
+                  </li>
+                  <li>
+                    <strong>Channel Chat ID:</strong> Telegram channels and supergroups require the <code>-100</code> prefix (e.g. <code>-1001003982938439</code>) or a public username (e.g. <code>@my_channel</code>). You can find your Chat ID via <em>web.telegram.org</em> in the browser URL bar or by forwarding a message from the channel to <code>@userinfobot</code>.
+                  </li>
+                </Box>
+              </Alert>
             </Grid>
 
             {/* Broadcast Format Selection */}
@@ -305,7 +450,7 @@ export const ProfileTelegramTab = ({ user }) => {
                 fontWeight: 600,
               }}
             >
-              {isSaving ? 'Saving Settings...' : 'Save Telegram Settings'}
+              {isSaving ? 'Connecting...' : (isConnected ? 'Update Telegram Settings' : 'Connect Telegram')}
             </MuiButton>
           </Box>
         </Box>

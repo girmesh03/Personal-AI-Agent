@@ -5,6 +5,8 @@
  */
 
 import mongoose from 'mongoose';
+import crypto from 'crypto';
+import { google } from 'googleapis';
 import asyncHandler from 'express-async-handler';
 import { User } from '../models/User.js';
 import {
@@ -32,8 +34,48 @@ import {
   getAuthorizationUrl,
   exchangeCodeAndSaveTokens,
   disconnectGoogleDrive,
-  connectMockGoogleDrive,
 } from '../services/googleDriveService.js';
+
+/**
+ * Intelligently derives human-readable first and last names from an email address
+ * when not explicitly provided by the user or identity provider.
+ *
+ * @param {string} email - User email address
+ * @returns {{ firstName: string, lastName: string }}
+ */
+export function deriveNamesFromEmail(email = '') {
+  if (!email || typeof email !== 'string') {
+    return { firstName: 'User', lastName: 'Member' };
+  }
+
+  const localPart = email.split('@')[0] || '';
+  const rawParts = localPart.split(/[._\-+]+/).filter(Boolean);
+  const alphaParts = rawParts.filter((p) => /[a-zA-Z]/.test(p));
+  const candidateParts = alphaParts.length > 0 ? alphaParts : rawParts;
+
+  const formatWord = (str) => {
+    const clean = str.replace(/[^a-zA-Z]/g, '');
+    const target = clean.length >= USER_NAME_LENGTH.MIN ? clean : str;
+    const capped = target.charAt(0).toUpperCase() + target.slice(1).toLowerCase();
+    return capped.slice(0, USER_NAME_LENGTH.MAX);
+  };
+
+  let first = 'User';
+  let last = 'Member';
+
+  if (candidateParts.length >= 2) {
+    first = formatWord(candidateParts[0]);
+    last = formatWord(candidateParts[1]);
+  } else if (candidateParts.length === 1) {
+    first = formatWord(candidateParts[0]);
+    last = 'User';
+  }
+
+  if (first.length < USER_NAME_LENGTH.MIN) first = (first + '__').slice(0, USER_NAME_LENGTH.MAX);
+  if (last.length < USER_NAME_LENGTH.MIN) last = (last + '__').slice(0, USER_NAME_LENGTH.MAX);
+
+  return { firstName: first, lastName: last };
+}
 
 /**
  * Registers a new user account (Area Supervisor).
@@ -60,11 +102,10 @@ export const register = asyncHandler(async (req, res) => {
         throw new ConflictError('A user with this email address already exists.');
       }
 
-      // Name Auto-Derivation Invariant (Invariant 6)
-      const localPart = email.split('@')[0];
-      const derivedName = localPart.length >= USER_NAME_LENGTH.MIN ? localPart : `${localPart}__`;
-      const resolvedFirstName = (firstName && firstName.trim()) || derivedName;
-      const resolvedLastName = (lastName && lastName.trim()) || derivedName;
+      // Name Auto-Derivation Invariant (Invariant 6): Extract clean human names if omitted
+      const derivedNames = deriveNamesFromEmail(email);
+      const resolvedFirstName = (firstName && firstName.trim()) || derivedNames.firstName;
+      const resolvedLastName = (lastName && lastName.trim()) || derivedNames.lastName;
 
       // Create new User document inside the active transaction
       const [user] = await User.create(
@@ -112,6 +153,18 @@ export const login = asyncHandler(async (req, res) => {
   const user = await User.findOne({ email }).select('+password');
   if (!user) {
     throw new UnauthenticatedError('Invalid email or password', 'INVALID_CREDENTIALS');
+  }
+
+  // If user was registered via Google SSO and has not yet set an email/password
+  if (user.isPasswordSet === false && user.authProvider === 'google') {
+    return res.status(HTTP_STATUS.UNAUTHENTICATED).json({
+      success: false,
+      errorCode: 'SSO_PASSWORD_NOT_SET',
+      message: "This account was registered using Google Sign-In and does not have an email password yet. Please click 'Continue with Google' to sign in, or set a password in your Profile.",
+      data: {
+        authProvider: 'google',
+      },
+    });
   }
 
   // Verify password hash
@@ -202,23 +255,148 @@ export const logout = asyncHandler(async (_req, res) => {
 });
 
 /**
- * Google OAuth authentication placeholder stub.
+ * Resolves the Google SSO OAuth redirect URI.
+ * Favors specific SSO override, then matches incoming /sso/callback path,
+ * falling back to OAUTH_GOOGLE_CALLBACK_URL or /api/v1/auth/google/callback.
  *
- * @function googleAuthStub
- * @param {import('express').Request} _req - Express request object (unused).
- * @param {import('express').Response} res - Express response object.
- * @returns {Promise<void>}
+ * @param {import('express').Request} [req]
+ * @returns {string}
  */
-export const googleAuthStub = asyncHandler(async (_req, res) => {
-  res.status(HTTP_STATUS.OK).json({
-    success: true,
-    message: 'Google authentication service is currently in development. Please use your corporate email credentials.',
-    data: {
-      provider: 'google',
-      status: 'stub',
-      available: false,
-    },
+export const getGoogleSsoCallbackUrl = (req) => {
+  if (env.OAUTH_GOOGLE_SSO_CALLBACK_URL) {
+    return env.OAUTH_GOOGLE_SSO_CALLBACK_URL;
+  }
+  if (req?.originalUrl?.includes('/sso/callback') || req?.path?.includes('/sso/callback')) {
+    return `${env.API_BASE_URL || `http://localhost:${env.PORT || 4000}`}/api/v1/auth/google/sso/callback`;
+  }
+  return (
+    env.OAUTH_GOOGLE_CALLBACK_URL ||
+    env.GOOGLE_CALLBACK_URL ||
+    `${env.API_BASE_URL || `http://localhost:${env.PORT || 4000}`}/api/v1/auth/google/callback`
+  );
+};
+
+/**
+ * Initiates Google Single Sign-On (SSO) login/registration.
+ *
+ * @route GET /api/v1/auth/google/sso, GET /api/v1/auth/google
+ */
+export const initiateGoogleSso = asyncHandler(async (req, res) => {
+  if (!env.OAUTH_GOOGLE_CLIENT_ID || !env.OAUTH_GOOGLE_CLIENT_SECRET) {
+    if (req.query.json === 'true' || req.headers.accept?.includes('application/json')) {
+      return res.status(HTTP_STATUS.OK).json({
+        success: false,
+        message: 'Google OAuth is not configured on this server.',
+        data: { provider: 'google', configured: false },
+      });
+    }
+    const clientUrl = env.CLIENT_URL || 'http://localhost:3000';
+    return res.redirect(`${clientUrl}/login?error=GOOGLE_SSO_NOT_CONFIGURED`);
+  }
+
+  const callbackUrl = getGoogleSsoCallbackUrl(req);
+  const oauth2Client = new google.auth.OAuth2(
+    env.OAUTH_GOOGLE_CLIENT_ID,
+    env.OAUTH_GOOGLE_CLIENT_SECRET,
+    callbackUrl
+  );
+
+  const stateToken = jwt.sign({ flow: 'sso' }, env.JWT_ACCESS_SECRET, { expiresIn: '15m' });
+
+  const authUrl = oauth2Client.generateAuthUrl({
+    access_type: 'online',
+    prompt: 'select_account',
+    scope: [
+      'openid',
+      'https://www.googleapis.com/auth/userinfo.email',
+      'https://www.googleapis.com/auth/userinfo.profile',
+    ],
+    state: stateToken,
   });
+
+  if (req.query.json === 'true' || req.headers.accept?.includes('application/json')) {
+    return res.status(HTTP_STATUS.OK).json({ success: true, url: authUrl });
+  }
+
+  res.redirect(authUrl);
+});
+
+/**
+ * Handles Google SSO OAuth redirect callback, auto-provisioning new users or logging in existing ones.
+ *
+ * @route GET /api/v1/auth/google/sso/callback
+ */
+export const handleGoogleSsoCallback = asyncHandler(async (req, res) => {
+  const { code, error } = req.query;
+  const clientUrl = env.CLIENT_URL || 'http://localhost:3000';
+
+  if (error || !code) {
+    logger.warn(`[authController] Google SSO aborted or error: ${error}`);
+    return res.redirect(`${clientUrl}/login?error=${encodeURIComponent(error || 'GOOGLE_AUTH_CANCELLED')}`);
+  }
+
+  try {
+    const callbackUrl = getGoogleSsoCallbackUrl(req);
+    const oauth2Client = new google.auth.OAuth2(
+      env.OAUTH_GOOGLE_CLIENT_ID,
+      env.OAUTH_GOOGLE_CLIENT_SECRET,
+      callbackUrl
+    );
+
+    const { tokens } = await oauth2Client.getToken(code);
+    oauth2Client.setCredentials(tokens);
+
+    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+    const { data: profile } = await oauth2.userinfo.get();
+
+    if (!profile.email) {
+      throw new BadRequestError('Could not retrieve email from Google profile.');
+    }
+
+    const email = profile.email.toLowerCase().trim();
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      // Auto-provision fresh user with Google credentials or smart derivation
+      const fallbackNames = deriveNamesFromEmail(email);
+      const givenName = profile.given_name || (profile.name ? profile.name.split(' ')[0] : fallbackNames.firstName);
+      const familyName = profile.family_name || (profile.name && profile.name.split(' ').length > 1 ? profile.name.split(' ').slice(1).join(' ') : fallbackNames.lastName);
+      const randomPassword = crypto.randomBytes(24).toString('hex') + 'A1!';
+
+      user = await User.create({
+        email,
+        firstName: givenName,
+        lastName: familyName || fallbackNames.lastName,
+        avatar: profile.picture || null,
+        password: randomPassword,
+        position: DEFAULT_POSITION,
+        authProvider: 'google',
+        isPasswordSet: false,
+      });
+
+      logger.info(`[authController] New user auto-provisioned via Google SSO: ${email}`);
+    } else {
+      if (user.authProvider === 'local') {
+        user.authProvider = 'both';
+      }
+      // Update avatar if not previously set
+      if (!user.avatar && profile.picture) {
+        user.avatar = profile.picture;
+      }
+      await user.save();
+    }
+
+    // Generate tokens and issue HttpOnly cookies
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+    setAuthCookies(res, accessToken, refreshToken);
+
+    logger.info(`[authController] User successfully authenticated via Google SSO: ${email}`);
+    res.redirect(`${clientUrl}/dashboard?auth=sso`);
+  } catch (err) {
+    logger.error(`[authController] Google SSO callback error: ${err.message}`);
+    res.redirect(`${clientUrl}/login?error=${encodeURIComponent(err.message || 'GOOGLE_SSO_FAILED')}`);
+  }
 });
 
 /**
@@ -253,6 +431,9 @@ export const connectGoogleDrive = asyncHandler(async (req, res) => {
 
 /**
  * Handles Google OAuth redirect callback.
+ * Acts as an intelligent unified state dispatcher:
+ * - If state payload represents Google SSO flow ({ flow: 'sso' }), delegates to handleGoogleSsoCallback.
+ * - Otherwise processes Google Drive integration token exchange.
  *
  * @route GET /api/v1/auth/google/callback
  */
@@ -264,8 +445,17 @@ export const handleGoogleCallback = asyncHandler(async (req, res) => {
     try {
       decoded = jwt.verify(state, env.JWT_ACCESS_SECRET);
     } catch (_err) {
-      // Handled below if state is invalid
+      try {
+        decoded = JSON.parse(state);
+      } catch {
+        if (state === 'sso') decoded = { flow: 'sso' };
+      }
     }
+  }
+
+  // Unified Dispatcher: If state marks SSO authentication, delegate to handleGoogleSsoCallback
+  if (state === 'sso' || decoded?.flow === 'sso') {
+    return handleGoogleSsoCallback(req, res);
   }
 
   const dest = decoded?.returnUrl || '/profile?tab=cloud-integrations';
@@ -277,7 +467,7 @@ export const handleGoogleCallback = asyncHandler(async (req, res) => {
     );
   }
 
-  if (!code || !state || !decoded) {
+  if (!code || !state || !decoded || !decoded.userId) {
     throw new BadRequestError('Invalid or expired OAuth authorization code or state token.');
   }
 
@@ -361,31 +551,16 @@ export const toggleGoogleDriveRoute = asyncHandler(async (req, res) => {
   });
 });
 
-/**
- * Mock Connect Google Drive for automated integration tests and isolated environments.
- *
- * @route POST /api/v1/auth/google/mock-connect
- */
-export const mockConnectGoogleDriveRoute = asyncHandler(async (req, res) => {
-  const email = req.body?.email || req.user.email || 'mock-user@gmail.com';
-  const profile = await connectMockGoogleDrive(req.user._id, email);
-  res.status(HTTP_STATUS.OK).json({
-    success: true,
-    message: 'Mock Google Drive connected successfully.',
-    data: profile,
-  });
-});
-
 export default {
   register,
   login,
   refreshToken,
   logout,
-  googleAuthStub,
+  initiateGoogleSso,
+  handleGoogleSsoCallback,
   connectGoogleDrive,
   handleGoogleCallback,
   disconnectGoogleDriveRoute,
   getGoogleDriveStatus,
   toggleGoogleDriveRoute,
-  mockConnectGoogleDriveRoute,
 };

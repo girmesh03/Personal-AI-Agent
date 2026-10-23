@@ -120,8 +120,11 @@ export const userSlice = apiSlice.injectEndpoints({
                     ...(currentUser.settings?.reportTemplates || {}),
                     ...(resData.reportTemplates || {}),
                   },
+                },
+                integrations: {
+                  ...(currentUser.integrations || {}),
                   telegram: {
-                    ...(currentUser.settings?.telegram || {}),
+                    ...(currentUser.integrations?.telegram || {}),
                     ...(resData.telegram || {}),
                   },
                 },
@@ -181,18 +184,47 @@ export const userSlice = apiSlice.injectEndpoints({
       }),
       invalidatesTags: ['User'],
     }),
-    mockConnectGoogleDrive: builder.mutation({
+    toggleGoogleDrive: builder.mutation({
       query: (body) => ({
-        url: '/auth/google/mock-connect',
+        url: '/auth/google/toggle',
         method: 'POST',
         body,
       }),
       invalidatesTags: ['User'],
     }),
-    toggleGoogleDrive: builder.mutation({
+    verifyTelegramBotToken: builder.mutation({
       query: (body) => ({
-        url: '/auth/google/toggle',
+        url: '/users/telegram/verify',
         method: 'POST',
+        body,
+      }),
+    }),
+    connectTelegram: builder.mutation({
+      query: (body) => ({
+        url: '/users/telegram/connect',
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['User'],
+    }),
+    disconnectTelegram: builder.mutation({
+      query: () => ({
+        url: '/users/telegram/disconnect',
+        method: 'POST',
+      }),
+      invalidatesTags: ['User'],
+    }),
+    toggleTelegram: builder.mutation({
+      query: () => ({
+        url: '/users/telegram/toggle',
+        method: 'PATCH',
+      }),
+      invalidatesTags: ['User'],
+    }),
+    updateUserApiKeys: builder.mutation({
+      query: (body) => ({
+        url: '/users/api-keys',
+        method: 'PATCH',
         body,
       }),
       invalidatesTags: ['User'],
@@ -217,7 +249,11 @@ export const {
   useLazyGetGoogleDriveConnectUrlQuery,
   useDisconnectGoogleDriveMutation,
   useToggleGoogleDriveMutation,
-  useMockConnectGoogleDriveMutation,
+  useVerifyTelegramBotTokenMutation,
+  useConnectTelegramMutation,
+  useDisconnectTelegramMutation,
+  useToggleTelegramMutation,
+  useUpdateUserApiKeysMutation,
 } = userSlice;
 
 export default userSlice;

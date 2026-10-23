@@ -1,33 +1,33 @@
 /**
  * @module pages/Register
- * @description Supervisor registration page with auto-derivation preview and react-hook-form validation.
+ * @description Enterprise onboarding registration page for Personal AI Agent.
+ * Zero-lag form responsiveness with mode: 'onBlur', zero debounces, and zero watch calls.
  */
 
-import { useState, useMemo, memo } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { useForm, useWatch } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
 import Card from '@mui/material/Card';
 import Grid from '@mui/material/Grid';
 import Typography from '@mui/material/Typography';
-import MuiButton from '../components/reusable/MuiButton.jsx';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
-import Chip from '@mui/material/Chip';
 import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined';
 import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
-import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
-import GoogleIcon from '@mui/icons-material/Google';
-import PropTypes from 'prop-types';
-import { useRegisterMutation } from '../redux/features/authSlice.js';
+
+import MuiButton from '../components/reusable/MuiButton.jsx';
 import MuiTextField from '../components/reusable/MuiTextField.jsx';
+import GoogleSsoButton from '../components/auth/GoogleSsoButton.jsx';
+import { useRegisterMutation } from '../redux/features/authSlice.js';
 import {
   EMAIL_REGEX,
   PASSWORD_REGEX,
   ROUTES,
+  API_BASE_URL,
 } from '../utils/constants.js';
 
 /** Stable adornment icons preventing unnecessary sub-tree reconciliations */
@@ -35,46 +35,9 @@ const EMAIL_ADORNMENT = <EmailOutlinedIcon fontSize="small" color="action" />;
 const PASSWORD_ADORNMENT = <LockOutlinedIcon fontSize="small" color="action" />;
 
 /**
- * Isolated derived name preview badge preventing parent form re-renders on keystroke.
- *
- * @component DerivedNameBadge
- * @param {object} props - Component properties.
- * @param {import('react-hook-form').Control} props.control - React Hook Form control object.
- * @returns {JSX.Element|null} Auto-derived supervisor name preview badge.
- */
-const DerivedNameBadge = memo(({ control }) => {
-  const watchedEmail = useWatch({ control, name: 'email', defaultValue: '' });
-  const derivedName = useMemo(() => {
-    if (!watchedEmail || !watchedEmail.includes('@')) return '';
-    const prefix = watchedEmail.split('@')[0].trim();
-    return prefix.length >= 2 ? prefix : `${prefix}__`;
-  }, [watchedEmail]);
-
-  if (!derivedName) return null;
-
-  return (
-    <Box sx={{ mt: 1, mb: 1.5 }}>
-      <Chip
-        icon={<BadgeOutlinedIcon fontSize="small" />}
-        label={`Auto-derived Name: ${derivedName}`}
-        size="small"
-        variant="outlined"
-        color="primary"
-        sx={{ fontSize: '0.75rem' }}
-      />
-    </Box>
-  );
-});
-
-DerivedNameBadge.displayName = 'DerivedNameBadge';
-DerivedNameBadge.propTypes = {
-  control: PropTypes.object.isRequired,
-};
-
-/**
- * Supervisor registration page scaffold.
- * Automatically derives name fields from the email prefix per Invariant 6;
- * zero name fields are collected from the user directly.
+ * Enterprise registration page for Personal AI Agent platform.
+ * Streamlined 3-field layout (Email, Password, Confirm Password).
+ * First and last names are auto-derived seamlessly and fully manageable in /profile.
  *
  * @component Register
  * @returns {JSX.Element} Rendered registration page presentation.
@@ -87,7 +50,6 @@ export const Register = () => {
   const {
     register,
     handleSubmit,
-    control,
     formState: { errors },
   } = useForm({
     mode: 'onBlur',
@@ -98,8 +60,8 @@ export const Register = () => {
     },
   });
 
-  const handleGoogleAuthStub = () => {
-    toast.info('Google Registration will be available soon. Please create your account with corporate email.');
+  const handleGoogleSso = () => {
+    window.location.href = `${API_BASE_URL}/auth/google/sso`;
   };
 
   const onSubmit = async (data) => {
@@ -123,13 +85,17 @@ export const Register = () => {
   };
 
   return (
-    <Container maxWidth="xs" sx={{ py: { xs: 6, sm: 10 } }}>
+    <Container maxWidth="xs" sx={{ py: { xs: 4, sm: 8 } }}>
       <Card
         variant="outlined"
         sx={{
-          p: { xs: 3, sm: 4 },
+          p: { xs: 2.5, sm: 4 },
           borderRadius: 3,
           textAlign: 'center',
+          boxShadow: (theme) =>
+            theme.palette.mode === 'dark'
+              ? '0 4px 20px rgba(0,0,0,0.5)'
+              : '0 4px 20px rgba(0,0,0,0.06)',
         }}
       >
         <Box
@@ -142,27 +108,28 @@ export const Register = () => {
             mb: 2,
           }}
         >
-          <PersonAddOutlinedIcon />
+          <PersonAddOutlinedIcon fontSize="medium" />
         </Box>
 
-        <Typography variant="h5" fontWeight={700} gutterBottom>
-          Create Account
+        <Typography variant="h5" fontWeight={700} gutterBottom sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
+          Create Your Account
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Register as an Enjoy Burger Field Area Supervisor.
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3, lineHeight: 1.5 }}>
+          Set up your Personal AI Agent for autonomous field operations and daily workflows.
         </Typography>
 
         {serverError && (
-          <Alert severity="error" sx={{ mb: 3, textAlign: 'left' }}>
+          <Alert severity="error" sx={{ mb: 2.5, textAlign: 'left' }}>
             {serverError}
           </Alert>
         )}
 
         <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate sx={{ textAlign: 'left' }}>
-          <Grid container spacing={1}>
+          <Grid container spacing={1.5}>
             <Grid size={12}>
               <MuiTextField
-                label="Corporate Email"
+                label="Email Address"
+                placeholder="name@company.com"
                 autoComplete="email"
                 autoFocus
                 startAdornment={EMAIL_ADORNMENT}
@@ -170,17 +137,13 @@ export const Register = () => {
                 helperText={errors.email?.message}
                 disabled={isLoading}
                 {...register('email', {
-                  required: 'Corporate email is required',
+                  required: 'Email address is required',
                   pattern: {
                     value: EMAIL_REGEX,
                     message: 'Please enter a valid email address',
                   },
                 })}
               />
-            </Grid>
-
-            <Grid size={12} sx={{ py: 0 }}>
-              <DerivedNameBadge control={control} />
             </Grid>
 
             <Grid size={12}>
@@ -192,7 +155,7 @@ export const Register = () => {
                 error={Boolean(errors.password)}
                 helperText={
                   errors.password?.message ||
-                  'Minimum 8 characters with upper, lower, number & special character.'
+                  'Min 8 characters with upper, lower, number & symbol.'
                 }
                 disabled={isLoading}
                 {...register('password', {
@@ -228,9 +191,9 @@ export const Register = () => {
                 type="submit"
                 fullWidth
                 variant="contained"
-                size="small"
+                size="medium"
                 disabled={isLoading}
-                sx={{ py: 1 }}
+                sx={{ fontWeight: 600 }}
                 startIcon={isLoading ? <CircularProgress size={18} color="inherit" /> : null}
               >
                 {isLoading ? 'Creating Account...' : 'Create Account'}
@@ -238,9 +201,9 @@ export const Register = () => {
             </Grid>
 
             <Grid size={12}>
-              <Box sx={{ my: 1.5, display: 'flex', alignItems: 'center' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <Box sx={{ flex: 1, height: '1px', bgcolor: 'divider' }} />
-                <Typography variant="caption" sx={{ px: 1.5, color: 'text.secondary', fontWeight: 500 }}>
+                <Typography variant="caption" sx={{ px: 2, color: 'text.secondary', fontWeight: 600 }}>
                   OR
                 </Typography>
                 <Box sx={{ flex: 1, height: '1px', bgcolor: 'divider' }} />
@@ -248,28 +211,21 @@ export const Register = () => {
             </Grid>
 
             <Grid size={12}>
-              <MuiButton
-                type="button"
-                fullWidth
-                variant="outlined"
-                size="small"
-                startIcon={<GoogleIcon />}
-                onClick={handleGoogleAuthStub}
-                sx={{ py: 1 }}
-              >
-                Sign up with Google
-              </MuiButton>
+              <GoogleSsoButton
+                label="Sign up with Google"
+                onClick={handleGoogleSso}
+              />
             </Grid>
           </Grid>
         </Box>
 
-        <Box sx={{ textAlign: 'center', mt: 2.5 }}>
+        <Box sx={{ textAlign: 'center', mt: 1 }}>
           <MuiButton
             component={Link}
             to={ROUTES.LOGIN}
             variant="text"
             size="small"
-            sx={{ textTransform: 'none' }}
+            sx={{ textTransform: 'none', fontWeight: 500 }}
           >
             Already have an account? Sign In
           </MuiButton>

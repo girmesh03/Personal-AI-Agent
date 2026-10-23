@@ -49,7 +49,6 @@ import {
 import {
   manageGoogleDrive,
   createCloudDocument,
-  connectMockGoogleDrive,
   disconnectGoogleDrive,
 } from '../src/services/googleDriveService.js';
 import { buildGeminiHistory } from '../src/controllers/chatController.js';
@@ -370,19 +369,26 @@ async function runAllTests() {
     assert(statusRes.data.data.email === null, 'email is null');
   });
 
-  // SCENARIO 10: Google Drive Mock Connect
-  await runScenario(10, 'Google Drive Mock Connect (POST /api/v1/auth/google/mock-connect)', async () => {
-    const connectRes = await request('POST', '/auth/google/mock-connect', {
-      body: { email: 'supervisor@enterprise.org' },
+  // SCENARIO 10: Google Drive Connection Provisioning via Model
+  await runScenario(10, 'Google Drive Credentials Setup via Mongoose Model', async () => {
+    await User.findByIdAndUpdate(testUser._id, {
+      $set: {
+        'integrations.googleDrive.connected': true,
+        'integrations.googleDrive.enabled': true,
+        'integrations.googleDrive.email': 'supervisor@enterprise.org',
+        'integrations.googleDrive.accessToken': 'mock_access_token_' + Date.now(),
+        'integrations.googleDrive.refreshToken': 'mock_refresh_token_' + Date.now(),
+        'integrations.googleDrive.expiryDate': Date.now() + 3600 * 1000,
+        'integrations.googleDrive.rootFolderId': 'mock_root_folder_id_' + testUser._id,
+        'integrations.googleDrive.connectedAt': new Date(),
+      },
     });
-    assert(connectRes.status === 200, 'HTTP 200 returned');
-    assert(connectRes.data.data.connected === true, 'connected is true');
-    assert(connectRes.data.data.email === 'supervisor@enterprise.org', 'email matches');
-    assert(typeof connectRes.data.data.rootFolderId === 'string', 'rootFolderId assigned');
 
     // Verify tokens are NOT returned in status or API responses (select: false)
     const checkStatus = await request('GET', '/auth/google/status');
+    assert(checkStatus.status === 200, 'HTTP 200 returned');
     assert(checkStatus.data.data.connected === true, 'Status confirmed connected: true');
+    assert(checkStatus.data.data.email === 'supervisor@enterprise.org', 'email matches');
     assert(!checkStatus.data.data.accessToken, 'accessToken is strictly never exposed');
     assert(!checkStatus.data.data.refreshToken, 'refreshToken is strictly never exposed');
   });

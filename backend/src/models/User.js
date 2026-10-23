@@ -83,6 +83,15 @@ const userSchema = new mongoose.Schema(
       minlength: [PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters long.`],
       select: false,
     },
+    authProvider: {
+      type: String,
+      enum: ['local', 'google', 'both'],
+      default: 'local',
+    },
+    isPasswordSet: {
+      type: Boolean,
+      default: true,
+    },
     position: {
       type: String,
       required: [true, 'Position is required.'],
@@ -146,20 +155,11 @@ const userSchema = new mongoose.Schema(
         phraseMappings: { type: Map, of: String, default: () => new Map() },
         customInstructions: [{ type: String, trim: true }],
       },
-      telegram: {
-        botToken: { type: String, default: null, trim: true },
-        managementChatId: { type: String, default: null, trim: true },
-        maintenanceChatId: { type: String, default: null, trim: true },
-        generalChatId: { type: String, default: null, trim: true },
-        defaultFormat: {
-          type: String,
-          enum: ['text', 'image'],
-          default: 'text',
-        },
-        imageCardOptions: {
-          type: Object,
-          default: {},
-        },
+      apiKeys: {
+        hasGeminiKey: { type: Boolean, default: false },
+        hasAddisKey: { type: Boolean, default: false },
+        geminiApiKey: { type: String, default: null, trim: true, select: false },
+        addisApiKey: { type: String, default: null, trim: true, select: false },
       },
     },
     integrations: {
@@ -172,6 +172,25 @@ const userSchema = new mongoose.Schema(
         expiryDate: { type: Number, default: null, select: false },
         scope: [{ type: String }],
         rootFolderId: { type: String, default: null },
+        connectedAt: { type: Date, default: null },
+      },
+      telegram: {
+        connected: { type: Boolean, default: false },
+        enabled: { type: Boolean, default: true },
+        botToken: { type: String, default: null, trim: true, select: false },
+        botUsername: { type: String, default: null, trim: true },
+        managementChatId: { type: String, default: null, trim: true },
+        maintenanceChatId: { type: String, default: null, trim: true },
+        generalChatId: { type: String, default: null, trim: true },
+        defaultFormat: {
+          type: String,
+          enum: ['text', 'image'],
+          default: 'text',
+        },
+        imageCardOptions: {
+          type: Object,
+          default: {},
+        },
         connectedAt: { type: Date, default: null },
       },
     },
@@ -189,6 +208,26 @@ const userSchema = new mongoose.Schema(
           delete ret.integrations.googleDrive.refreshToken;
           delete ret.integrations.googleDrive.expiryDate;
         }
+        if (ret.integrations?.telegram) {
+          delete ret.integrations.telegram.botToken;
+        }
+        if (ret.settings?.apiKeys) {
+          const hasGeminiKey = ret.settings.apiKeys.geminiApiKey !== undefined
+            ? Boolean(ret.settings.apiKeys.geminiApiKey)
+            : Boolean(ret.settings.apiKeys.hasGeminiKey);
+          const hasAddisKey = ret.settings.apiKeys.addisApiKey !== undefined
+            ? Boolean(ret.settings.apiKeys.addisApiKey)
+            : Boolean(ret.settings.apiKeys.hasAddisKey);
+          delete ret.settings.apiKeys.geminiApiKey;
+          delete ret.settings.apiKeys.addisApiKey;
+          ret.settings.apiKeys.hasGeminiKey = hasGeminiKey;
+          ret.settings.apiKeys.hasAddisKey = hasAddisKey;
+        } else if (ret.settings) {
+          ret.settings.apiKeys = {
+            hasGeminiKey: false,
+            hasAddisKey: false,
+          };
+        }
         return ret;
       },
     },
@@ -202,6 +241,26 @@ const userSchema = new mongoose.Schema(
           delete ret.integrations.googleDrive.accessToken;
           delete ret.integrations.googleDrive.refreshToken;
           delete ret.integrations.googleDrive.expiryDate;
+        }
+        if (ret.integrations?.telegram) {
+          delete ret.integrations.telegram.botToken;
+        }
+        if (ret.settings?.apiKeys) {
+          const hasGeminiKey = ret.settings.apiKeys.geminiApiKey !== undefined
+            ? Boolean(ret.settings.apiKeys.geminiApiKey)
+            : Boolean(ret.settings.apiKeys.hasGeminiKey);
+          const hasAddisKey = ret.settings.apiKeys.addisApiKey !== undefined
+            ? Boolean(ret.settings.apiKeys.addisApiKey)
+            : Boolean(ret.settings.apiKeys.hasAddisKey);
+          delete ret.settings.apiKeys.geminiApiKey;
+          delete ret.settings.apiKeys.addisApiKey;
+          ret.settings.apiKeys.hasGeminiKey = hasGeminiKey;
+          ret.settings.apiKeys.hasAddisKey = hasAddisKey;
+        } else if (ret.settings) {
+          ret.settings.apiKeys = {
+            hasGeminiKey: false,
+            hasAddisKey: false,
+          };
         }
         return ret;
       },
@@ -219,6 +278,24 @@ userSchema.index({ email: 1 }, { unique: true });
  */
 userSchema.virtual('fullName').get(function () {
   return `${this.firstName} ${this.lastName}`;
+});
+
+/**
+ * Mongoose pre-save hook to synchronize BYOK status flags.
+ */
+userSchema.pre('save', function () {
+  if (this.settings?.apiKeys) {
+    if (this.isModified('settings.apiKeys.geminiApiKey')) {
+      this.settings.apiKeys.hasGeminiKey = Boolean(
+        this.settings.apiKeys.geminiApiKey && this.settings.apiKeys.geminiApiKey.trim()
+      );
+    }
+    if (this.isModified('settings.apiKeys.addisApiKey')) {
+      this.settings.apiKeys.hasAddisKey = Boolean(
+        this.settings.apiKeys.addisApiKey && this.settings.apiKeys.addisApiKey.trim()
+      );
+    }
+  }
 });
 
 /**

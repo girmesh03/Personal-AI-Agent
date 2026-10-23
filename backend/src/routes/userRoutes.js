@@ -13,6 +13,11 @@ import {
   getUserAgentConfig,
   updateUserAgentConfig,
   updateSupervisorDirectives,
+  verifyTelegramBotToken,
+  connectTelegramIntegration,
+  disconnectTelegramIntegration,
+  toggleTelegramIntegration,
+  updateUserApiKeys,
 } from '../controllers/userController.js';
 import {
   updateProfileValidation,
@@ -84,5 +89,40 @@ router.patch('/agent-config', updateAgentConfigValidation, validate, updateUserA
  * @access Private
  */
 router.patch('/directives', updateDirectivesValidation, validate, updateSupervisorDirectives);
+
+/**
+ * @route POST /api/v1/users/telegram/verify
+ * @desc Verify Telegram Bot Token against Telegram getMe API.
+ * @access Private
+ */
+router.post('/telegram/verify', verifyTelegramBotToken);
+
+/**
+ * @route PATCH /api/v1/users/telegram/connect
+ * @desc Connect and save Telegram integration credentials.
+ * @access Private
+ */
+router.patch('/telegram/connect', connectTelegramIntegration);
+
+/**
+ * @route POST /api/v1/users/telegram/disconnect
+ * @desc Disconnect Telegram integration and clear bot token.
+ * @access Private
+ */
+router.post('/telegram/disconnect', disconnectTelegramIntegration);
+
+/**
+ * @route PATCH /api/v1/users/telegram/toggle
+ * @desc Toggle Telegram integration enabled/disabled state.
+ * @access Private
+ */
+router.patch('/telegram/toggle', toggleTelegramIntegration);
+
+/**
+ * @route PATCH /api/v1/users/api-keys
+ * @desc Update user custom Bring-Your-Own-Key (BYOK) API credentials.
+ * @access Private
+ */
+router.patch('/api-keys', updateUserApiKeys);
 
 export default router;

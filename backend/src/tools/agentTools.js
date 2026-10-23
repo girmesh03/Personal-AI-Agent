@@ -30,7 +30,11 @@ import {
   BadRequestError,
 } from '../errors/CustomError.js';
 import logger from '../config/logger.js';
-import { dispatchToTelegram } from '../services/telegramService.js';
+import {
+  dispatchToTelegram,
+  resolveBotToken,
+  resolveChannelChatId,
+} from '../services/telegramService.js';
 import { manageGoogleDrive, createCloudDocument } from '../services/googleDriveService.js';
 import { generateDocumentFile } from '../services/documentGenerationService.js';
 
@@ -2109,8 +2113,12 @@ export const toolHandlers = {
       asImage = false,
     } = args;
 
-    // Load owning supervisor for custom Telegram settings & templates
-    const user = userId ? await User.findById(userId).lean() : null;
+    // Load owning supervisor for custom Telegram settings & templates (including botToken for runtime dispatch)
+    const user = userId
+      ? await User.findById(userId)
+          .select('+integrations.telegram.botToken')
+          .lean()
+      : null;
 
     let payloadText = '';
 
@@ -2175,11 +2183,26 @@ export const toolHandlers = {
       throw new BadRequestError('Either reportId or messageText must be provided for Telegram sharing.');
     }
 
+    const userTelegram = user?.integrations?.telegram || {};
+    const botToken = resolveBotToken(user);
+    const chatId = resolveChannelChatId(user, targetChannel || 'management');
+
+    // Zero-Crash Invariant: If unconfigured, disabled, or target chat ID missing, return structured informative response
+    if (!botToken || !chatId || userTelegram.connected === false || userTelegram.enabled === false) {
+      return {
+        success: false,
+        isConfigured: false,
+        channel: targetChannel || 'management',
+        message: 'Telegram integration is not configured or is currently disabled. Please set up your Telegram Bot Token and operational chat IDs in Profile > Telegram Channels.',
+        actionRequired: 'CONNECT_TELEGRAM_INTEGRATION',
+      };
+    }
+
     // Determine format: explicit tool arg asImage OR user settings defaultFormat === 'image'
-    const shouldPostImage = Boolean(asImage || user?.settings?.telegram?.defaultFormat === 'image');
+    const shouldPostImage = Boolean(asImage || userTelegram.defaultFormat === 'image');
 
     // Extract dynamic formatting options with zero hardcoding
-    const savedCardOptions = user?.settings?.telegram?.imageCardOptions || {};
+    const savedCardOptions = userTelegram.imageCardOptions || {};
     const imageOptions = { ...savedCardOptions };
 
     if (args.fontSize !== undefined && args.fontSize !== null) {
@@ -2290,7 +2313,9 @@ export const toolHandlers = {
     if (args.saveAsDefault && userId) {
       try {
         await User.findByIdAndUpdate(userId, {
-          $set: { 'settings.telegram.imageCardOptions': imageOptions },
+          $set: {
+            'integrations.telegram.imageCardOptions': imageOptions,
+          },
         });
       } catch (err) {
         logger.warn(`[agentTools] Failed to persist imageCardOptions: ${err.message}`);
@@ -2306,9 +2331,34 @@ export const toolHandlers = {
       options: imageOptions,
     });
 
+    if (!dispatchResult.success && !dispatchResult.ok) {
+      const failureReason = dispatchResult.error || 'Unknown Telegram delivery failure';
+      let remediationHint = 'Please verify your Telegram configuration under Profile > Telegram.';
+      const lower = failureReason.toLowerCase();
+      if (lower.includes('chat not found')) {
+        remediationHint = 'Ensure the Chat ID is correct (channels start with -100) and the bot is added as an Administrator to the channel with Post Messages permission.';
+      } else if (lower.includes('unauthorized') || lower.includes('token')) {
+        remediationHint = 'The Telegram Bot Token is invalid or revoked. Please update your bot token in Profile > Telegram.';
+      } else if (lower.includes('not a member') || lower.includes('forbidden')) {
+        remediationHint = 'The bot does not have permission to post. Please invite the bot to the channel and promote it to Administrator with Post Messages permission.';
+      } else if (dispatchResult.isConfigured === false) {
+        remediationHint = 'Please connect your Telegram Bot Token and set your Channel ID in Profile > Telegram.';
+      }
+
+      return {
+        success: false,
+        isStub: false,
+        isConfigured: dispatchResult.isConfigured !== false,
+        channel: 'telegram',
+        targetChannel: dispatchResult.channel || targetChannel,
+        error: failureReason,
+        message: `Failed to dispatch message to Telegram channel '${dispatchResult.channel || targetChannel}': ${failureReason}. ${remediationHint}`,
+      };
+    }
+
     return {
-      success: dispatchResult.ok || dispatchResult.success || false,
-      isStub: dispatchResult.isStub || false,
+      success: true,
+      isStub: Boolean(dispatchResult.isStub),
       channel: 'telegram',
       targetChannel: dispatchResult.channel || targetChannel,
       mode: dispatchResult.mode || (shouldPostImage ? 'image' : 'text'),
@@ -2316,7 +2366,7 @@ export const toolHandlers = {
       deepLink: dispatchResult.deepLink || null,
       fallbackFromImage: dispatchResult.fallbackFromImage || false,
       message: dispatchResult.isStub
-        ? `Telegram dispatch stub: message successfully formatted and dispatched to '${dispatchResult.channel || targetChannel}' channel.`
+        ? `Telegram dispatch simulated in functional stub mode for channel '${dispatchResult.channel || targetChannel}'.`
         : `Successfully dispatched to Telegram channel '${dispatchResult.channel || targetChannel}' (${dispatchResult.mode === 'image' ? 'Image Card' : 'Semantic Text'}).`,
     };
   },

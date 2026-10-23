@@ -494,32 +494,61 @@ export async function generateTextImageCard(text = '', options = {}) {
 export const generateReportImageCard = generateTextImageCard;
 
 /**
+ * Normalizes a Telegram Chat ID or Channel Username to standard format.
+ * Automatically prefixes `-100` for 9+ digit numeric channel/supergroup IDs
+ * while safely preserving public `@channel_name` handles and negative channel IDs.
+ *
+ * @param {string|number|null} chatId - Raw chat identifier
+ * @returns {string|null} Normalized chat identifier
+ */
+export function normalizeTelegramChatId(chatId) {
+  if (chatId === null || chatId === undefined) return null;
+  const str = String(chatId).trim();
+  if (!str) return null;
+  if (str.startsWith('@')) return str;
+  if (/^\d{9,}$/.test(str)) {
+    return `-100${str}`;
+  }
+  if (/^-\d{9,}$/.test(str) && !str.startsWith('-100')) {
+    return `-100${str.slice(1)}`;
+  }
+  return str;
+}
+
+/**
  * Resolves destination Telegram chat ID for a given operational channel.
+ * Automatically normalizes channel IDs with the required -100 prefix.
+ *
  * @param {Object} [user] - Mongoose user document
  * @param {string} [channel='management'] - Operational channel ('management' | 'maintenance' | 'general')
  * @returns {string|null} Resolved chat ID or null
  */
 export function resolveChannelChatId(user, channel = 'management') {
   const normChannel = String(channel).toLowerCase();
-  const userTelegram = user?.settings?.telegram || {};
+  const userTelegram = user?.integrations?.telegram || {};
 
+  let rawChatId = null;
   if (normChannel === 'maintenance') {
-    return userTelegram.maintenanceChatId || env.TELEGRAM_MAINTENANCE_CHAT_ID || null;
+    rawChatId = userTelegram.maintenanceChatId || null;
+  } else if (normChannel === 'general') {
+    rawChatId = userTelegram.generalChatId || null;
+  } else {
+    // Default to management
+    rawChatId = userTelegram.managementChatId || null;
   }
-  if (normChannel === 'general') {
-    return userTelegram.generalChatId || env.TELEGRAM_GENERAL_CHAT_ID || null;
-  }
-  // Default to management
-  return userTelegram.managementChatId || env.TELEGRAM_MANAGEMENT_CHAT_ID || null;
+
+  return normalizeTelegramChatId(rawChatId);
 }
 
 /**
- * Resolves Telegram Bot Token from user settings or system environment.
+ * Resolves Telegram Bot Token from user integrations.
+ * Strictly adheres to multi-tenant tenant isolation: zero runtime leakage to system .env.
+ *
  * @param {Object} [user] - Mongoose user document
  * @returns {string} Bot token
  */
 export function resolveBotToken(user) {
-  return user?.settings?.telegram?.botToken || env.TELEGRAM_BOT_TOKEN || '';
+  return user?.integrations?.telegram?.botToken || '';
 }
 
 /**
@@ -555,8 +584,10 @@ export async function dispatchToTelegram({
   // For text messages, prefix customNote if provided
   const fullText = hasCustomNote ? `${noteText}\n\n${cleanText}` : cleanText;
 
-  const isUserDisabled = user?.settings?.telegram?.enabled === false;
-  const isLiveConfigured = Boolean(env.TELEGRAM_ENABLED && !isUserDisabled && botToken && chatId);
+  const userTelegram = user?.integrations?.telegram || {};
+  const isUserDisabled = userTelegram.enabled === false;
+  const isUserConnected = userTelegram.connected !== false;
+  const isLiveConfigured = Boolean(isUserConnected && !isUserDisabled && botToken && chatId);
 
   // If live broadcast is not configured, return clean functional stub (Zero-Failure Invariant)
   if (!isLiveConfigured) {
@@ -581,7 +612,7 @@ export async function dispatchToTelegram({
     try {
       // Merge user saved image card options with explicit call options
       const mergedOptions = {
-        ...(user?.settings?.telegram?.imageCardOptions || {}),
+        ...(user?.integrations?.telegram?.imageCardOptions || {}),
         ...options,
       };
       const imageBuffer = await generateTextImageCard(cleanText, mergedOptions);
@@ -630,6 +661,7 @@ export async function dispatchToTelegram({
   const htmlContent = markdownToTelegramHtml(fullText);
   const chunks = chunkTelegramMessage(htmlContent);
   const dispatchedMessageIds = [];
+  let lastError = null;
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
@@ -660,10 +692,12 @@ export async function dispatchToTelegram({
           await new Promise((resolve) => setTimeout(resolve, retryAfterSec * 1000));
         } else {
           console.error('[telegramService] Telegram sendMessage error:', data.description);
+          lastError = data.description || `Telegram API error (${res.status})`;
           break;
         }
       } catch (netErr) {
         console.warn(`[telegramService] Network error during sendMessage (attempt ${attempts}/3):`, netErr.message, netErr.cause?.code || '');
+        lastError = netErr.message || 'Network connection error';
         if (attempts < 3) {
           await new Promise((resolve) => setTimeout(resolve, 1500 * attempts));
         }
@@ -689,14 +723,14 @@ export async function dispatchToTelegram({
     };
   }
 
-  // Graceful fallback if live network failed completely
+  // Live network or permission failure (never report as a successful stub)
   return {
     success: false,
     ok: false,
-    isStub: true,
+    isStub: false,
     channel,
     mode: 'text',
-    error: 'Failed to deliver message to Telegram Bot API. Network or permission error.',
+    error: lastError || 'Failed to deliver message to Telegram Bot API. Network or permission error.',
   };
 }
 

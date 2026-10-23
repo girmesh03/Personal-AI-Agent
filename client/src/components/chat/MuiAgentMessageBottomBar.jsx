@@ -8,7 +8,9 @@
  * - Right Cluster: Text-only [Copy] with animated feedback and [Regenerate] with linear history pruning.
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router';
 import PropTypes from 'prop-types';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -75,10 +77,40 @@ export const MuiAgentMessageBottomBar = ({
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef(null);
 
+  const navigate = useNavigate();
+  const user = useSelector((state) => state.auth.user);
+  const telegram = user?.integrations?.telegram || {};
+  const isTelegramConnected = Boolean(telegram.connected);
+  const isTelegramEnabled = telegram.enabled !== false;
+
   const [shareTelegram] = useShareTelegramMutation();
   const [telegramAnchor, setTelegramAnchor] = useState(null);
-  const [telegramFormat, setTelegramFormat] = useState('text');
+  const [telegramFormat, setTelegramFormat] = useState(telegram.defaultFormat || 'text');
   const [sharingChannel, setSharingChannel] = useState(null);
+
+  useEffect(() => {
+    if (telegram.defaultFormat) {
+      setTelegramFormat(telegram.defaultFormat);
+    }
+  }, [telegram.defaultFormat]);
+
+  const telegramChannels = [
+    {
+      id: 'management',
+      label: 'Management (Default)',
+      configured: Boolean(telegram.managementChatId),
+    },
+    {
+      id: 'maintenance',
+      label: 'Maintenance & Facilities',
+      configured: Boolean(telegram.maintenanceChatId),
+    },
+    {
+      id: 'general',
+      label: 'General Operations',
+      configured: Boolean(telegram.generalChatId),
+    },
+  ];
 
   const handleOpenTelegram = (e) => {
     setTelegramAnchor(e.currentTarget);
@@ -99,8 +131,7 @@ export const MuiAgentMessageBottomBar = ({
       }).unwrap();
 
       const modeLabel = telegramFormat === 'image' ? 'Image Card' : 'Text';
-      const stubLabel = res?.isStub ? ' (Stub)' : '';
-      toast.success(`Dispatched to Telegram: ${channel} [${modeLabel}]${stubLabel}`);
+      toast.success(`Dispatched to Telegram: ${channel} [${modeLabel}]`);
       handleCloseTelegram();
     } catch (err) {
       toast.error(err?.data?.message || err?.message || 'Telegram dispatch failed');
@@ -318,7 +349,7 @@ export const MuiAgentMessageBottomBar = ({
                 paper: {
                   sx: {
                     p: 1.5,
-                    minWidth: 230,
+                    width: 260,
                     borderRadius: 2,
                     boxShadow: 4,
                     border: 1,
@@ -336,52 +367,92 @@ export const MuiAgentMessageBottomBar = ({
                 </Typography>
               </Box>
 
-              <ToggleButtonGroup
-                value={telegramFormat}
-                exclusive
-                onChange={(_e, val) => val && setTelegramFormat(val)}
-                size="small"
-                fullWidth
-                sx={{ mb: 1 }}
-              >
-                <ToggleButton value="text" sx={{ fontSize: '0.75rem', py: 0.3 }}>
-                  Text (HTML)
-                </ToggleButton>
-                <ToggleButton value="image" sx={{ fontSize: '0.75rem', py: 0.3 }}>
-                  Image Card
-                </ToggleButton>
-              </ToggleButtonGroup>
-
-              <Divider sx={{ my: 0.8 }} />
-
-              <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
-                Select Channel:
-              </Typography>
-
-              <MenuList disablePadding>
-                {[
-                  { id: 'management', label: 'Management (Default)' },
-                  { id: 'maintenance', label: 'Maintenance & Facilities' },
-                  { id: 'general', label: 'General Operations' },
-                ].map((item) => (
-                  <MenuItem
-                    key={item.id}
-                    onClick={() => handleShareToTelegramChannel(item.id)}
-                    disabled={Boolean(sharingChannel)}
-                    sx={{
-                      fontSize: '0.8125rem',
-                      borderRadius: 1,
-                      py: 0.6,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
+              {!isTelegramConnected || !isTelegramEnabled ? (
+                <Box sx={{ py: 0.5 }}>
+                  <Typography variant="body2" sx={{ fontSize: '0.8125rem', color: 'text.secondary', mb: 1.5 }}>
+                    {!isTelegramConnected
+                      ? 'Telegram bot integration is not connected.'
+                      : 'Telegram integration is currently paused.'}
+                  </Typography>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    fullWidth
+                    onClick={() => {
+                      handleCloseTelegram();
+                      navigate('/profile?tab=telegram');
                     }}
+                    sx={{ fontSize: '0.75rem' }}
                   >
-                    <span>{item.label}</span>
-                    {sharingChannel === item.id && <CircularProgress size={12} sx={{ ml: 1 }} />}
-                  </MenuItem>
-                ))}
-              </MenuList>
+                    Configure Telegram
+                  </Button>
+                </Box>
+              ) : (
+                <>
+                  <ToggleButtonGroup
+                    value={telegramFormat}
+                    exclusive
+                    onChange={(_e, val) => val && setTelegramFormat(val)}
+                    size="small"
+                    fullWidth
+                    sx={{ mb: 1 }}
+                  >
+                    <ToggleButton value="text" sx={{ fontSize: '0.75rem', py: 0.3 }}>
+                      Text (HTML)
+                    </ToggleButton>
+                    <ToggleButton value="image" sx={{ fontSize: '0.75rem', py: 0.3 }}>
+                      Image Card
+                    </ToggleButton>
+                  </ToggleButtonGroup>
+
+                  <Divider sx={{ my: 0.8 }} />
+
+                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+                    Select Channel:
+                  </Typography>
+
+                  <MenuList disablePadding>
+                    {telegramChannels.map((item) => {
+                      const isDisabled = !item.configured || Boolean(sharingChannel);
+                      const menuItem = (
+                        <MenuItem
+                          key={item.id}
+                          onClick={() => item.configured && handleShareToTelegramChannel(item.id)}
+                          disabled={isDisabled}
+                          sx={{
+                            fontSize: '0.8125rem',
+                            borderRadius: 1,
+                            py: 0.6,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            opacity: item.configured ? 1 : 0.6,
+                          }}
+                        >
+                          <span>{item.label}</span>
+                          {sharingChannel === item.id ? (
+                            <CircularProgress size={12} sx={{ ml: 1 }} />
+                          ) : !item.configured ? (
+                            <Typography variant="caption" sx={{ fontSize: '0.68rem', color: 'text.disabled' }}>
+                              Not set
+                            </Typography>
+                          ) : null}
+                        </MenuItem>
+                      );
+
+                      if (!item.configured) {
+                        return (
+                          <Tooltip key={item.id} title="Chat ID not configured in Profile > Telegram" arrow placement="left">
+                            <span>{menuItem}</span>
+                          </Tooltip>
+                        );
+                      }
+
+                      return menuItem;
+                    })}
+                  </MenuList>
+                </>
+              )}
             </Popover>
           </>
         )}

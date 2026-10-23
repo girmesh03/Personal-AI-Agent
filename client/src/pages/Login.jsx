@@ -1,9 +1,10 @@
 /**
  * @module pages/Login
- * @description Supervisor login page with react-hook-form validation and RTK Query authentication.
+ * @description Enterprise authentication login page for Personal AI Agent.
+ * Zero-lag form responsiveness with mode: 'onBlur', zero debounces, and zero watch calls.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { useForm } from 'react-hook-form';
 import Box from '@mui/material/Box';
@@ -11,18 +12,19 @@ import Container from '@mui/material/Container';
 import Card from '@mui/material/Card';
 import Grid from '@mui/material/Grid';
 import Typography from '@mui/material/Typography';
-import MuiButton from '../components/reusable/MuiButton.jsx';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
-import GoogleIcon from '@mui/icons-material/Google';
-import { toast } from 'react-toastify';
-import { useLoginMutation } from '../redux/features/authSlice.js';
+
+import MuiButton from '../components/reusable/MuiButton.jsx';
 import MuiTextField from '../components/reusable/MuiTextField.jsx';
+import GoogleSsoButton from '../components/auth/GoogleSsoButton.jsx';
+import { useLoginMutation } from '../redux/features/authSlice.js';
 import {
   EMAIL_REGEX,
   ROUTES,
+  API_BASE_URL,
 } from '../utils/constants.js';
 
 /** Stable adornment icons preventing unnecessary sub-tree reconciliations */
@@ -30,7 +32,7 @@ const EMAIL_ADORNMENT = <EmailOutlinedIcon fontSize="small" color="action" />;
 const PASSWORD_ADORNMENT = <LockOutlinedIcon fontSize="small" color="action" />;
 
 /**
- * Supervisor login page presenting authentication form card with react-hook-form validation.
+ * Enterprise login page presenting authentication form card with react-hook-form validation.
  * Strictly adheres to single-user architecture with zero "Remember Me" logic.
  *
  * @component Login
@@ -41,6 +43,7 @@ export const Login = () => {
   const location = useLocation();
   const [login, { isLoading }] = useLoginMutation();
   const [serverError, setServerError] = useState('');
+  const [ssoPrompt, setSsoPrompt] = useState(false);
 
   const from = location.state?.from?.pathname || ROUTES.DASHBOARD;
 
@@ -56,33 +59,59 @@ export const Login = () => {
     },
   });
 
-  const handleGoogleAuthStub = () => {
-    toast.info('Google Sign-In will be available soon. Please use your corporate email and password.');
+  // Check URL query parameters for SSO errors
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const err = params.get('error');
+    if (err) {
+      if (err === 'GOOGLE_SSO_NOT_CONFIGURED') {
+        setServerError('Google SSO is not configured on this server. Please sign in with email and password.');
+      } else {
+        setServerError(`Sign in error: ${err}`);
+      }
+    }
+  }, [location.search]);
+
+  const handleGoogleSso = () => {
+    window.location.href = `${API_BASE_URL}/auth/google/sso`;
   };
 
   const onSubmit = async (data) => {
     setServerError('');
+    setSsoPrompt(false);
     try {
       await login(data).unwrap();
       navigate(from, { replace: true });
     } catch (err) {
-      const message =
-        err?.message ||
-        err?.data?.message ||
-        err?.error ||
-        'Invalid credentials. Please verify your email and password.';
-      setServerError(message);
+      if (err?.data?.errorCode === 'SSO_PASSWORD_NOT_SET') {
+        setSsoPrompt(true);
+        setServerError(
+          err?.data?.message ||
+          "This account was registered using Google Sign-In and does not have an email password yet. Please click 'Sign in with Google' below, or set a password in your Profile."
+        );
+      } else {
+        const message =
+          err?.data?.message ||
+          err?.message ||
+          err?.error ||
+          'Invalid credentials. Please verify your email and password.';
+        setServerError(message);
+      }
     }
   };
 
   return (
-    <Container maxWidth="xs" sx={{ py: { xs: 6, sm: 10 } }}>
+    <Container maxWidth="xs" sx={{ py: { xs: 4, sm: 8 } }}>
       <Card
         variant="outlined"
         sx={{
-          p: { xs: 3, sm: 4 },
+          p: { xs: 2.5, sm: 4 },
           borderRadius: 3,
           textAlign: 'center',
+          boxShadow: (theme) =>
+            theme.palette.mode === 'dark'
+              ? '0 4px 20px rgba(0,0,0,0.5)'
+              : '0 4px 20px rgba(0,0,0,0.06)',
         }}
       >
         <Box
@@ -95,27 +124,50 @@ export const Login = () => {
             mb: 2,
           }}
         >
-          <LockOutlinedIcon />
+          <LockOutlinedIcon fontSize="medium" />
         </Box>
 
-        <Typography variant="h5" fontWeight={700} gutterBottom>
-          Sign In
+        <Typography variant="h5" fontWeight={700} gutterBottom sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
+          Welcome Back
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Access your supervisor dashboard and operational inspection reports.
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3, lineHeight: 1.5 }}>
+          Sign in to access your Personal AI Agent dashboard and field records.
         </Typography>
 
         {serverError && (
-          <Alert severity="error" sx={{ mb: 3, textAlign: 'left' }}>
-            {serverError}
+          <Alert
+            severity={ssoPrompt ? 'info' : 'error'}
+            sx={{
+              mb: 2.5,
+              textAlign: 'left',
+              '& .MuiAlert-message': { width: '100%' },
+            }}
+          >
+            <Typography variant="body2" sx={{ mb: ssoPrompt ? 1.5 : 0 }}>
+              {serverError}
+            </Typography>
+            {ssoPrompt && (
+              <Box sx={{ mt: 1 }}>
+                <MuiButton
+                  size="small"
+                  variant="contained"
+                  color="primary"
+                  onClick={handleGoogleSso}
+                  sx={{ textTransform: 'none', fontWeight: 600 }}
+                >
+                  Sign in with Google
+                </MuiButton>
+              </Box>
+            )}
           </Alert>
         )}
 
         <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate sx={{ textAlign: 'left' }}>
-          <Grid container spacing={1}>
+          <Grid container spacing={1.5}>
             <Grid size={12}>
               <MuiTextField
                 label="Email Address"
+                placeholder="name@company.com"
                 autoComplete="email"
                 autoFocus
                 startAdornment={EMAIL_ADORNMENT}
@@ -147,14 +199,14 @@ export const Login = () => {
               />
             </Grid>
 
-            <Grid size={12}>
+            <Grid size={12} >
               <MuiButton
                 type="submit"
                 fullWidth
                 variant="contained"
-                size="small"
+                size="medium"
                 disabled={isLoading}
-                sx={{ py: 1 }}
+                sx={{ fontWeight: 600 }}
                 startIcon={isLoading ? <CircularProgress size={18} color="inherit" /> : null}
               >
                 {isLoading ? 'Signing In...' : 'Sign In'}
@@ -162,9 +214,9 @@ export const Login = () => {
             </Grid>
 
             <Grid size={12}>
-              <Box sx={{ my: 1.5, display: 'flex', alignItems: 'center' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <Box sx={{ flex: 1, height: '1px', bgcolor: 'divider' }} />
-                <Typography variant="caption" sx={{ px: 1.5, color: 'text.secondary', fontWeight: 500 }}>
+                <Typography variant="caption" sx={{ px: 2, color: 'text.secondary', fontWeight: 600 }}>
                   OR
                 </Typography>
                 <Box sx={{ flex: 1, height: '1px', bgcolor: 'divider' }} />
@@ -172,28 +224,21 @@ export const Login = () => {
             </Grid>
 
             <Grid size={12}>
-              <MuiButton
-                type="button"
-                fullWidth
-                variant="outlined"
-                size="small"
-                startIcon={<GoogleIcon />}
-                onClick={handleGoogleAuthStub}
-                sx={{ py: 1 }}
-              >
-                Sign in with Google
-              </MuiButton>
+              <GoogleSsoButton
+                label="Sign in with Google"
+                onClick={handleGoogleSso}
+              />
             </Grid>
           </Grid>
         </Box>
 
-        <Box sx={{ textAlign: 'center', mt: 2.5 }}>
+        <Box sx={{ textAlign: 'center', mt: 1 }}>
           <MuiButton
             component={Link}
             to={ROUTES.REGISTER}
             variant="text"
             size="small"
-            sx={{ textTransform: 'none' }}
+            sx={{ textTransform: 'none', fontWeight: 500 }}
           >
             Don't have an account? Register
           </MuiButton>

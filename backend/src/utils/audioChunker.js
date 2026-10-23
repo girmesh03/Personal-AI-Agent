@@ -12,13 +12,15 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { AddisAI } from 'addisai';
 import { GoogleGenAI } from '@google/genai';
+import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
+import ffprobeInstaller from '@ffprobe-installer/ffprobe';
 import env from '../config/env.js';
 import logger from '../config/logger.js';
 import { Audio } from '../models/Audio.js';
 import { UPLOADS_CONFIG, AI_MODELS } from './constants.js';
 
-const FFMPEG = env.FFMPEG_PATH || process.env.FFMPEG_PATH || 'C:/ffmpeg/ffmpeg';
-const FFPROBE = env.FFPROBE_PATH || process.env.FFPROBE_PATH || 'C:/ffmpeg/ffprobe';
+const FFMPEG = env.FFMPEG_PATH || process.env.FFMPEG_PATH || ffmpegInstaller.path || 'ffmpeg';
+const FFPROBE = env.FFPROBE_PATH || process.env.FFPROBE_PATH || ffprobeInstaller.path || 'ffprobe';
 
 /**
  * Resolves binary executable path on Windows (.exe fallback if omitted).
@@ -236,10 +238,10 @@ export function sliceAudioFile(filePath, chunkDurationSec = 50, tempDir = null) 
  * @param {string} [language='am'] - Spoken language code ('am' for Amharic).
  * @returns {Promise<{ text: string, duration: number|null, engine: string, chunks: number, noAudioDetected?: boolean }>}
  */
-export async function transcribeWithAddisAi(filePath, language = 'am') {
-  const apiKey = env.ADDIS_API_KEY || process.env.ADDIS_API_KEY;
+export async function transcribeWithAddisAi(filePath, language = 'am', apiKeyOverride = null) {
+  const apiKey = apiKeyOverride || env.ADDIS_API_KEY || process.env.ADDIS_API_KEY;
   if (!apiKey) {
-    throw new Error('ADDIS_API_KEY is not configured in environment settings.');
+    throw new Error('ADDIS_API_KEY is not configured in environment or user settings.');
   }
 
   const resolvedPath = resolveAudioDiskPath(filePath);
@@ -334,11 +336,12 @@ export async function transcribeWithAddisAi(filePath, language = 'am') {
 export async function transcribeWithGemini(
   filePath,
   mimeType = 'audio/wav',
-  model = AI_MODELS.DEFAULT_AUDIO_CHUNKER_MODEL
+  model = AI_MODELS.DEFAULT_AUDIO_CHUNKER_MODEL,
+  apiKeyOverride = null
 ) {
-  const apiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = apiKeyOverride || env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is not configured in environment settings.');
+    throw new Error('GEMINI_API_KEY is not configured in environment or user settings.');
   }
 
   const resolvedPath = resolveAudioDiskPath(filePath);
@@ -416,7 +419,7 @@ export async function transcribeWithGemini(
  */
 export async function transcribeAudio(
   filePath,
-  { sttEngine = 'addis_ai', language = 'am', mimeType = 'audio/wav' } = {}
+  { sttEngine = 'addis_ai', language = 'am', mimeType = 'audio/wav', addisApiKey = null, geminiApiKey = null } = {}
 ) {
   const resolvedPath = resolveAudioDiskPath(filePath);
   if (!resolvedPath || !fs.existsSync(resolvedPath)) {
@@ -435,17 +438,17 @@ export async function transcribeAudio(
   }
 
   if (sttEngine !== 'addis_ai') {
-    return transcribeWithGemini(filePath, mimeType, sttEngine);
+    return transcribeWithGemini(filePath, mimeType, sttEngine, geminiApiKey);
   }
 
   // Addis AI mode (default) with fail-safe fallback
   try {
-    return await transcribeWithAddisAi(filePath, language);
+    return await transcribeWithAddisAi(filePath, language, addisApiKey);
   } catch (addisErr) {
     logger.warn(
       `[audioChunker] Addis AI STT failed (${addisErr.message}). Failing over to Gemini STT...`
     );
-    return transcribeWithGemini(filePath, mimeType, AI_MODELS.DEFAULT_AUDIO_CHUNKER_MODEL);
+    return transcribeWithGemini(filePath, mimeType, AI_MODELS.DEFAULT_AUDIO_CHUNKER_MODEL, geminiApiKey);
   }
 }
 
@@ -454,10 +457,13 @@ export async function transcribeAudio(
  * Synchronizes audio.transcription, audio.duration, audio.sttEngine, and audio.status.
  *
  * @param {string|import('mongoose').Types.ObjectId} audioId - Audio document ObjectId.
- * @param {object} [options={}] - Options { sttEngine, language }.
+ * @param {object} [options={}] - Options { sttEngine, language, addisApiKey, geminiApiKey }.
  * @returns {Promise<import('../models/Audio.js').IAudio>} Updated Audio document.
  */
-export async function transcribeAudioDocument(audioId, { sttEngine = null, language = 'am' } = {}) {
+export async function transcribeAudioDocument(
+  audioId,
+  { sttEngine = null, language = 'am', addisApiKey = null, geminiApiKey = null } = {}
+) {
   const audio = await Audio.findById(audioId);
   if (!audio) {
     throw new Error(`Audio record "${audioId}" not found.`);
@@ -474,6 +480,8 @@ export async function transcribeAudioDocument(audioId, { sttEngine = null, langu
       sttEngine: resolvedEngine,
       language,
       mimeType: audio.mimeType,
+      addisApiKey,
+      geminiApiKey,
     });
 
     audio.transcription = result.text;

@@ -165,12 +165,15 @@ const runAuthSuite = async () => {
     assert(loginRes.cookies.some((c) => c.startsWith('accessToken=')), 'HttpOnly accessToken cookie is set');
     assert(loginRes.cookies.some((c) => c.startsWith('refreshToken=')), 'HttpOnly refreshToken cookie is set');
 
-    // 7. Google Auth Stub Endpoint
-    console.log('\n[7/10] Testing GET /auth/google (Google OAuth Stub)');
-    const googleRes = await postmanRequest('/auth/google');
-    assert(googleRes.status === 200, 'Google stub returns HTTP 200 OK');
-    assert(googleRes.body.data?.provider === 'google', 'Google stub provider identified');
-    assert(googleRes.body.data?.available === false, 'Google stub marks available as false');
+    // 7. Google SSO Initiation Endpoint
+    console.log('\n[7/10] Testing GET /auth/google/sso (Google SSO Initiation)');
+    const googleRes = await postmanRequest('/auth/google/sso?json=true');
+    assert(googleRes.status === 200, 'Google SSO initiation returns HTTP 200 OK');
+    assert(
+      (googleRes.body.success === true && typeof googleRes.body.url === 'string') ||
+      (googleRes.body.data?.provider === 'google'),
+      'Google SSO endpoint returns valid auth URL or provider descriptor'
+    );
 
     // 8. Refresh Token for logged-in user
     console.log('\n[8/10] Testing POST /auth/refresh (For Logged In User)');

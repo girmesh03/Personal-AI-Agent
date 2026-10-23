@@ -137,65 +137,6 @@ export async function disconnectGoogleDrive(userId) {
 }
 
 /**
- * Connects a mock Google Drive integration for automated testing and isolated CI environments.
- *
- * @param {string} userId - User ObjectId.
- * @param {string} [email] - Mock user email.
- * @returns {Promise<object>}
- */
-export async function connectMockGoogleDrive(userId, email = 'mock-user@gmail.com') {
-  const user = await User.findById(userId);
-  if (!user) throw new NotFoundError('User not found.');
-
-  if (!user.integrations) user.integrations = {};
-  user.integrations.googleDrive = {
-    connected: true,
-    enabled: true,
-    email,
-    accessToken: 'mock_access_token_' + Date.now(),
-    refreshToken: 'mock_refresh_token_' + Date.now(),
-    expiryDate: Date.now() + 3600 * 1000,
-    scope: [
-      'https://www.googleapis.com/auth/drive.file',
-      'https://www.googleapis.com/auth/documents',
-      'https://www.googleapis.com/auth/spreadsheets',
-    ],
-    rootFolderId: 'mock_root_folder_id_' + userId,
-    connectedAt: new Date(),
-  };
-
-  await user.save();
-
-  // Initialize mock store for user
-  const rootId = user.integrations.googleDrive.rootFolderId;
-  const store = {
-    files: new Map([
-      [
-        rootId,
-        {
-          id: rootId,
-          name: DEFAULT_ROOT_FOLDER_NAME,
-          mimeType: 'application/vnd.google-apps.folder',
-          parents: ['root'],
-          webViewLink: `https://drive.google.com/drive/folders/${rootId}`,
-          createdTime: new Date().toISOString(),
-          modifiedTime: new Date().toISOString(),
-        },
-      ],
-    ]),
-  };
-  mockDriveStore.set(String(userId), store);
-
-  return {
-    connected: true,
-    email,
-    connectedAt: user.integrations.googleDrive.connectedAt,
-    rootFolderId: rootId,
-    isMock: true,
-  };
-}
-
-/**
  * Returns an authenticated, auto-refreshed OAuth2 client or mock client descriptor.
  * Uses mutex locking to ensure concurrent requests do not trigger multiple refresh calls.
  *
@@ -882,7 +823,6 @@ export default {
   getAuthorizationUrl,
   exchangeCodeAndSaveTokens,
   disconnectGoogleDrive,
-  connectMockGoogleDrive,
   getValidGoogleClient,
   ensureRootFolder,
   manageGoogleDrive,

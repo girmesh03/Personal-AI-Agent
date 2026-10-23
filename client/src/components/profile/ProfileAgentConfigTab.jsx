@@ -4,7 +4,7 @@
  * Strictly aligned with centralized AI_MODELS and CHAT_CONSTANTS from utils/constants.js and MuiModelSelector.
  */
 
-import { useState } from 'react';
+import { useState, useRef, useCallback, memo } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -13,9 +13,6 @@ import Grid from '@mui/material/Grid';
 import Slider from '@mui/material/Slider';
 import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
-import RadioGroup from '@mui/material/RadioGroup';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import Radio from '@mui/material/Radio';
 import CircularProgress from '@mui/material/CircularProgress';
 import SaveIcon from '@mui/icons-material/Save';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
@@ -25,10 +22,16 @@ import PsychologyIcon from '@mui/icons-material/Psychology';
 import ScienceIcon from '@mui/icons-material/Science';
 import TranslateIcon from '@mui/icons-material/Translate';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import KeyOutlinedIcon from '@mui/icons-material/KeyOutlined';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import Link from '@mui/material/Link';
 import PropTypes from 'prop-types';
 import { toast } from 'react-toastify';
 
-import { useUpdateAgentConfigMutation } from '../../redux/features/userSlice.js';
+import {
+  useUpdateAgentConfigMutation,
+  useUpdateUserApiKeysMutation,
+} from '../../redux/features/userSlice.js';
 import MuiButton from '../reusable/MuiButton.jsx';
 import MuiTextField from '../reusable/MuiTextField.jsx';
 import {
@@ -130,6 +133,173 @@ const STT_OPTIONS = [
 ];
 
 /**
+ * Isolated Persona Input Field.
+ * Employs native DOM ref character counting and uncontrolled inputs for 100% zero-lag typing.
+ */
+const PersonaInputField = memo(({ initialValue, onValueChange }) => {
+  const counterRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const handleInput = (e) => {
+    if (counterRef.current) {
+      counterRef.current.textContent = `${e.target.value.length}`;
+    }
+  };
+
+  const handleBlur = (e) => {
+    onValueChange(e.target.value);
+  };
+
+  return (
+    <MuiTextField
+      inputRef={inputRef}
+      multiline
+      rows={4}
+      fullWidth
+      defaultValue={initialValue}
+      onInput={handleInput}
+      onBlur={handleBlur}
+      placeholder="Enter custom agent instructions or operational persona..."
+      helperText={
+        <Box component="span">
+          <Box component="span" ref={counterRef}>
+            {initialValue?.length || 0}
+          </Box>
+          /2,000 characters. Defines how your Personal AI Agent reasons and communicates.
+        </Box>
+      }
+      slotProps={{
+        htmlInput: { maxLength: 2000 },
+      }}
+    />
+  );
+});
+PersonaInputField.displayName = 'PersonaInputField';
+PersonaInputField.propTypes = {
+  initialValue: PropTypes.string,
+  onValueChange: PropTypes.func.isRequired,
+};
+
+/**
+ * Isolated BYOK API Credentials Section.
+ * Completely uncontrolled inputs via native refs to guarantee 0ms latency during typing and paste.
+ */
+const ApiCredentialsSection = memo(({ apiKeysConfig, updateApiKeys, isSavingKeys }) => {
+  const geminiKeyRef = useRef(null);
+  const addisKeyRef = useRef(null);
+
+  const handleSaveApiKeys = async () => {
+    const geminiVal = geminiKeyRef.current?.value?.trim() || '';
+    const addisVal = addisKeyRef.current?.value?.trim() || '';
+    if (!geminiVal && !addisVal) {
+      toast.info('Please enter an API key to update.');
+      return;
+    }
+    try {
+      await updateApiKeys({
+        geminiApiKey: geminiVal || undefined,
+        addisApiKey: addisVal || undefined,
+      }).unwrap();
+      toast.success('API credentials updated successfully.');
+      if (geminiKeyRef.current) geminiKeyRef.current.value = '';
+      if (addisKeyRef.current) addisKeyRef.current.value = '';
+    } catch (err) {
+      toast.error(err?.data?.message || err?.message || 'Failed to update API credentials.');
+    }
+  };
+
+  return (
+    <Box sx={{ pt: 1.5, borderTop: 1, borderColor: 'divider' }}>
+      <Typography variant="subtitle2" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
+        <KeyOutlinedIcon fontSize="small" color="primary" />
+        Bring Your Own Key (BYOK) API Credentials
+      </Typography>
+      <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 2 }}>
+        Ensure 100% individual rate-limit sovereignty and zero multi-tenant quota exhaustion by adding your personal free keys.
+      </Typography>
+
+      <Grid container spacing={2}>
+        {/* Google Gemini Key */}
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+            <Typography variant="caption" sx={{ fontWeight: 600 }}>
+              Google Gemini API Key
+            </Typography>
+            <Chip
+              label={apiKeysConfig.hasGeminiKey ? 'Configured' : 'Not Set'}
+              color={apiKeysConfig.hasGeminiKey ? 'success' : 'default'}
+              size="small"
+              sx={{ height: 20, fontSize: '0.68rem', fontWeight: 600 }}
+            />
+          </Box>
+          <MuiTextField
+            inputRef={geminiKeyRef}
+            type="password"
+            isPassword
+            fullWidth
+            defaultValue=""
+            placeholder={apiKeysConfig.hasGeminiKey ? '••••••••••••••••••••' : 'AIzaSy...'}
+            helperText={
+              <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <span>Get your free Gemini key at</span>
+                <Link href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25 }}>
+                  Google AI Studio <OpenInNewIcon sx={{ fontSize: 12 }} />
+                </Link>
+              </Box>
+            }
+          />
+        </Grid>
+
+        {/* Addis AI Key */}
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+            <Typography variant="caption" sx={{ fontWeight: 600 }}>
+              Addis AI STT API Key
+            </Typography>
+            <Chip
+              label={apiKeysConfig.hasAddisKey ? 'Configured' : 'Auto-fallback to Gemini'}
+              color={apiKeysConfig.hasAddisKey ? 'success' : 'info'}
+              size="small"
+              sx={{ height: 20, fontSize: '0.68rem', fontWeight: 600 }}
+            />
+          </Box>
+          <MuiTextField
+            inputRef={addisKeyRef}
+            type="password"
+            isPassword
+            fullWidth
+            defaultValue=""
+            placeholder={apiKeysConfig.hasAddisKey ? '••••••••••••••••••••' : 'addis_live_...'}
+            helperText="If omitted, voice messages seamlessly auto-transcribe via Google Gemini multimodal audio."
+          />
+        </Grid>
+
+        <Grid size={{ xs: 12 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
+            <MuiButton
+              type="button"
+              variant="outlined"
+              size="small"
+              onClick={handleSaveApiKeys}
+              disabled={isSavingKeys}
+              startIcon={isSavingKeys ? <CircularProgress size={14} color="inherit" /> : <SaveIcon fontSize="small" />}
+            >
+              {isSavingKeys ? 'Saving Keys...' : 'Save API Credentials'}
+            </MuiButton>
+          </Box>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+});
+ApiCredentialsSection.displayName = 'ApiCredentialsSection';
+ApiCredentialsSection.propTypes = {
+  apiKeysConfig: PropTypes.object.isRequired,
+  updateApiKeys: PropTypes.func.isRequired,
+  isSavingKeys: PropTypes.bool.isRequired,
+};
+
+/**
  * AI Agent & Inference Configuration Tab.
  *
  * @component ProfileAgentConfigTab
@@ -139,14 +309,20 @@ const STT_OPTIONS = [
  */
 export const ProfileAgentConfigTab = ({ user }) => {
   const [updateAgentConfig, { isLoading }] = useUpdateAgentConfigMutation();
+  const [updateApiKeys, { isLoading: isSavingKeys }] = useUpdateUserApiKeysMutation();
 
   const initialConfig = user?.settings?.agentConfig || {};
   const initialStt = user?.settings?.sttEngine || AI_MODELS.DEFAULT_STT_ENGINE || 'addis_ai';
+  const apiKeysConfig = user?.settings?.apiKeys || {};
 
   // Form State strictly defaulting to centralized constants
-  const [persona, setPersona] = useState(
+  const personaRef = useRef(
     initialConfig.persona || CHAT_CONSTANTS.DEFAULT_PERSONA || ''
   );
+  const handlePersonaChange = useCallback((val) => {
+    personaRef.current = val;
+  }, []);
+
   const [defaultModel, setDefaultModel] = useState(
     initialConfig.defaultModel || AI_MODELS.DEFAULT || 'gemini-3.1-flash-lite'
   );
@@ -165,7 +341,7 @@ export const ProfileAgentConfigTab = ({ user }) => {
 
     try {
       await updateAgentConfig({
-        persona: persona.trim(),
+        persona: (personaRef.current || '').trim(),
         defaultModel,
         defaultThinkingBudget: Number(thinkingBudget),
         defaultLanguage,
@@ -209,17 +385,9 @@ export const ProfileAgentConfigTab = ({ user }) => {
               <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
                 Autonomous Agent Persona & Behavioral Guidelines
               </Typography>
-              <MuiTextField
-                multiline
-                rows={4}
-                fullWidth
-                value={persona}
-                onChange={(e) => setPersona(e.target.value)}
-                placeholder="Enter custom agent instructions or operational persona..."
-                helperText={`${persona.length}/2,000 characters. Defines how your Personal AI Agent reasons and communicates.`}
-                slotProps={{
-                  htmlInput: { maxLength: 2000 },
-                }}
+              <PersonaInputField
+                initialValue={initialConfig.persona || CHAT_CONSTANTS.DEFAULT_PERSONA || ''}
+                onValueChange={handlePersonaChange}
               />
             </Grid>
 
@@ -233,58 +401,75 @@ export const ProfileAgentConfigTab = ({ user }) => {
                 Select default multimodal foundation model across new chat sessions and autonomous tool runs.
               </Typography>
 
-              <RadioGroup
-                value={defaultModel}
-                onChange={(e) => setDefaultModel(e.target.value)}
-                sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}
-              >
+              <Grid container spacing={1.5}>
                 {MODEL_REGISTRY.map((model) => {
                   const Icon = model.icon;
                   const isSelected = defaultModel === model.id;
                   return (
-                    <Card
-                      key={model.id}
-                      variant="outlined"
-                      sx={{
-                        p: { xs: 1.25, sm: 1.5 },
-                        borderRadius: '8px',
-                        borderColor: isSelected ? 'primary.main' : 'divider',
-                        bgcolor: isSelected ? 'action.selected' : 'background.paper',
-                        cursor: 'pointer',
-                        transition: 'border-color 0.15s ease',
-                      }}
-                      onClick={() => setDefaultModel(model.id)}
-                    >
-                      <FormControlLabel
-                        value={model.id}
-                        control={<Radio size="small" />}
-                        sx={{ m: 0, width: '100%', alignItems: 'flex-start' }}
-                        label={
-                          <Box sx={{ ml: 0.5, width: '100%' }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Icon sx={{ fontSize: '1.1rem', color: model.iconColor }} />
-                                <Typography variant="body2" sx={{ fontWeight: 600, fontSize: { xs: '0.85rem', sm: '0.9rem' } }}>
-                                  {model.name}
-                                </Typography>
-                              </Box>
-                              <Chip
-                                label={model.badge}
-                                size="small"
-                                color={model.badgeColor}
-                                sx={{ height: 20, fontSize: '0.68rem', fontWeight: 600 }}
-                              />
+                    <Grid key={model.id} size={{ xs: 12, sm: 4 }}>
+                      <Card
+                        variant="outlined"
+                        onClick={() => setDefaultModel(model.id)}
+                        sx={{
+                          p: 1.5,
+                          height: '100%',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          borderColor: isSelected ? 'primary.main' : 'divider',
+                          bgcolor: isSelected ? 'action.selected' : 'background.paper',
+                          transition: 'border-color 0.15s ease, background-color 0.15s ease',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          gap: 1,
+                          '&:hover': {
+                            borderColor: isSelected ? 'primary.main' : 'text.secondary',
+                            bgcolor: isSelected ? 'action.selected' : 'action.hover',
+                          },
+                        }}
+                      >
+                        <Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                              <Icon sx={{ fontSize: '1.1rem', color: model.iconColor }} />
+                              <Typography variant="body2" sx={{ fontWeight: 600, fontSize: { xs: '0.85rem', sm: '0.9rem' } }}>
+                                {model.name}
+                              </Typography>
                             </Box>
-                            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.5 }}>
-                              {model.description}
-                            </Typography>
+                            {isSelected && <CheckCircleIcon color="primary" sx={{ fontSize: '1.1rem' }} />}
                           </Box>
-                        }
-                      />
-                    </Card>
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: 'text.secondary',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                              minHeight: 34,
+                              lineHeight: 1.35,
+                            }}
+                          >
+                            {model.description}
+                          </Typography>
+                        </Box>
+                        <Chip
+                          label={model.badge}
+                          size="small"
+                          color={isSelected ? 'primary' : 'default'}
+                          variant={isSelected ? 'filled' : 'outlined'}
+                          sx={{
+                            height: 20,
+                            fontSize: '0.68rem',
+                            fontWeight: 600,
+                            width: 'fit-content',
+                          }}
+                        />
+                      </Card>
+                    </Grid>
                   );
                 })}
-              </RadioGroup>
+              </Grid>
             </Grid>
 
             {/* 3. Reasoning Token Budget Card */}
@@ -489,6 +674,15 @@ export const ProfileAgentConfigTab = ({ user }) => {
                   );
                 })}
               </Grid>
+            </Grid>
+
+            {/* 6. Bring Your Own Key (BYOK) Inference & Speech Credentials */}
+            <Grid size={{ xs: 12 }}>
+              <ApiCredentialsSection
+                apiKeysConfig={apiKeysConfig}
+                updateApiKeys={updateApiKeys}
+                isSavingKeys={isSavingKeys}
+              />
             </Grid>
           </Grid>
 

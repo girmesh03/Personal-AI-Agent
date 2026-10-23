@@ -117,8 +117,15 @@ export const updateAvatarValidation = [
  */
 export const updatePasswordValidation = [
   body('currentPassword')
-    .notEmpty()
-    .withMessage('Current password is required.'),
+    .custom((value, { req }) => {
+      if (req.user?.isPasswordSet === false) {
+        return true;
+      }
+      if (!value || typeof value !== 'string' || !value.trim()) {
+        throw new Error('Current password is required.');
+      }
+      return true;
+    }),
 
   body('newPassword')
     .notEmpty()

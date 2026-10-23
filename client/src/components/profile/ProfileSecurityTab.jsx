@@ -5,11 +5,13 @@
  */
 
 import { useForm } from 'react-hook-form';
+import { useSelector } from 'react-redux';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Typography from '@mui/material/Typography';
 import Grid from '@mui/material/Grid';
+import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 import LockResetIcon from '@mui/icons-material/LockReset';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
@@ -23,11 +25,18 @@ import { PASSWORD_MIN_LENGTH } from '../../utils/constants.js';
 
 /**
  * Security Tab providing password update capabilities and complexity verification.
+ * Supports dual-mode for Google SSO accounts creating their first password.
  *
  * @component ProfileSecurityTab
+ * @param {Object} [props]
+ * @param {Object} [props.user] - Optional user object override.
  * @returns {import('react').JSX.Element} Rendered security tab.
  */
-export const ProfileSecurityTab = () => {
+export const ProfileSecurityTab = ({ user: propUser }) => {
+  const authUser = useSelector((state) => state.auth.user);
+  const user = propUser || authUser;
+  const isPasswordSet = user?.isPasswordSet !== false;
+
   const [updatePassword, { isLoading }] = useUpdatePasswordMutation();
 
   const {
@@ -47,12 +56,17 @@ export const ProfileSecurityTab = () => {
   const onSubmit = async (values) => {
     try {
       await updatePassword({
-        currentPassword: values.currentPassword,
+        currentPassword: isPasswordSet ? values.currentPassword : '',
         newPassword: values.newPassword,
+        confirmNewPassword: values.confirmPassword,
       }).unwrap();
 
       reset();
-      toast.success('Account password updated successfully.');
+      toast.success(
+        isPasswordSet
+          ? 'Account password updated successfully.'
+          : 'Account password set successfully! You can now log in with email/password or Google.'
+      );
     } catch (err) {
       const errorMsg =
         err?.data?.message || err?.message || 'Failed to update password. Please check your current password.';
@@ -79,22 +93,42 @@ export const ProfileSecurityTab = () => {
           Ensure your Personal AI Agent account remains secure with a strong, complex password.
         </Typography>
 
+        {!isPasswordSet && (
+          <Alert
+            severity="info"
+            variant="outlined"
+            sx={{
+              mb: { xs: 2, sm: 2.5 },
+              borderRadius: '8px',
+              bgcolor: 'action.hover',
+              '& .MuiAlert-message': { fontSize: '0.8125rem', lineHeight: 1.5 },
+            }}
+          >
+            <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5, fontSize: '0.8125rem' }}>
+              Google Sign-In Account (Dual-Mode Login):
+            </Typography>
+            Your account was created via Google Sign-In and does not have an email password yet. Set an application password below to enable logging in with both email/password and Google.
+          </Alert>
+        )}
+
         <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
           <Grid container spacing={{ xs: 1.5, sm: 2.5 }}>
-            {/* Current Password */}
-            <Grid size={{ xs: 12 }}>
-              <MuiTextField
-                label="Current Password"
-                type="password"
-                isPassword
-                fullWidth
-                error={Boolean(errors.currentPassword)}
-                helperText={errors.currentPassword?.message || 'Enter your existing account password'}
-                {...register('currentPassword', {
-                  required: 'Current password is required.',
-                })}
-              />
-            </Grid>
+            {/* Current Password (rendered only if existing password is set) */}
+            {isPasswordSet && (
+              <Grid size={{ xs: 12 }}>
+                <MuiTextField
+                  label="Current Password"
+                  type="password"
+                  isPassword
+                  fullWidth
+                  error={Boolean(errors.currentPassword)}
+                  helperText={errors.currentPassword?.message || 'Enter your existing account password'}
+                  {...register('currentPassword', {
+                    required: isPasswordSet ? 'Current password is required.' : false,
+                  })}
+                />
+              </Grid>
+            )}
 
             {/* New Password */}
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -196,7 +230,9 @@ export const ProfileSecurityTab = () => {
                 fontWeight: 600,
               }}
             >
-              {isLoading ? 'Updating Password...' : 'Update Account Password'}
+              {isLoading
+                ? (isPasswordSet ? 'Updating Password...' : 'Setting Password...')
+                : (isPasswordSet ? 'Update Account Password' : 'Set Account Password')}
             </MuiButton>
           </Box>
         </Box>

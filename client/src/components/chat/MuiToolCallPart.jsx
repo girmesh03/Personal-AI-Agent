@@ -117,7 +117,7 @@ export const MuiToolCallPart = ({ toolInvocation, stepNumber, totalSteps }) => {
   const out = output?.data !== undefined ? output.data : output;
 
   const isExecuting = state === 'input-streaming' || state === 'input-available';
-  const isError = state === 'output-error' || Boolean(errorText);
+  const isError = state === 'output-error' || Boolean(errorText) || (out && out.success === false);
   const isSuccess = state === 'output-available' && !isError;
 
   const friendlyName = TOOL_DISPLAY_NAMES[toolName] || toolName.replace(/_/g, ' ');
@@ -127,7 +127,7 @@ export const MuiToolCallPart = ({ toolInvocation, stepNumber, totalSteps }) => {
   const summaryText = isExecuting
     ? 'Executing in ACID session...'
     : isError
-      ? (errorText || 'Execution error')
+      ? (errorText || out?.error || (typeof out?.message === 'string' ? out.message.slice(0, 60) : 'Execution error'))
       : deriveOutputSummary(out, toolName);
 
   return (

@@ -31,6 +31,7 @@ import {
   useUpdateAvatarMutation,
   useRemoveAvatarMutation,
 } from '../../redux/features/userSlice.js';
+import { optimizeAvatarImage } from '../../utils/imageOptimizer.js';
 
 const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 
@@ -68,7 +69,7 @@ export const ProfileHeaderHero = ({ user }) => {
     `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() ||
     'Supervisor';
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -82,20 +83,16 @@ export const ProfileHeaderHero = ({ user }) => {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const base64Data = reader.result;
-        await updateAvatar({ avatar: base64Data }).unwrap();
-        toast.success('Profile photo updated successfully.');
-      } catch (err) {
-        toast.error(err?.data?.message || 'Failed to update avatar image.');
-      }
-    };
-    reader.readAsDataURL(file);
-
-    // Reset input
-    e.target.value = '';
+    try {
+      const optimizedBase64 = await optimizeAvatarImage(file);
+      await updateAvatar({ avatar: optimizedBase64 }).unwrap();
+      toast.success('Profile photo updated successfully.');
+    } catch (err) {
+      toast.error(err?.data?.message || err?.message || 'Failed to update avatar image.');
+    } finally {
+      // Reset input
+      e.target.value = '';
+    }
   };
 
   const handleRemoveAvatar = async () => {

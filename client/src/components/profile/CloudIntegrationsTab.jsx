@@ -17,13 +17,13 @@ import Divider from '@mui/material/Divider';
 import Switch from '@mui/material/Switch';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import CircularProgress from '@mui/material/CircularProgress';
+import Alert from '@mui/material/Alert';
 import CloudQueueIcon from '@mui/icons-material/CloudQueue';
 import CloudDoneIcon from '@mui/icons-material/CloudDone';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
 import FolderIcon from '@mui/icons-material/Folder';
 import LinkOffIcon from '@mui/icons-material/LinkOff';
 import AddLinkIcon from '@mui/icons-material/AddLink';
-import ScienceIcon from '@mui/icons-material/Science';
 import { toast } from 'react-toastify';
 
 import MuiButton from '../reusable/MuiButton.jsx';
@@ -33,7 +33,6 @@ import {
   useLazyGetGoogleDriveConnectUrlQuery,
   useDisconnectGoogleDriveMutation,
   useToggleGoogleDriveMutation,
-  useMockConnectGoogleDriveMutation,
 } from '../../redux/features/userSlice.js';
 
 /**
@@ -50,7 +49,6 @@ export const CloudIntegrationsTab = () => {
   const [getConnectUrl] = useLazyGetGoogleDriveConnectUrlQuery();
   const [disconnectDrive, { isLoading: isDisconnecting }] = useDisconnectGoogleDriveMutation();
   const [toggleDrive, { isLoading: isToggling }] = useToggleGoogleDriveMutation();
-  const [mockConnect, { isLoading: isMockConnecting }] = useMockConnectGoogleDriveMutation();
 
   const statusPayload = driveStatus?.data || driveStatus;
   const isConnected = Boolean(statusPayload?.connected);
@@ -75,17 +73,43 @@ export const CloudIntegrationsTab = () => {
     }
   };
 
+  // Back-Forward Cache (bfcache) and Window Focus Listener to auto-reset in-flight state
+  useEffect(() => {
+    const handlePageShow = (event) => {
+      if (event.persisted) {
+        setIsConnecting(false);
+      }
+    };
+    const handleWindowFocus = () => {
+      // Auto-unlock button when user switches back to this tab
+      setIsConnecting(false);
+    };
+
+    window.addEventListener('pageshow', handlePageShow);
+    window.addEventListener('focus', handleWindowFocus);
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, []);
+
   // Listen for OAuth redirect parameters and refresh status
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('google_auth') === 'success') {
+      setIsConnecting(false);
       toast.success('Google Drive connected successfully!');
       refetch();
       const newUrl = window.location.pathname + (params.get('tab') ? `?tab=${params.get('tab')}` : '');
       window.history.replaceState({}, document.title, newUrl);
     } else if (params.get('google_auth') === 'error') {
+      setIsConnecting(false);
       const err = params.get('error') || 'Failed to authenticate with Google.';
-      toast.error(`Google connection failed: ${err}`);
+      if (err.toLowerCase().includes('access_denied')) {
+        toast.error('Google authorization denied (Error 403). While in testing mode, your Google account must be added to the developer\'s Google Cloud Console "Test users" list.');
+      } else {
+        toast.error(`Google connection failed: ${err}`);
+      }
       const newUrl = window.location.pathname + (params.get('tab') ? `?tab=${params.get('tab')}` : '');
       window.history.replaceState({}, document.title, newUrl);
     }
@@ -122,19 +146,6 @@ export const CloudIntegrationsTab = () => {
       refetch();
     } catch (err) {
       toast.error(err?.data?.message || err?.message || 'Failed to disconnect Google Drive.');
-    }
-  };
-
-  /**
-   * Connects simulated test double for offline or dev environments.
-   */
-  const handleMockConnect = async () => {
-    try {
-      await mockConnect({ email: 'supervisor.mock@gmail.com' }).unwrap();
-      toast.success('Mock Google Drive connected successfully for testing!');
-      refetch();
-    } catch (err) {
-      toast.error(err?.data?.message || err?.message || 'Failed to connect mock Google Drive.');
     }
   };
 
@@ -443,6 +454,24 @@ export const CloudIntegrationsTab = () => {
                 </Stack>
               </Box>
 
+              {/* Testing Mode Guidance Alert */}
+              <Alert
+                severity="info"
+                variant="outlined"
+                sx={{
+                  borderRadius: '8px',
+                  bgcolor: 'action.hover',
+                  '& .MuiAlert-message': { fontSize: '0.8125rem', lineHeight: 1.5 },
+                }}
+              >
+                <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5, fontSize: '0.8125rem' }}>
+                  Google Cloud Sensitive Scopes Notice (Development Testing Mode):
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', fontSize: '0.8rem' }}>
+                  Connecting Google Drive requests sensitive scopes (<code>drive.file</code>, <code>documents</code>, <code>spreadsheets</code>). While the OAuth application is in &quot;Testing&quot; mode, your Google account must be explicitly added to the developer&apos;s <strong>Google Cloud Console &gt; Test users</strong> list. If you see <em>Error 403: access_denied</em>, ensure your email address has been whitelisted.
+                </Typography>
+              </Alert>
+
               {/* Action Buttons */}
               <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1.5, pt: 1 }}>
                 <MuiButton
@@ -453,20 +482,16 @@ export const CloudIntegrationsTab = () => {
                   onClick={handleConnect}
                   disabled={isConnecting}
                 >
-                  Connect Google Drive
+                  {isConnecting ? 'Connecting...' : 'Connect Google Drive'}
                 </MuiButton>
-
-                {/* Dev Mock Connect button (enabled in DEV or when offline) */}
-                {import.meta.env.DEV && (
+                {isConnecting && (
                   <MuiButton
                     variant="outlined"
-                    color="secondary"
+                    color="inherit"
                     size="small"
-                    startIcon={isMockConnecting ? <CircularProgress size={16} color="inherit" /> : <ScienceIcon />}
-                    onClick={handleMockConnect}
-                    disabled={isMockConnecting}
+                    onClick={() => setIsConnecting(false)}
                   >
-                    Simulate Connect (Dev Mock)
+                    Cancel
                   </MuiButton>
                 )}
               </Box>
