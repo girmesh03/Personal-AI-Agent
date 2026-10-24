@@ -93,10 +93,39 @@ export const isProtectedFixture = (fileName) => {
  * @returns {Promise<void>}
  */
 export const cascadeDeleteBranch = async (branchId, session) => {
-  // Purge any reports referencing this branch in visits subdocument
+  // 1. Locate all reports referencing this branch to clean up associated audio uploads
+  const associatedReports = await Report.find({ 'visits.branch': branchId })
+    .select('_id audios')
+    .session(session)
+    .lean();
+
+  const audioIds = associatedReports.flatMap((r) => r.audios || []).filter(Boolean);
+
+  // 2. Unlink physical audio uploads and remove Audio documents
+  if (audioIds.length > 0) {
+    const audioDocs = await Audio.find({ _id: { $in: audioIds } })
+      .select('path')
+      .session(session)
+      .lean();
+
+    for (const a of audioDocs) {
+      if (a.path && !isProtectedFixture(a.path) && fs.existsSync(a.path)) {
+        try {
+          fs.unlinkSync(a.path);
+          logger.info(`[CascadeDelete] Unlinked audio upload: ${a.path}`);
+        } catch (unlinkErr) {
+          logger.warn(`[CascadeDelete] Failed to unlink audio upload ${a.path}: ${unlinkErr.message}`);
+        }
+      }
+    }
+
+    await Audio.deleteMany({ _id: { $in: audioIds } }).session(session);
+  }
+
+  // 3. Purge any reports referencing this branch in visits subdocument
   await Report.deleteMany({ 'visits.branch': branchId }).session(session);
 
-  // Hard delete the branch document
+  // 4. Hard delete the branch document
   await Branch.deleteOne({ _id: branchId }).session(session);
 };
 

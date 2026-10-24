@@ -19,6 +19,7 @@ import app from '../src/app.js';
 import { connectDB, disconnectDB } from '../src/config/db.js';
 import { User } from '../src/models/User.js';
 import { Branch } from '../src/models/Branch.js';
+import { Report } from '../src/models/Report.js';
 import { runSweeperCycle } from '../src/jobs/sweeper.js';
 
 const PORT = 4003;
@@ -501,6 +502,55 @@ const runBranchesSuite = async () => {
     // Verify clean store run is a log-only no-op
     const noopResult = await runSweeperCycle();
     assert(noopResult.pass1.branchesPurged === 0, 'Clean store sweep is a log-only no-op (0 branches purged)');
+
+    // 19. Branch Report Analytics Aggregation Endpoint (GET /branches/:branchId/metrics)
+    console.log('\n[19/19] Testing GET /branches/:branchId/metrics & Report Aggregations');
+    // Seed a report visiting boleBranch
+    const testReport = await Report.create({
+      user: primaryUser._id,
+      date: new Date(),
+      clockIn: '08:30',
+      clockOut: '17:00',
+      visits: [
+        {
+          branch: boleBranch._id,
+          clockIn: '09:00',
+          clockOut: '12:00',
+        },
+      ],
+      transcription: 'የቦሌ መድኃኔዓለም ቅርንጫፍ ቁጥጥር',
+      activities: [
+        { text: 'POS system calibration', status: 'completed' },
+        { text: 'Fryer temperature audit', status: 'in_progress' },
+      ],
+      issues: [
+        { text: 'Network cable loose at counter', status: 'reported' },
+      ],
+    });
+
+    const metricsByIdRes = await postmanRequest(`/branches/${boleBranch._id}/metrics`);
+    assert(metricsByIdRes.status === 200, 'GET /branches/:id/metrics returns HTTP 200 OK');
+    assert(metricsByIdRes.body.data.totalAudits === 1, 'Total audits count matches seeded report');
+    assert(metricsByIdRes.body.data.issuesByStatus.reported === 1, 'Reported issue count is accurate (1)');
+    assert(metricsByIdRes.body.data.issuesByStatus.in_progress === 0, 'In-progress issue count is accurate (0)');
+    assert(metricsByIdRes.body.data.activitiesByStatus.completed === 1, 'Completed activities count is accurate (1)');
+    assert(metricsByIdRes.body.data.activitiesByStatus.in_progress === 1, 'In-progress activities count is accurate (1)');
+    assert(Array.isArray(metricsByIdRes.body.data.auditVolumeTrend), 'Audit volume trend is an array');
+    assert(metricsByIdRes.body.data.auditVolumeTrend.length === 1, 'Audit volume trend contains 1 date data point');
+
+    // Retrieval by operational uppercase code
+    const metricsByCodeRes = await postmanRequest(`/branches/${boleBranch.code}/metrics`);
+    assert(metricsByCodeRes.status === 200, 'GET /branches/:code/metrics by code returns HTTP 200 OK');
+    assert(metricsByCodeRes.body.data.totalAudits === 1, 'Total audits retrieved by code matches');
+
+    // Multi-tenant check: secondary user cannot access primary user's branch metrics
+    activeCookies = secondaryCookies;
+    const foreignMetricsRes = await postmanRequest(`/branches/${boleBranch._id}/metrics`);
+    assert(foreignMetricsRes.status === 404, 'Foreign supervisor cannot access branch metrics (HTTP 404)');
+    activeCookies = primaryCookies;
+
+    // Clean up test report
+    await Report.deleteOne({ _id: testReport._id });
 
     console.log(`\n======================================================`);
     console.log(`🎉 ALL ${assertionsPassed} BRANCHES & SWEEPER SUITE ASSERTIONS PASSED!`);

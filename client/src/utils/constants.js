@@ -555,6 +555,42 @@ export const CHAT_PAGINATION = Object.freeze({
   RECENT_CHATS_PAGE_SIZE: 20,
 });
 
+/**
+ * Standard DataGrid page size options across all MUI DataGrids.
+ * Includes 100 to display the pagination select dropdown and prevent MUI X warnings.
+ * @constant
+ * @type {Readonly<Array<number>>}
+ */
+export const DATA_GRID_PAGE_SIZE_OPTIONS = Object.freeze([5, 10, 25, 50, 100]);
+
+/**
+ * Normalizes, deduplicates, and filters branch aliases case-insensitively,
+ * excluding the primary branch name. Prevents repetitive phonetic transliterations
+ * and bounding UI clutter across DataGrid, Card lists, and Hero banners.
+ *
+ * @function getCleanAliases
+ * @param {Array<string>} [aliases=[]] - Raw aliases array from backend model.
+ * @param {string} [primaryName=''] - Primary canonical branch name to exclude.
+ * @returns {Array<string>} Array of unique, cleaned alias strings.
+ */
+export const getCleanAliases = (aliases = [], primaryName = '') => {
+  if (!Array.isArray(aliases)) return [];
+  const normalizedPrimary = String(primaryName || '').trim().toLowerCase();
+  const seen = new Set();
+  const clean = [];
+
+  for (const raw of aliases) {
+    const trimmed = String(raw || '').trim();
+    const lower = trimmed.toLowerCase();
+    if (!lower || lower === normalizedPrimary || seen.has(lower)) {
+      continue;
+    }
+    seen.add(lower);
+    clean.push(trimmed);
+  }
+  return clean;
+};
+
 export default {
   HTTP_STATUS,
   PASSWORD_REGEX,
@@ -595,5 +631,7 @@ export default {
   formatSttEngineDisplayName,
   CHAT_CONSTANTS,
   CHAT_PAGINATION,
+  DATA_GRID_PAGE_SIZE_OPTIONS,
+  getCleanAliases,
 };
 

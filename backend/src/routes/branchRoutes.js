@@ -9,6 +9,7 @@ import {
   createBranch,
   getBranches,
   getBranchById,
+  getBranchMetrics,
   updateBranch,
   archiveBranch,
   restoreBranch,
@@ -41,6 +42,13 @@ router.post('/', createBranchValidation, validate, createBranch);
  * @access Protected (Area Supervisor)
  */
 router.get('/', listBranchesValidation, validate, getBranches);
+
+/**
+ * @route GET /api/v1/branches/:branchId/metrics
+ * @desc Retrieve analytics aggregations of reports visiting this branch
+ * @access Protected (Area Supervisor)
+ */
+router.get('/:branchId/metrics', branchIdParamValidation, validate, getBranchMetrics);
 
 /**
  * @route GET /api/v1/branches/:branchId

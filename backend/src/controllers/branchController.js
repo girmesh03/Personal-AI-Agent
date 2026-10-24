@@ -8,6 +8,7 @@
 import mongoose from 'mongoose';
 import asyncHandler from 'express-async-handler';
 import { Branch } from '../models/Branch.js';
+import { Report } from '../models/Report.js';
 import { HTTP_STATUS, DEFAULT_PAGE_LIMIT } from '../utils/constants.js';
 import { ConflictError, NotFoundError, BadRequestError } from '../errors/CustomError.js';
 import {
@@ -476,10 +477,105 @@ export const deleteBranchPermanently = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * Retrieves analytics and report aggregations for a single physical branch.
+ * Aggregates all non-archived reports visiting this branch for the authenticated supervisor.
+ *
+ * @function getBranchMetrics
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ * @returns {Promise<void>}
+ */
+export const getBranchMetrics = asyncHandler(async (req, res) => {
+  const { branchId } = req.validated?.params || req.params;
+
+  const query = buildBranchIdentifierQuery(branchId, req.user._id);
+  const branch = await Branch.findOne(query).lean();
+
+  if (!branch) {
+    throw new NotFoundError('Branch not found.');
+  }
+
+  // Aggregate active inspection reports visiting this branch
+  const [result] = await Report.aggregate([
+    {
+      $match: {
+        user: req.user._id,
+        isArchived: false,
+        'visits.branch': branch._id,
+      },
+    },
+    {
+      $facet: {
+        totalAudits: [{ $count: 'count' }],
+        auditVolumeTrend: [
+          {
+            $group: {
+              _id: { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
+              count: { $sum: 1 },
+            },
+          },
+          { $sort: { _id: 1 } },
+          { $limit: 14 },
+          { $project: { date: '$_id', count: 1, _id: 0 } },
+        ],
+        issuesByStatus: [
+          { $unwind: '$issues' },
+          {
+            $group: {
+              _id: '$issues.status',
+              count: { $sum: 1 },
+            },
+          },
+          { $project: { status: '$_id', count: 1, _id: 0 } },
+        ],
+        activitiesByStatus: [
+          { $unwind: '$activities' },
+          {
+            $group: {
+              _id: '$activities.status',
+              count: { $sum: 1 },
+            },
+          },
+          { $project: { status: '$_id', count: 1, _id: 0 } },
+        ],
+      },
+    },
+  ]);
+
+  const issuesCounts = { reported: 0, in_progress: 0, completed: 0, no_issue: 0 };
+  (result?.issuesByStatus || []).forEach((item) => {
+    if (item.status in issuesCounts) {
+      issuesCounts[item.status] = item.count;
+    }
+  });
+
+  const activitiesCounts = { completed: 0, in_progress: 0 };
+  (result?.activitiesByStatus || []).forEach((item) => {
+    if (item.status in activitiesCounts) {
+      activitiesCounts[item.status] = item.count;
+    }
+  });
+
+  res.status(HTTP_STATUS.OK).json({
+    success: true,
+    message: 'Branch report metrics retrieved successfully',
+    data: {
+      branchId: branch._id,
+      branchCode: branch.code,
+      totalAudits: result?.totalAudits?.[0]?.count || 0,
+      auditVolumeTrend: result?.auditVolumeTrend || [],
+      issuesByStatus: issuesCounts,
+      activitiesByStatus: activitiesCounts,
+    },
+  });
+});
+
 export default {
   createBranch,
   getBranches,
   getBranchById,
+  getBranchMetrics,
   updateBranch,
   archiveBranch,
   restoreBranch,
