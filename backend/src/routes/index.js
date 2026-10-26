@@ -9,6 +9,7 @@ import userRoutes from './userRoutes.js';
 import branchRoutes from './branchRoutes.js';
 import reportRoutes from './reportRoutes.js';
 import chatRoutes from './chatRoutes.js';
+import dashboardRoutes from './dashboardRoutes.js';
 
 const router = express.Router();
 
@@ -26,5 +27,8 @@ router.use('/reports', reportRoutes);
 
 // Mount chat domain routes (/api/v1/chat)
 router.use('/chat', chatRoutes);
+
+// Mount dashboard analytics domain routes (/api/v1/dashboard)
+router.use('/dashboard', dashboardRoutes);
 
 export default router;
