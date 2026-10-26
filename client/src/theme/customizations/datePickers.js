@@ -175,6 +175,33 @@ const datePickersCustomizations = {
       }),
     },
   },
+  MuiPickersLayout: {
+    styleOverrides: {
+      root: ({ theme }) => ({
+        backgroundImage: 'none',
+        backgroundColor: (theme.vars || theme).palette.background.paper,
+        ...theme.applyStyles('dark', {
+          backgroundColor: gray[900],
+        }),
+      }),
+      contentWrapper: {
+        backgroundColor: 'transparent',
+      },
+      toolbar: {
+        backgroundColor: 'transparent',
+      },
+      actionBar: {
+        backgroundColor: 'transparent',
+      },
+    },
+  },
+  MuiPickersToolbar: {
+    styleOverrides: {
+      root: {
+        backgroundColor: 'transparent',
+      },
+    },
+  },
 };
 
 export default datePickersCustomizations;

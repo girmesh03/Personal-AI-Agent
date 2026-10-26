@@ -71,16 +71,43 @@ export function ethiopianToJdn(year, month, day) {
 }
 
 /**
- * Converts a JS Date or ISO date string to Ethiopian calendar date components.
+ * Converts a JS Date, timestamp, or ISO date string to Ethiopian calendar date components.
+ * Safely extracts Gregorian Y-M-D components without timezone distortion (eliminates UTC midnight off-by-one shifts).
  * @param {Date|string|number} dateInput - Date object, timestamp, or ISO string.
  * @returns {{ year: number, month: number, day: number }} Ethiopian date object.
  */
 export function toEthiopianDate(dateInput) {
-  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
-  if (Number.isNaN(d.getTime())) {
-    throw new Error('Invalid date provided to toEthiopianDate.');
+  if (!dateInput) return null;
+  let year, month, day;
+
+  if (typeof dateInput === 'string') {
+    const trimmed = dateInput.trim();
+    const m = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) {
+      year = parseInt(m[1], 10);
+      month = parseInt(m[2], 10);
+      day = parseInt(m[3], 10);
+    }
+  } else if (dateInput instanceof Date) {
+    if (Number.isNaN(dateInput.getTime())) {
+      throw new Error('Invalid date provided to toEthiopianDate.');
+    }
+    year = dateInput.getFullYear();
+    month = dateInput.getMonth() + 1;
+    day = dateInput.getDate();
   }
-  const jdn = gregorianToJdn(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+
+  if (!year || !month || !day) {
+    const d = new Date(dateInput);
+    if (Number.isNaN(d.getTime())) {
+      throw new Error('Invalid date provided to toEthiopianDate.');
+    }
+    year = d.getFullYear();
+    month = d.getMonth() + 1;
+    day = d.getDate();
+  }
+
+  const jdn = gregorianToJdn(year, month, day);
   return jdnToEthiopian(jdn);
 }
 

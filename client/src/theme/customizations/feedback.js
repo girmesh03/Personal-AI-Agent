@@ -34,6 +34,11 @@ const feedbackCustomizations = {
           borderRadius: "10px",
           border: "1px solid",
           borderColor: (theme.vars || theme).palette.divider,
+          backgroundImage: "none",
+          backgroundColor: (theme.vars || theme).palette.background.paper,
+          ...theme.applyStyles("dark", {
+            backgroundColor: gray[900],
+          }),
         },
       }),
     },
