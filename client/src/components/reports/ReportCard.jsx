@@ -120,7 +120,7 @@ export const ReportCard = memo(({
             </Typography>
             {ethiopianDate && (
               <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-                {ethiopianDate} ዓ.ም
+                {ethiopianDate}
               </Typography>
             )}
           </Box>

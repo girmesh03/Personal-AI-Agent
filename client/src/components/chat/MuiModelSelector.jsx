@@ -727,6 +727,8 @@ export const MuiModelSelector = React.memo(
             open={Boolean(anchorEl)}
             anchorEl={anchorEl}
             onClose={handleClose}
+            disableEnforceFocus={true}
+            disableRestoreFocus={true}
             anchorOrigin={{
               vertical: 'top',
               horizontal: 'left',

@@ -49,9 +49,9 @@ export const ReportHero = memo(({
   const shiftDuration = computeShiftDuration(report.clockIn, report.clockOut);
   const visitsCount = report.visits?.length || 0;
 
-  // Unified dual-calendar date display
+  // Unified dual-calendar date display (100% English UI Chrome)
   const dualDateDisplay = ethiopianDate
-    ? `${ethiopianDate} ዓ.ም (${gregorianDate})`
+    ? `${ethiopianDate} (${gregorianDate})`
     : gregorianDate;
 
   // Multi-tier supervisor name and identity resolution (Zero artificial strings)

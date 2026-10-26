@@ -119,6 +119,8 @@ export const MuiActionMenu = memo(({
         anchorEl={anchorEl}
         open={isOpen}
         onClose={handleClose}
+        disableEnforceFocus={true}
+        disableRestoreFocus={true}
         slotProps={{
           paper: {
             elevation: 3,

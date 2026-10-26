@@ -316,6 +316,8 @@ const MuiSidebar = ({ mode, onToggleMode, mobileOpen, onMobileClose }) => {
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
         onClose={handleMenuClose}
+        disableEnforceFocus={true}
+        disableRestoreFocus={true}
         anchorOrigin={{ vertical: "top", horizontal: "right" }}
         transformOrigin={{
           vertical: "bottom",

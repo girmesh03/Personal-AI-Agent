@@ -100,6 +100,7 @@ export const MuiDataGrid = memo(({
           title={emptyTitle}
           subtitle={emptySubtitle}
           action={emptyAction}
+          sx={{ border: 'none' }}
         />
       </GridOverlay>
     );

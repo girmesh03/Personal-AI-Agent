@@ -51,6 +51,7 @@ export const MuiDatePicker = ({
   label = 'Date',
   placeholder = 'Select Date',
   disabled = false,
+  fullWidth = false,
   renderButton,
   startAdornment,
   endAdornment,
@@ -61,16 +62,25 @@ export const MuiDatePicker = ({
   const [open, setOpen] = useState(false);
   const anchorRef = useRef(null);
 
+  // Unpack raw value safely (supporting primitive strings, Dayjs/Date, and { value, gregorian, target } objects)
+  const rawDateValue = useMemo(() => {
+    if (!value) return null;
+    if (typeof value === 'object' && !dayjs.isDayjs(value) && !(value instanceof Date)) {
+      return value.gregorian ?? value.value ?? value.target?.value ?? null;
+    }
+    return value;
+  }, [value]);
+
   // Parse incoming value into a valid dayjs instance
   const dayjsValue = useMemo(() => {
-    if (!value) return null;
-    if (dayjs.isDayjs(value)) return value.isValid() ? value : null;
-    if (value instanceof Date) {
-      const d = dayjs(value);
+    if (!rawDateValue) return null;
+    if (dayjs.isDayjs(rawDateValue)) return rawDateValue.isValid() ? rawDateValue : null;
+    if (rawDateValue instanceof Date) {
+      const d = dayjs(rawDateValue);
       return d.isValid() ? d : null;
     }
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
+    if (typeof rawDateValue === 'string') {
+      const trimmed = rawDateValue.trim();
       if (!trimmed) return null;
 
       if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
@@ -91,7 +101,7 @@ export const MuiDatePicker = ({
       return fallback.isValid() ? fallback : null;
     }
     return null;
-  }, [value]);
+  }, [rawDateValue]);
 
   const selectedEth = useMemo(() => {
     if (!dayjsValue || !dayjsValue.isValid()) return null;
@@ -119,9 +129,10 @@ export const MuiDatePicker = ({
   const handlePickerChange = useCallback(
     (newDate) => {
       if (!onChange) return;
-      if (newDate && dayjs.isDayjs(newDate) && newDate.isValid()) {
-        const gregStr = newDate.format('YYYY-MM-DD');
-        const eth = toEthiopianDate(newDate);
+      const d = dayjs.isDayjs(newDate) ? newDate : (newDate ? dayjs(newDate) : null);
+      if (d && d.isValid()) {
+        const gregStr = d.format('YYYY-MM-DD');
+        const eth = toEthiopianDate(d);
         const dd = String(eth.day).padStart(2, '0');
         const mm = String(eth.month).padStart(2, '0');
         const yy = String(eth.year).slice(-2);
@@ -130,6 +141,7 @@ export const MuiDatePicker = ({
           gregorian: gregStr,
           ethiopianDate: ethStr,
           ethiopian: eth,
+          value: gregStr,
           target: { name, value: gregStr },
         });
       } else {
@@ -137,6 +149,7 @@ export const MuiDatePicker = ({
           gregorian: '',
           ethiopianDate: '',
           ethiopian: null,
+          value: '',
           target: { name, value: '' },
         });
       }
@@ -188,8 +201,10 @@ export const MuiDatePicker = ({
           onClick={() => setOpen(true)}
           disabled={disabled}
           size={size}
+          fullWidth={fullWidth}
           startIcon={startAdornment || <CalendarMonthOutlinedIcon fontSize="small" />}
           sx={{
+            width: fullWidth ? '100%' : 'auto',
             display: 'inline-flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -230,6 +245,7 @@ export const MuiDatePicker = ({
         onClose={() => setOpen(false)}
         value={dayjsValue}
         onChange={handlePickerChange}
+        onAccept={handlePickerChange}
         disabled={disabled}
         dayOfWeekFormatter={(date) => {
           const day = typeof date?.day === 'function' ? date.day() : 0;
@@ -242,14 +258,6 @@ export const MuiDatePicker = ({
         slotProps={{
           popper: {
             anchorEl: () => anchorRef.current,
-          },
-          dialog: {
-            PaperProps: {
-              sx: {
-                backgroundImage: 'none',
-                bgcolor: 'background.paper',
-              },
-            },
           },
         }}
       />
@@ -268,6 +276,7 @@ MuiDatePicker.propTypes = {
   label: PropTypes.string,
   placeholder: PropTypes.string,
   disabled: PropTypes.bool,
+  fullWidth: PropTypes.bool,
   renderButton: PropTypes.func,
   startAdornment: PropTypes.node,
   endAdornment: PropTypes.node,

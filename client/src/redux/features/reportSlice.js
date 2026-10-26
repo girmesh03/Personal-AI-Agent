@@ -32,13 +32,15 @@ export const reportSlice = apiSlice.injectEndpoints({
         const queryString = searchParams.toString();
         return `/reports${queryString ? `?${queryString}` : ''}`;
       },
-      providesTags: (result) =>
-        result?.reports
+      providesTags: (result) => {
+        const list = result?.reports || result?.docs || [];
+        return list.length
           ? [
-              ...result.reports.map(({ _id }) => ({ type: 'Report', id: _id })),
+              ...list.map(({ _id }) => ({ type: 'Report', id: _id })),
               { type: 'Report', id: 'LIST' },
             ]
-          : [{ type: 'Report', id: 'LIST' }],
+          : [{ type: 'Report', id: 'LIST' }];
+      },
     }),
 
     /**
@@ -56,13 +58,24 @@ export const reportSlice = apiSlice.injectEndpoints({
       query: ({ reportId, ...updates }) => ({
         url: `/reports/${reportId}`,
         method: 'PATCH',
-        body: updates,
+        body: updates.data ? updates.data : updates,
       }),
       invalidatesTags: (_result, _error, { reportId }) => [
         { type: 'Report', id: reportId },
         { type: 'Report', id: 'LIST' },
         'Dashboard',
       ],
+    }),
+
+    /**
+     * Export report document (text, csv, docx, pdf, xlsx) or dispatch to Google Drive.
+     */
+    exportReport: builder.mutation({
+      query: ({ reportId, format = 'pdf', destination = 'download' }) => ({
+        url: `/reports/${reportId}/export`,
+        method: 'POST',
+        body: { format, destination },
+      }),
     }),
 
     /**
@@ -119,6 +132,7 @@ export const {
   useArchiveReportMutation,
   useRestoreReportMutation,
   useDeleteReportMutation,
+  useExportReportMutation,
 } = reportSlice;
 
 export default reportSlice;

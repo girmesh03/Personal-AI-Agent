@@ -42,6 +42,7 @@ export const MuiTimePicker = ({
   label = 'Time',
   placeholder = 'HH:mm',
   disabled = false,
+  fullWidth = false,
   renderButton,
   startAdornment,
   endAdornment,
@@ -52,32 +53,39 @@ export const MuiTimePicker = ({
   const [open, setOpen] = useState(false);
   const anchorRef = useRef(null);
 
+  // Unpack raw time string safely (supporting primitive strings, Dayjs/Date, and { value, target } objects)
+  const rawTimeStr = useMemo(() => {
+    if (!value) return '';
+    if (typeof value === 'string') return value.trim();
+    if (typeof value === 'object') {
+      if (dayjs.isDayjs(value) && value.isValid()) return value.format('HH:mm');
+      if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        const h = String(value.getHours()).padStart(2, '0');
+        const m = String(value.getMinutes()).padStart(2, '0');
+        return `${h}:${m}`;
+      }
+      if (typeof value.value === 'string') return value.value.trim();
+      if (typeof value.target?.value === 'string') return value.target.value.trim();
+    }
+    return '';
+  }, [value]);
+
   // Parse incoming value ("HH:mm") into a valid dayjs instance
   const dayjsValue = useMemo(() => {
-    if (!value) return null;
-    if (dayjs.isDayjs(value)) return value.isValid() ? value : null;
-    if (value instanceof Date) {
-      const d = dayjs(value);
-      return d.isValid() ? d : null;
-    }
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (!trimmed) return null;
+    if (!rawTimeStr) return null;
 
-      const match = trimmed.match(/^(\d{1,2}):(\d{2})/);
-      if (match) {
-        const hours = parseInt(match[1], 10);
-        const minutes = parseInt(match[2], 10);
-        if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
-          return dayjs().hour(hours).minute(minutes).second(0).millisecond(0);
-        }
+    const match = rawTimeStr.match(/^(\d{1,2}):(\d{2})/);
+    if (match) {
+      const hours = parseInt(match[1], 10);
+      const minutes = parseInt(match[2], 10);
+      if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+        return dayjs().hour(hours).minute(minutes).second(0).millisecond(0);
       }
-
-      const d = dayjs(trimmed);
-      return d.isValid() ? d : null;
     }
-    return null;
-  }, [value]);
+
+    const d = dayjs(rawTimeStr);
+    return d.isValid() ? d : null;
+  }, [rawTimeStr]);
 
   const formattedTime = useMemo(() => {
     if (!dayjsValue || !dayjsValue.isValid()) return '';
@@ -87,10 +95,11 @@ export const MuiTimePicker = ({
   const handlePickerChange = useCallback(
     (newTime) => {
       if (!onChange) return;
-      if (newTime && dayjs.isDayjs(newTime) && newTime.isValid()) {
-        const timeStr = newTime.format('HH:mm');
-        const hStr = newTime.format('HH');
-        const mStr = newTime.format('mm');
+      const d = dayjs.isDayjs(newTime) ? newTime : (newTime ? dayjs(newTime) : null);
+      if (d && d.isValid()) {
+        const timeStr = d.format('HH:mm');
+        const hStr = d.format('HH');
+        const mStr = d.format('mm');
         onChange({
           value: timeStr,
           hours: hStr,
@@ -152,8 +161,10 @@ export const MuiTimePicker = ({
           onClick={() => setOpen(true)}
           disabled={disabled}
           size={size}
+          fullWidth={fullWidth}
           startIcon={startAdornment || <AccessTimeOutlinedIcon fontSize="small" />}
           sx={{
+            width: fullWidth ? '100%' : 'auto',
             display: 'inline-flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -194,6 +205,7 @@ export const MuiTimePicker = ({
         onClose={() => setOpen(false)}
         value={dayjsValue}
         onChange={handlePickerChange}
+        onAccept={handlePickerChange}
         disabled={disabled}
         ampm={false}
         views={['hours', 'minutes']}
@@ -207,14 +219,6 @@ export const MuiTimePicker = ({
         slotProps={{
           popper: {
             anchorEl: () => anchorRef.current,
-          },
-          dialog: {
-            PaperProps: {
-              sx: {
-                backgroundImage: 'none',
-                bgcolor: 'background.paper',
-              },
-            },
           },
         }}
       />
@@ -233,6 +237,7 @@ MuiTimePicker.propTypes = {
   label: PropTypes.string,
   placeholder: PropTypes.string,
   disabled: PropTypes.bool,
+  fullWidth: PropTypes.bool,
   renderButton: PropTypes.func,
   startAdornment: PropTypes.node,
   endAdornment: PropTypes.node,

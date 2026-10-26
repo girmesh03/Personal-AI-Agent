@@ -123,6 +123,8 @@ export const GlobalSearchModal = memo(({ open, onClose }) => {
     <Dialog
       open={open}
       onClose={onClose}
+      disableEnforceFocus={true}
+      disableRestoreFocus={true}
       maxWidth="sm"
       fullWidth
       slotProps={{

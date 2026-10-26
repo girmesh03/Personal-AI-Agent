@@ -265,10 +265,21 @@ export const BRANCH_CONSTANTS = Object.freeze({
  * }>}
  */
 export const REPORT_CONSTANTS = Object.freeze({
-  TEMPLATE_MAX_LENGTH: 4000,
+  TIME_REGEX: /^([01]\d|2[0-3]):([0-5]\d)$/, // HH:mm format
+  ACTIVITY_STATUSES: Object.freeze(['in_progress', 'completed']),
+  DEFAULT_ACTIVITY_STATUS: 'completed',
+  ISSUE_STATUSES: Object.freeze(['reported', 'completed', 'in_progress', 'no_issue']),
+  DEFAULT_ISSUE_STATUS: 'reported',
+  MAX_AUDIO_FILES: 5,
+  ARCHIVE_RETENTION_DAYS: 30,
   PAGE_LIMIT_DEFAULT: 10,
   PAGE_LIMIT_MIN: 1,
   PAGE_LIMIT_MAX: 100,
+  ACTIVITY_TEXT_MAX_LENGTH: 1000,
+  ISSUE_TEXT_MAX_LENGTH: 1000,
+  COMMENT_TEXT_MAX_LENGTH: 2000,
+  TRANSCRIPTION_MAX_LENGTH: 50000,
+  TEMPLATE_MAX_LENGTH: 4000,
 });
 
 /**
