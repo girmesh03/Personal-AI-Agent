@@ -6,7 +6,6 @@
  * and dual live/stub mode with zero-failure invariants.
  */
 
-import sharp from 'sharp';
 import { env } from '../config/env.js';
 import { TELEGRAM_CONSTANTS } from '../utils/constants.js';
 
@@ -482,6 +481,7 @@ export async function generateTextImageCard(text = '', options = {}) {
     ${elements.join('\n    ')}
   </svg>`;
 
+  const { default: sharp } = await import('sharp');
   return sharp(Buffer.from(svg))
     .png({ quality: 100, compressionLevel: 6 })
     .toBuffer();
