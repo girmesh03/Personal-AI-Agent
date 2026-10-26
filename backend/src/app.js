@@ -21,8 +21,12 @@ const app = express();
 app.use(helmet());
 
 // 2. CORS configuration with credentials support
+const configuredOrigins = env.CLIENT_ORIGIN
+  ? env.CLIENT_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
+  : [];
+
 const allowedOrigins = [
-  env.CLIENT_ORIGIN,
+  ...configuredOrigins,
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:5173',
@@ -31,10 +35,18 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error(`CORS blocked for origin: ${origin}`));
+      try {
+        if (
+          !origin ||
+          allowedOrigins.includes(origin) ||
+          (env.NODE_ENV === 'production' && /\.vercel\.app$/.test(new URL(origin).hostname))
+        ) {
+          callback(null, true);
+        } else {
+          callback(new Error(`CORS blocked for origin: ${origin}`));
+        }
+      } catch {
+        callback(new Error(`CORS error parsing origin: ${origin}`));
       }
     },
     credentials: true,

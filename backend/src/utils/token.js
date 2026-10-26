@@ -78,7 +78,7 @@ export const verifyRefreshToken = (token) => {
 export const ACCESS_COOKIE_OPTIONS = Object.freeze({
   httpOnly: true,
   secure: env.NODE_ENV === 'production',
-  sameSite: env.NODE_ENV === 'production' ? 'strict' : 'lax',
+  sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
   maxAge: COOKIE_MAX_AGE.ACCESS,
   path: '/',
 });
@@ -91,7 +91,7 @@ export const ACCESS_COOKIE_OPTIONS = Object.freeze({
 export const REFRESH_COOKIE_OPTIONS = Object.freeze({
   httpOnly: true,
   secure: env.NODE_ENV === 'production',
-  sameSite: env.NODE_ENV === 'production' ? 'strict' : 'lax',
+  sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
   maxAge: COOKIE_MAX_AGE.REFRESH,
   path: '/',
 });
