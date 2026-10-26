@@ -19,6 +19,7 @@ import { HTTP_STATUS, REPORT_CONSTANTS, AUDIO_CONSTANTS } from '../utils/constan
 import { NotFoundError, BadRequestError } from '../errors/CustomError.js';
 import { logger } from '../config/logger.js';
 import { getBilingualSearchTerms, escapeRegex } from '../utils/transliterate.js';
+import { reportExportService } from '../services/reportExportService.js';
 
 
 /**
@@ -312,7 +313,8 @@ export const getReportById = asyncHandler(async (req, res) => {
  */
 export const updateReport = asyncHandler(async (req, res) => {
   const { reportId } = req.validated?.params || req.params;
-  const updates = req.validated?.body || req.body || {};
+  const rawBody = req.validated?.body || req.body || {};
+  const updates = rawBody.data && typeof rawBody.data === 'object' ? rawBody.data : rawBody;
 
   const session = await mongoose.startSession();
   try {
@@ -737,6 +739,48 @@ export const uploadReportAudios = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * Builds formatted markdown text for operational report document export.
+ * @param {object} report - Populated report document.
+/**
+ * Exports an operational report to various document formats (text, csv, docx, pdf, xlsx)
+ * or uploads directly to the user's default 'Personal AI Agent' Google Drive root folder.
+ * Delegating domain synthesis and compilation entirely to reportExportService.
+ *
+ * @function exportReport
+ * @route POST /api/v1/reports/:reportId/export
+ * @access Protected (Area Supervisor)
+ */
+export const exportReport = asyncHandler(async (req, res) => {
+  const { reportId } = req.validated?.params || req.params;
+  const { format = 'pdf', destination = 'download' } = req.body || {};
+
+  const report = await Report.findOne({
+    _id: reportId,
+    user: req.user._id,
+    isArchived: false,
+  })
+    .populate('visits.branch', 'name code managerName managerPhone')
+    .populate('user', 'firstName lastName fullName email position')
+    .lean();
+
+  if (!report) {
+    throw new NotFoundError('Report not found or has been archived.');
+  }
+
+  const result = await reportExportService.exportReportDocument({
+    report,
+    user: req.user,
+    format,
+    destination,
+  });
+
+  res.status(HTTP_STATUS.OK).json({
+    success: true,
+    data: result,
+  });
+});
+
 export default {
   createReport,
   createReportRecord,
@@ -750,4 +794,5 @@ export default {
   restoreReport,
   deleteReportPermanently,
   uploadReportAudios,
+  exportReport,
 };

@@ -874,6 +874,29 @@ export const createReportValidation = [
   }),
 ];
 
+/**
+ * Validation rules for report document export and Google Drive dispatch.
+ * @constant
+ * @type {import('express-validator').ValidationChain[]}
+ */
+export const exportReportValidation = [
+  ...reportIdValidation,
+  body('format')
+    .optional()
+    .isString()
+    .trim()
+    .toLowerCase()
+    .isIn(['text', 'txt', 'csv', 'docx', 'pdf', 'xlsx', 'spreadsheet'])
+    .withMessage('Supported formats: text, csv, docx, pdf, spreadsheet.'),
+  body('destination')
+    .optional()
+    .isString()
+    .trim()
+    .toLowerCase()
+    .isIn(['download', 'google_drive'])
+    .withMessage('Destination must be download or google_drive.'),
+];
+
 export default {
   isValidObjectId,
   validateReportPayload,
@@ -881,4 +904,5 @@ export default {
   getReportsValidation,
   updateReportValidation,
   createReportValidation,
+  exportReportValidation,
 };

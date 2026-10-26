@@ -277,7 +277,8 @@ userSchema.index({ email: 1 }, { unique: true });
  * @returns {string} Combined first and last name.
  */
 userSchema.virtual('fullName').get(function () {
-  return `${this.firstName} ${this.lastName}`;
+  const name = [this.firstName, this.lastName].filter(Boolean).join(' ').trim();
+  return name || undefined;
 });
 
 /**

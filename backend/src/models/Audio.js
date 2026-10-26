@@ -129,8 +129,19 @@ const audioSchema = new mongoose.Schema(
  * @returns {string|null} Relative HTTP URL.
  */
 audioSchema.virtual('url').get(function () {
+  if (this.fileName) {
+    return `/uploads/audios/${this.fileName}`;
+  }
   if (!this.path) return null;
   const normalized = this.path.replace(/\\/g, '/');
+  const uploadIdx = normalized.indexOf('/uploads/');
+  if (uploadIdx !== -1) {
+    return normalized.slice(uploadIdx);
+  }
+  const bareUploadIdx = normalized.indexOf('uploads/');
+  if (bareUploadIdx !== -1) {
+    return `/${normalized.slice(bareUploadIdx)}`;
+  }
   return normalized.startsWith('/') ? normalized : `/${normalized}`;
 });
 

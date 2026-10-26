@@ -2185,21 +2185,33 @@ export const toolHandlers = {
 
     const userTelegram = user?.integrations?.telegram || {};
     const botToken = resolveBotToken(user);
-    const chatId = resolveChannelChatId(user, targetChannel || 'management');
+    const effectiveChannel = targetChannel || 'management';
+    const chatId = resolveChannelChatId(user, effectiveChannel);
 
-    // Zero-Crash Invariant: If unconfigured, disabled, or target chat ID missing, return structured informative response
-    if (!botToken || !chatId || userTelegram.connected === false || userTelegram.enabled === false) {
+    // Zero-Crash Invariant: Check if bot token or Telegram integration is not connected
+    if (!botToken || userTelegram.connected === false || userTelegram.enabled === false) {
       return {
         success: false,
         isConfigured: false,
-        channel: targetChannel || 'management',
-        message: 'Telegram integration is not configured or is currently disabled. Please set up your Telegram Bot Token and operational chat IDs in Profile > Telegram Channels.',
+        channel: effectiveChannel,
+        message: 'Telegram bot integration is not connected or is temporarily disabled. Please connect your bot token under Profile > Telegram Channels.',
         actionRequired: 'CONNECT_TELEGRAM_INTEGRATION',
       };
     }
 
-    // Determine format: explicit tool arg asImage OR user settings defaultFormat === 'image'
-    const shouldPostImage = Boolean(asImage || userTelegram.defaultFormat === 'image');
+    // Zero-Crash Invariant: Check if the specific requested channel has a configured chat ID
+    if (!chatId) {
+      return {
+        success: false,
+        isConfigured: false,
+        channel: effectiveChannel,
+        message: `The "${effectiveChannel}" Telegram channel is not configured with a Chat ID. Please set the Chat ID for ${effectiveChannel} under Profile > Telegram Channels or select a configured channel (such as Management).`,
+        actionRequired: 'CONFIGURE_CHANNEL_CHAT_ID',
+      };
+    }
+
+    // Determine format: explicit tool arg asImage (if specified) OR user settings defaultFormat === 'image'
+    const shouldPostImage = asImage !== undefined ? Boolean(asImage) : Boolean(userTelegram.defaultFormat === 'image');
 
     // Extract dynamic formatting options with zero hardcoding
     const savedCardOptions = userTelegram.imageCardOptions || {};

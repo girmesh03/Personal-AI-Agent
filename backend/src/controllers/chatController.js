@@ -61,12 +61,8 @@ export async function compileUserTurnParts(msg) {
   }
 
   // 1. Audio Transcriptions
-  if (Array.isArray(msg.audioTranscriptions) && msg.audioTranscriptions.length > 0) {
-    const validTranscriptions = msg.audioTranscriptions.filter((t) => t && typeof t === 'string' && t.trim());
-    if (validTranscriptions.length > 0) {
-      textSections.push(`[Transcribed Audio]:\n${validTranscriptions.join('\n\n')}`);
-    }
-  } else if (Array.isArray(msg.audios) && msg.audios.length > 0) {
+  let audioFormatted = false;
+  if (Array.isArray(msg.audios) && msg.audios.length > 0) {
     try {
       const rawAudios = Array.isArray(msg.audios) ? msg.audios : [];
       const audioIds = rawAudios
@@ -74,15 +70,28 @@ export async function compileUserTurnParts(msg) {
         .filter((id) => id && /^[0-9a-fA-F]{24}$/.test(String(id)));
       if (audioIds.length > 0) {
         const audioDocs = await Audio.find({ _id: { $in: audioIds } });
-        const transcriptions = audioDocs
-          .map((a) => a.transcription)
-          .filter((t) => t && t.trim());
-        if (transcriptions.length > 0) {
-          textSections.push(`[Transcribed Audio]:\n${transcriptions.join('\n\n')}`);
+        const formattedList = audioDocs
+          .map((a) => {
+            const transcript = (a.transcription || '').trim();
+            if (!transcript) return null;
+            const fileName = a.originalName || a.fileName || 'audio.wav';
+            return `[Transcribed Audio (ID: ${a._id}, File: "${fileName}")]:\n${transcript}`;
+          })
+          .filter(Boolean);
+        if (formattedList.length > 0) {
+          textSections.push(formattedList.join('\n\n'));
+          audioFormatted = true;
         }
       }
     } catch (err) {
       logger.warn(`[chatController] Could not rehydrate audio transcripts: ${err.message}`);
+    }
+  }
+
+  if (!audioFormatted && Array.isArray(msg.audioTranscriptions) && msg.audioTranscriptions.length > 0) {
+    const validTranscriptions = msg.audioTranscriptions.filter((t) => t && typeof t === 'string' && t.trim());
+    if (validTranscriptions.length > 0) {
+      textSections.push(`[Transcribed Audio]:\n${validTranscriptions.join('\n\n')}`);
     }
   }
 
@@ -302,6 +311,7 @@ export const streamChat = asyncHandler(async (req, res) => {
   try {
     // 3. Modality Ingestion & Preparation
     const audioTranscriptions = [];
+    const audioPromptSections = [];
     let attachmentTextContext = '';
     let inlineParts = [];
 
@@ -372,12 +382,11 @@ export const streamChat = asyncHandler(async (req, res) => {
       userTurn = chat.messages[anchorIdx];
 
       // Re-hydrate multi-modal context from anchor user turn
-      if (Array.isArray(userTurn.audioTranscriptions) && userTurn.audioTranscriptions.length > 0) {
-        audioTranscriptions.push(...userTurn.audioTranscriptions);
-      } else if (Array.isArray(userTurn.audios) && userTurn.audios.length > 0) {
+      if (Array.isArray(userTurn.audios) && userTurn.audios.length > 0) {
         try {
           const existingAudios = await Audio.find({ _id: { $in: userTurn.audios }, user: req.user._id });
           for (const audioDoc of existingAudios) {
+            let transcriptText = '';
             if (!audioDoc.transcription || audioDoc.status !== 'transcribed') {
               const updated = await transcribeAudioDocument(audioDoc._id, {
                 sttEngine: activeSttEngine,
@@ -385,15 +394,23 @@ export const streamChat = asyncHandler(async (req, res) => {
                 geminiApiKey: userGeminiKey,
               });
               if (updated?.transcription && updated.transcription.trim()) {
-                audioTranscriptions.push(updated.transcription.trim());
+                transcriptText = updated.transcription.trim();
+                audioTranscriptions.push(transcriptText);
               }
             } else if (audioDoc.transcription && audioDoc.transcription.trim()) {
-              audioTranscriptions.push(audioDoc.transcription.trim());
+              transcriptText = audioDoc.transcription.trim();
+              audioTranscriptions.push(transcriptText);
+            }
+            if (transcriptText) {
+              const fileName = audioDoc.originalName || audioDoc.fileName || 'audio.wav';
+              audioPromptSections.push(`[Transcribed Audio (ID: ${audioDoc._id}, File: "${fileName}")]:\n${transcriptText}`);
             }
           }
         } catch (audioHydrateErr) {
           logger.warn(`[chatController] Failed to re-hydrate audio transcriptions for continue: ${audioHydrateErr.message}`);
         }
+      } else if (Array.isArray(userTurn.audioTranscriptions) && userTurn.audioTranscriptions.length > 0) {
+        audioTranscriptions.push(...userTurn.audioTranscriptions);
       }
 
       if (userTurn.documentTextContext && userTurn.documentTextContext.trim()) {
@@ -461,12 +478,11 @@ export const streamChat = asyncHandler(async (req, res) => {
 
       // Re-hydrate audio recordings from MongoDB
       const shouldReTranscribe = Boolean(b.sttEngine) && Array.isArray(userTurn.audios) && userTurn.audios.length > 0;
-      if (!shouldReTranscribe && Array.isArray(userTurn.audioTranscriptions) && userTurn.audioTranscriptions.length > 0) {
-        audioTranscriptions.push(...userTurn.audioTranscriptions);
-      } else if (Array.isArray(userTurn.audios) && userTurn.audios.length > 0) {
+      if (Array.isArray(userTurn.audios) && userTurn.audios.length > 0) {
         try {
           const existingAudios = await Audio.find({ _id: { $in: userTurn.audios }, user: req.user._id });
           for (const audioDoc of existingAudios) {
+            let transcriptText = '';
             if (!audioDoc.transcription || audioDoc.status !== 'transcribed' || shouldReTranscribe) {
               const updated = await transcribeAudioDocument(audioDoc._id, {
                 sttEngine: activeSttEngine,
@@ -474,10 +490,16 @@ export const streamChat = asyncHandler(async (req, res) => {
                 geminiApiKey: userGeminiKey,
               });
               if (updated?.transcription && updated.transcription.trim()) {
-                audioTranscriptions.push(updated.transcription.trim());
+                transcriptText = updated.transcription.trim();
+                audioTranscriptions.push(transcriptText);
               }
             } else if (audioDoc.transcription && audioDoc.transcription.trim()) {
-              audioTranscriptions.push(audioDoc.transcription.trim());
+              transcriptText = audioDoc.transcription.trim();
+              audioTranscriptions.push(transcriptText);
+            }
+            if (transcriptText) {
+              const fileName = audioDoc.originalName || audioDoc.fileName || 'audio.wav';
+              audioPromptSections.push(`[Transcribed Audio (ID: ${audioDoc._id}, File: "${fileName}")]:\n${transcriptText}`);
             }
           }
           if (shouldReTranscribe && audioTranscriptions.length > 0) {
@@ -486,6 +508,8 @@ export const streamChat = asyncHandler(async (req, res) => {
         } catch (audioHydrateErr) {
           logger.warn(`[chatController] Failed to re-hydrate audio transcriptions: ${audioHydrateErr.message}`);
         }
+      } else if (!shouldReTranscribe && Array.isArray(userTurn.audioTranscriptions) && userTurn.audioTranscriptions.length > 0) {
+        audioTranscriptions.push(...userTurn.audioTranscriptions);
       }
 
       // Re-hydrate file attachments from verified disk files
@@ -582,17 +606,24 @@ export const streamChat = asyncHandler(async (req, res) => {
           try {
             const audioDoc = await Audio.findOne({ _id: audioId, user: req.user._id });
             if (audioDoc) {
+              let transcriptText = '';
               if (!audioDoc.transcription || audioDoc.status !== 'transcribed') {
                 const updated = await transcribeAudioDocument(audioDoc._id, {
                   sttEngine: activeSttEngine,
                   addisApiKey: userAddisKey,
                   geminiApiKey: userGeminiKey,
                 });
-                if (updated.transcription && updated.transcription.trim()) {
-                  audioTranscriptions.push(updated.transcription.trim());
+                if (updated?.transcription && updated.transcription.trim()) {
+                  transcriptText = updated.transcription.trim();
+                  audioTranscriptions.push(transcriptText);
                 }
               } else if (audioDoc.transcription && audioDoc.transcription.trim()) {
-                audioTranscriptions.push(audioDoc.transcription.trim());
+                transcriptText = audioDoc.transcription.trim();
+                audioTranscriptions.push(transcriptText);
+              }
+              if (transcriptText) {
+                const fileName = audioDoc.originalName || audioDoc.fileName || 'audio.wav';
+                audioPromptSections.push(`[Transcribed Audio (ID: ${audioDoc._id}, File: "${fileName}")]:\n${transcriptText}`);
               }
             }
           } catch (audioErr) {
@@ -653,7 +684,9 @@ export const streamChat = asyncHandler(async (req, res) => {
     if (promptText) {
       partsForPrompt.push(promptText);
     }
-    if (audioTranscriptions.length > 0) {
+    if (audioPromptSections.length > 0) {
+      partsForPrompt.push(audioPromptSections.join('\n\n'));
+    } else if (audioTranscriptions.length > 0) {
       partsForPrompt.push(
         `[Transcribed Audio]:\n${audioTranscriptions.join('\n\n')}`
       );
@@ -1007,6 +1040,8 @@ export const streamChat = asyncHandler(async (req, res) => {
           result = await executeAgentTool(fc.name, fc.args, {
             userId: req.user._id,
             session,
+            chat,
+            chatId: chat._id,
           });
         } finally {
           await session.endSession();

@@ -292,6 +292,11 @@ export async function assembleSystemPrompt({
     '  • EXPLICIT PERSISTENCE COMMANDS: When the user explicitly instructs you to record, save, or commit the report (e.g. using action verbs like "መዝግብልኝ", "መዝግበው", "አስመዝግበው", "አስቀምጠው", "save it", "record it", "commit it", or approving a previously presented draft): invoke create_report autonomously inside the ACID transaction session, AND ALWAYS render the complete formatted report text in your conversational message for the user to review. Never emit just a generic confirmation sentence without displaying the report.',
     '  • RAW NARRATIONS & DRAFT MODE: When the user provides shift notes, raw narrations, or voice memos WITHOUT an explicit command to record/save (e.g. "ይሄንን ሪፖርት አዘጋጅልኝ", or just raw narration text): NEVER create or persist a report behind their back. First synthesize a clean, refined draft in chat, highlight any ambiguities (e.g. audit target branch vs. inventory donor like Medhanialem, single vs. split reports, personal timekeeping), and invite the user to confirm or adjust before saving.',
     '- Dynamic Custom Template Adaptation: If the user has configured custom template sections (e.g. custom headings or extra structured blocks in <custom_single_branch_template> or <custom_multi_branch_template>), faithfully render those exact headings in the generated chat report text. When persisting via create_report or update_report, map standard sections to activities, issues, and comments, and map any custom/specialized template sections into the customSections array: [{ heading: "Section Heading", items: ["item 1", "item 2"] }].',
+    '- PERSONAL AI AGENT CONTEXT LAW & MEDIA ATTACHMENT INTEGRITY:',
+    '  • The platform is fundamentally a Personal AI Agent. The user interacts with you across all dimensions of their life, business, and operations. Uploaded audios, images, and documents may contain music, personal voice memos, creative reflections, study materials, or operational branch inspection voice notes.',
+    '  • Context is supreme and completely determines relevance. NEVER assume that all uploaded media files belong to an operational report.',
+    '  • When persisting an operational report via create_report, carefully analyze the context of any uploaded audio files referenced as [Transcribed Audio (ID: <id>, File: "<name>")].',
+    '  • ONLY include an Audio ObjectId in create_report({ audios: [audioId] }) if that audio\'s content is explicitly verified by conversational context to be the spoken narration or evidence of the operational inspection report being created. NEVER attach personal voice memos, music clips, or unrelated media to an operational report.',
   ].join('\n');
 
   // ==========================================
@@ -481,6 +486,47 @@ export async function assembleSystemPrompt({
     ].join('\n');
   }
 
+  const telegram = user?.integrations?.telegram || {};
+  const isTelegramConnected = Boolean(telegram.connected);
+  const isTelegramEnabled = telegram.enabled !== false;
+  const botUsername = telegram.botUsername || '';
+  const managementChatId = telegram.managementChatId || '';
+  const maintenanceChatId = telegram.maintenanceChatId || '';
+  const generalChatId = telegram.generalChatId || '';
+  const defaultTelegramFormat = telegram.defaultFormat || 'image';
+
+  let telegramStatusPrompt = '';
+  if (isTelegramConnected && isTelegramEnabled) {
+    telegramStatusPrompt = [
+      'TELEGRAM BOT INTEGRATION STATUS: ACTIVE & CONNECTED.',
+      `- Connected Bot: "${botUsername ? `@${botUsername}` : 'Operational Bot'}"`,
+      '- Channel Configuration Matrix:',
+      `  • Management (Default): ${managementChatId ? `CONFIGURED (Chat ID: ${managementChatId})` : 'NOT SET'}`,
+      `  • Maintenance: ${maintenanceChatId ? `CONFIGURED (Chat ID: ${maintenanceChatId})` : 'NOT SET'}`,
+      `  • General Operations: ${generalChatId ? `CONFIGURED (Chat ID: ${generalChatId})` : 'NOT SET'}`,
+      `- Default Post Format: ${defaultTelegramFormat === 'image' ? 'Image Card (asImage: true)' : 'Text (asImage: false)'}`,
+      '- CHANNEL ROUTING & BROADCAST LAW:',
+      '  1. If the user specifies a target channel (e.g. "post to maintenance" or "post to general"): check if that specific channel is CONFIGURED above. If it is NOT SET, DO NOT silently post to management. Inform the supervisor politely that that specific channel is not configured in Profile > Telegram Settings.',
+      '  2. If the user does NOT specify a channel (e.g. "share this report to telegram", "broadcast this to telegram"): default to targetChannel: "management" (if management is configured).',
+      '  3. Report Content Serialization: When posting an operational report, always use the authentic report transcription if present, or format using user report templates, or default structured template. When posting general announcements or text, broadcast the exact message.',
+      '  4. Format Adherence: Follow the user\'s default post format (image card vs text) unless the user explicitly requested a specific format in their prompt.',
+    ].join('\n');
+  } else if (isTelegramConnected && !isTelegramEnabled) {
+    telegramStatusPrompt = [
+      'TELEGRAM BOT INTEGRATION STATUS: TEMPORARILY DISABLED BY USER IN SETTINGS.',
+      '- Telegram bot is authorized, but the supervisor has temporarily paused agent broadcast in Settings.',
+      '- DO NOT invoke share_to_telegram.',
+      '- If the supervisor asks to post to Telegram, politely explain that Telegram integration is currently paused in Profile > Telegram Settings.',
+    ].join('\n');
+  } else {
+    telegramStatusPrompt = [
+      'TELEGRAM BOT INTEGRATION STATUS: NOT CONNECTED.',
+      '- Telegram bot is not connected for this account.',
+      '- DO NOT invoke share_to_telegram.',
+      '- If the supervisor asks to post or broadcast to Telegram, politely inform them that Telegram is not connected yet, and direct them to connect their bot token under Profile > Telegram Settings (/profile?tab=telegram).',
+    ].join('\n');
+  }
+
   const block6TurnPrompt = [
     '=== BLOCK 6: TURN GUIDANCE & 4-QUADRANT INTENT ROUTING PROTOCOL ===',
     sanitizedTurnPrompt
@@ -544,6 +590,7 @@ export async function assembleSystemPrompt({
     '  4. Unsupported file formats: If the user requests an unsupported format (e.g. AutoCAD .dwg, Photoshop .psd), naturally explain your supported formats (PDF, Word DOCX, Excel XLSX, CSV, Markdown, JSON, Google Docs, Google Sheets) in conversational prose without crashing or attempting to invoke invalid tools.',
     '',
     'UNIVERSAL CROSS-QUADRANT TELEGRAM BROADCAST EXEMPTION & ZERO HARDCODING FORMATTING LAW:',
+    telegramStatusPrompt,
     '- The "share_to_telegram" tool is a UNIVERSAL notification channel available across ALL quadrants (Quadrants 1, 2A, 2B, 3, and 4).',
     '- Broadcast anything the supervisor requests to post (emergency announcements, maintenance alerts, shift schedules, meeting summaries, aggregated KPI tables, operational reports, or personal reminders).',
     '- It does NOT require a MongoDB reportId. If broadcasting general text or analytics, pass reportId: null, targetChannel: null (defaults to configured channel), and messageText with the exact content to broadcast.',

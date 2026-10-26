@@ -184,7 +184,13 @@ export const MuiDatePicker = ({
     <LocalizationProvider dateAdapter={AdapterEthiopianDayjs}>
       {/* Visual Button Trigger (No TextField) */}
       {renderButton ? (
-        <Box ref={anchorRef} sx={{ display: 'inline-flex' }}>
+        <Box
+          ref={anchorRef}
+          sx={{
+            display: fullWidth ? 'flex' : 'inline-flex',
+            width: fullWidth ? '100%' : 'auto',
+          }}
+        >
           {renderButton({
             value: dayjsValue,
             formatted: ethiopianData.formatted,

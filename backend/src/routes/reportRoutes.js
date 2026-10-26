@@ -19,6 +19,7 @@ import {
   restoreReport,
   deleteReportPermanently,
   uploadReportAudios,
+  exportReport,
 } from '../controllers/reportController.js';
 
 import {
@@ -26,6 +27,7 @@ import {
   getReportsValidation,
   updateReportValidation,
   createReportValidation,
+  exportReportValidation,
 } from '../validations/reportValidation.js';
 
 import { uploadReportAudiosMiddleware } from '../middleware/uploadMiddleware.js';
@@ -76,6 +78,13 @@ router.patch(
   validate,
   updateReport
 );
+
+/**
+ * @route POST /api/v1/reports/:reportId/export
+ * @desc Export report to text, csv, docx, pdf, xlsx or dispatch directly to Google Drive root folder
+ * @access Protected (Area Supervisor)
+ */
+router.post('/:reportId/export', exportReportValidation, validate, exportReport);
 
 /**
  * @route GET /api/v1/reports/:reportId/activities
