@@ -66,7 +66,18 @@ export const AppShell = () => {
   }, []);
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh', width: '100vw', maxWidth: '100%', overflow: 'hidden' }}>
+    <Box
+      sx={{
+        display: 'flex',
+        height: '100dvh',
+        '@supports not (height: 100dvh)': {
+          height: '100vh',
+        },
+        width: '100vw',
+        maxWidth: '100%',
+        overflow: 'hidden',
+      }}
+    >
       <MuiSidebar
         mode={mode}
         onToggleMode={toggleMode}
@@ -110,9 +121,8 @@ export const AppShell = () => {
           component="main"
           id="protected-outlet-container"
           sx={{
-            flexGrow: 1,
+            flex: '1 1 0%',
             minHeight: 0,
-            height: '100%',
             overflowY: isChatRoute ? 'hidden' : 'auto',
             overflowX: 'hidden',
             display: isChatRoute ? 'flex' : 'block',

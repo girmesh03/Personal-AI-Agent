@@ -87,9 +87,10 @@ const SLOT_PROPS = Object.freeze({
     sx: {
       maxWidth: 760,
       mx: 'auto',
-      mb: 2,
-      p: 1,
-      width: '100%',
+      mb: { xs: 1, sm: 2 },
+      p: { xs: 0.75, sm: 1 },
+      width: { xs: 'calc(100% - 16px)', sm: '100%' },
+      boxSizing: 'border-box',
       borderRadius: 2,
       border: '1px solid',
       borderColor: 'divider',
@@ -129,9 +130,14 @@ const SLOT_PROPS = Object.freeze({
 const CHATBOX_SX = Object.freeze({
   height: '100%',
   width: '100%',
+  flex: '1 1 0%',
+  minHeight: 0,
   border: 'none',
   borderRadius: 0,
   bgcolor: 'transparent',
+  '& .MuiChatComposer-root': {
+    pb: 'calc(env(safe-area-inset-bottom, 0px))',
+  },
   '& .MuiChatMessage-root': {
     px: { xs: 1, sm: 2 },
   },
