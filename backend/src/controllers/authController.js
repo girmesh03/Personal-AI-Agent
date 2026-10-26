@@ -290,7 +290,7 @@ export const initiateGoogleSso = asyncHandler(async (req, res) => {
         data: { provider: 'google', configured: false },
       });
     }
-    const clientUrl = env.CLIENT_URL || 'http://localhost:3000';
+    const clientUrl = env.CLIENT_ORIGIN || 'http://localhost:3000';
     return res.redirect(`${clientUrl}/login?error=GOOGLE_SSO_NOT_CONFIGURED`);
   }
 
@@ -328,7 +328,7 @@ export const initiateGoogleSso = asyncHandler(async (req, res) => {
  */
 export const handleGoogleSsoCallback = asyncHandler(async (req, res) => {
   const { code, error } = req.query;
-  const clientUrl = env.CLIENT_URL || 'http://localhost:3000';
+  const clientUrl = env.CLIENT_ORIGIN || 'http://localhost:3000';
 
   if (error || !code) {
     logger.warn(`[authController] Google SSO aborted or error: ${error}`);
