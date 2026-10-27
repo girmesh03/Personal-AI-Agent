@@ -240,8 +240,15 @@ export const sendChatMessageValidation = [
     .withMessage('Attachment fileName is required.')
     .isLength({ max: 255 })
     .withMessage('Attachment fileName cannot exceed 255 characters.')
-    .custom((fileName) => {
-      const ext = path.extname(fileName).toLowerCase();
+    .custom((fileName, { req, path: fieldPath }) => {
+      let ext = path.extname(fileName || '').toLowerCase();
+      if (!ext) {
+        const match = typeof fieldPath === 'string' ? fieldPath.match(/^attachments\[(\d+)\]/) : null;
+        const index = match ? parseInt(match[1], 10) : null;
+        if (index !== null && req.body?.attachments?.[index]?.originalName) {
+          ext = path.extname(req.body.attachments[index].originalName).toLowerCase();
+        }
+      }
       if (!ATTACHMENT_CONSTANTS.ALLOWED_EXTENSIONS.includes(ext)) {
         throw new Error(`File extension '${ext}' is not permitted.`);
       }

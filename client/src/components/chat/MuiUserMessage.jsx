@@ -377,8 +377,9 @@ export const MuiUserMessage = ({ messageId }) => {
       parts.push({ type: 'text', text: textToSubmit });
     }
     draftAttachments.forEach((att) => {
-      const mime = (att.mimeType || att.type || '').toLowerCase();
-      const name = (att.name || att.originalName || att.fileName || '').toLowerCase();
+      const actualFile = (att instanceof File || att instanceof Blob) ? att : att.file;
+      const mime = (att.mimeType || att.type || (actualFile && actualFile.type) || '').toLowerCase();
+      const name = (att.name || att.originalName || att.fileName || (actualFile && actualFile.name) || '').toLowerCase();
       const isAudio =
         mime.startsWith('audio/') ||
         mime.includes('webm') ||
@@ -388,19 +389,19 @@ export const MuiUserMessage = ({ messageId }) => {
 
       parts.push({
         type: isAudio ? 'audio' : 'file',
-        id: att.id,
+        id: att.id || att._id,
         _id: att._id || att.id,
-        filename: att.originalName || att.name || att.fileName,
-        name: att.originalName || att.name || att.fileName,
-        originalName: att.originalName || att.name || att.fileName,
-        fileName: att.fileName || att.originalName || att.name,
-        mediaType: att.mimeType || att.type,
-        mimeType: att.mimeType || att.type,
-        size: att.size,
+        filename: att.originalName || att.name || att.fileName || (actualFile && actualFile.name),
+        name: att.originalName || att.name || att.fileName || (actualFile && actualFile.name),
+        originalName: att.originalName || att.name || att.fileName || (actualFile && actualFile.name),
+        fileName: att.fileName || att.originalName || att.name || (actualFile && actualFile.name),
+        mediaType: att.mimeType || att.type || (actualFile && actualFile.type),
+        mimeType: att.mimeType || att.type || (actualFile && actualFile.type),
+        size: att.size || (actualFile && actualFile.size),
         url: att.url,
         path: att.path,
         duration: att.duration,
-        file: att.file,
+        file: actualFile,
       });
     });
 

@@ -54,13 +54,14 @@ function sendSSE(res, event, data) {
 export async function compileUserTurnParts(msg) {
   const parts = [];
   const textSections = [];
+  let inlineParts = [];
 
   const rawUserText = (msg.text || '').trim();
   if (rawUserText) {
     textSections.push(rawUserText);
   }
 
-  // 1. Audio Transcriptions
+  // 1. Audio Transcriptions and Multimodal Audio Parts
   let audioFormatted = false;
   if (Array.isArray(msg.audios) && msg.audios.length > 0) {
     try {
@@ -70,14 +71,32 @@ export async function compileUserTurnParts(msg) {
         .filter((id) => id && /^[0-9a-fA-F]{24}$/.test(String(id)));
       if (audioIds.length > 0) {
         const audioDocs = await Audio.find({ _id: { $in: audioIds } });
-        const formattedList = audioDocs
-          .map((a) => {
-            const transcript = (a.transcription || '').trim();
-            if (!transcript) return null;
-            const fileName = a.originalName || a.fileName || 'audio.wav';
-            return `[Transcribed Audio (ID: ${a._id}, File: "${fileName}")]:\n${transcript}`;
-          })
-          .filter(Boolean);
+        const formattedList = [];
+        for (const a of audioDocs) {
+          const transcript = (a.transcription || '').trim();
+          const fileName = a.originalName || a.fileName || 'audio.wav';
+          if (transcript) {
+            formattedList.push(`[Transcribed Audio (ID: ${a._id}, File: "${fileName}")]:\n${transcript}`);
+          }
+          // Pass audio recording as multimodal inline part (<= 20MB) for direct acoustic comprehension
+          const diskPath = resolveAudioDiskPath(a.path || a.fileName);
+          if (diskPath && fs.existsSync(diskPath)) {
+            try {
+              const fileStats = fs.statSync(diskPath);
+              if (fileStats.size > 0 && fileStats.size <= 20 * 1024 * 1024) {
+                const audioBuffer = await fs.promises.readFile(diskPath);
+                let resolvedMime = a.mimeType || 'audio/wav';
+                if (resolvedMime === 'video/webm') resolvedMime = 'audio/webm';
+                inlineParts.push({
+                  inlineData: {
+                    mimeType: resolvedMime,
+                    data: audioBuffer.toString('base64'),
+                  },
+                });
+              }
+            } catch (_readErr) {}
+          }
+        }
         if (formattedList.length > 0) {
           textSections.push(formattedList.join('\n\n'));
           audioFormatted = true;
@@ -95,33 +114,37 @@ export async function compileUserTurnParts(msg) {
     }
   }
 
-  // 2. Document Text Context & Inline Vision Parts
-  let inlineParts = [];
-  if (msg.documentTextContext && msg.documentTextContext.trim()) {
-    textSections.push(`[Attached Document]:\n${msg.documentTextContext.trim()}`);
-  } else if (Array.isArray(msg.attachments) && msg.attachments.length > 0) {
+  // 2. Document Text Context & Multimodal Inline Vision/PDF/Audio Parts
+  if (Array.isArray(msg.attachments) && msg.attachments.length > 0) {
     try {
       const attResult = await processAttachments(msg.attachments);
       if (attResult.textContext) {
         textSections.push(`[Attached Document]:\n${attResult.textContext}`);
+      } else if (msg.documentTextContext && msg.documentTextContext.trim()) {
+        textSections.push(`[Attached Document]:\n${msg.documentTextContext.trim()}`);
       }
       if (Array.isArray(attResult.inlineParts) && attResult.inlineParts.length > 0) {
-        inlineParts = attResult.inlineParts;
+        inlineParts.push(...attResult.inlineParts);
       }
     } catch (err) {
       logger.warn(`[chatController] Could not rehydrate attachments: ${err.message}`);
+      if (msg.documentTextContext && msg.documentTextContext.trim()) {
+        textSections.push(`[Attached Document]:\n${msg.documentTextContext.trim()}`);
+      }
     }
+  } else if (msg.documentTextContext && msg.documentTextContext.trim()) {
+    textSections.push(`[Attached Document]:\n${msg.documentTextContext.trim()}`);
   }
 
-  // If attachments had images and documentTextContext was already cached, extract vision parts
-  if (inlineParts.length === 0 && Array.isArray(msg.attachments) && msg.attachments.length > 0) {
-    try {
-      const attResult = await processAttachments(msg.attachments);
-      if (Array.isArray(attResult.inlineParts) && attResult.inlineParts.length > 0) {
-        inlineParts = attResult.inlineParts;
-      }
-    } catch (_err) {
-      // silent ignore
+  // 3. User Guidance Prompt Invariant:
+  // If the user typed no text, supply a clear guiding prompt based on attached media/docs so Gemini is fully oriented.
+  if (!rawUserText) {
+    if (inlineParts.length > 0 && textSections.length === 0) {
+      textSections.unshift('Please review and analyze the attached media/file(s) in detail.');
+    } else if (inlineParts.length > 0 && textSections.length > 0) {
+      textSections.unshift('Please review and analyze the attached media and contextual information in detail.');
+    } else if (textSections.length > 0) {
+      textSections.unshift('Please review the provided audio/document context and respond accordingly.');
     }
   }
 
@@ -130,6 +153,8 @@ export async function compileUserTurnParts(msg) {
     parts.push({ text: combinedText });
   } else if (inlineParts.length === 0) {
     parts.push({ text: '(empty message)' });
+  } else {
+    parts.push({ text: 'Please review and analyze the attached media/file(s) in detail.' });
   }
 
   if (inlineParts.length > 0) {
@@ -562,9 +587,12 @@ export const streamChat = asyncHandler(async (req, res) => {
           effectiveAttachments = effectiveAttachments.map((att) => {
             const diskPath = att.path && !att.path.startsWith('blob:') && !att.path.startsWith('http')
               ? resolveFilePath(att.path)
-              : null;
+              : (att.fileName ? resolveFilePath(att.fileName) : null);
             if (diskPath && fs.existsSync(diskPath)) {
-              return att;
+              return {
+                ...att,
+                path: path.relative(process.cwd(), diskPath).replace(/\\/g, '/'),
+              };
             }
             // Match against stored attachments from targetTurn
             const matchedStored = (targetTurn.attachments || []).find(

@@ -481,10 +481,20 @@ export class MuiChatAdapter {
     let uploadedAudioIds = [];
 
     if (!isRetry) {
-      const activeAttachments = [
+      const rawActive = [
         ...(Array.isArray(attachments) ? attachments : []),
         ...(Array.isArray(message?.attachments) ? message.attachments : []),
       ];
+      const seenItems = new Set();
+      const activeAttachments = [];
+      rawActive.forEach((item) => {
+        if (!item) return;
+        const key = item.file || item.localId || item.id || item._id || item.path || item.name || item;
+        if (!seenItems.has(key)) {
+          seenItems.add(key);
+          activeAttachments.push(item);
+        }
+      });
 
       if (Array.isArray(message?.audios) && message.audios.length > 0) {
         message.audios.forEach((a) => {
@@ -503,6 +513,7 @@ export class MuiChatAdapter {
             activeAttachments.push({
               id: p.id,
               _id: p._id || p.id,
+              type: p.type,
               fileName: p.filename || p.name || p.fileName,
               originalName: p.originalName || p.filename || p.name,
               mimeType: p.mediaType || p.mimeType,
@@ -520,12 +531,16 @@ export class MuiChatAdapter {
         const docFiles = [];
 
         activeAttachments.forEach((att) => {
-          const file = att.file;
+          const file = (att instanceof File || att instanceof Blob)
+            ? att
+            : ((att.file instanceof File || att.file instanceof Blob) ? att.file : null);
+
           const mime = (att.mimeType || att.type || att.mediaType || (file && file.type) || '').toLowerCase();
           const cleanType = mime.split(';')[0].trim();
           const attName = (att.name || att.originalName || att.fileName || (file && file.name) || '').toLowerCase();
 
           const isAudioItem =
+            att.type === 'audio' ||
             (cleanType && (
               AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(cleanType) ||
               cleanType.startsWith('audio/') ||
@@ -550,11 +565,20 @@ export class MuiChatAdapter {
                 ? rawPath.replace(/\\/g, '/').replace(/^.*\/uploads\//, 'uploads/').replace(/^\/+/, '')
                 : (att.path && !att.path.startsWith('blob:') && !att.path.startsWith('http') ? att.path.replace(/\\/g, '/').replace(/^\/+/, '') : '');
 
+              let resolvedName = att.fileName || att.originalName || att.name || '';
+              if (!resolvedName && cleanPath) {
+                resolvedName = cleanPath.split('/').pop() || '';
+              }
+              const extFromName = resolvedName.includes('.') ? `.${resolvedName.split('.').pop()}` : '';
+              const safeFileName = att.fileName && att.fileName.includes('.')
+                ? att.fileName
+                : (resolvedName.includes('.') ? resolvedName : `${resolvedName || 'attachment'}${extFromName || '.png'}`);
+
               uploadedAttachments.push({
                 _id: att._id || att.id || undefined,
-                fileName: att.fileName || att.originalName || att.name || 'attachment',
-                originalName: att.originalName || att.name || att.fileName || 'attachment',
-                mimeType: att.mimeType || att.type || 'application/octet-stream',
+                fileName: safeFileName,
+                originalName: att.originalName || att.name || safeFileName,
+                mimeType: att.mimeType || att.type || (safeFileName.endsWith('.png') ? 'image/png' : 'application/octet-stream'),
                 size: Number(att.size) || 1,
                 path: cleanPath || undefined,
                 url: att.url || (cleanPath ? `/${cleanPath}` : null),

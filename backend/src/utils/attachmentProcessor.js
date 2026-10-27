@@ -11,11 +11,14 @@ import path from 'path';
 import mammoth from 'mammoth';
 import * as xlsxModule from 'xlsx';
 import logger from '../config/logger.js';
+import { UPLOADS_CONFIG } from './constants.js';
 
 const XLSX = xlsxModule.default || xlsxModule;
 
 /**
  * Resolves absolute filesystem storage path for an attachment.
+ * Resilient against Windows and POSIX path differences, relative uploads paths,
+ * Linux root-relative leading slashes, and isolated Docker/Render environments.
  *
  * @param {string} rawPath - Relative or absolute file path.
  * @returns {string} Absolute normalized file path.
@@ -25,17 +28,53 @@ export function resolveFilePath(rawPath) {
   if (rawPath.startsWith('blob:') || rawPath.startsWith('http://') || rawPath.startsWith('https://')) {
     return '';
   }
-  if (path.isAbsolute(rawPath)) return rawPath;
-  const direct = path.resolve(process.cwd(), rawPath);
+
+  // 1. If absolute path exists on disk, return it directly
+  if (path.isAbsolute(rawPath) && fs.existsSync(rawPath)) {
+    return rawPath;
+  }
+
+  const basename = path.basename(rawPath);
+
+  // 2. Check in canonical UPLOADS_CONFIG.ATTACHMENTS_DIR by filename
+  if (basename && UPLOADS_CONFIG?.ATTACHMENTS_DIR) {
+    const inAttachmentsDir = path.resolve(UPLOADS_CONFIG.ATTACHMENTS_DIR, basename);
+    if (fs.existsSync(inAttachmentsDir)) return inAttachmentsDir;
+
+    const inAudiosDir = path.resolve(UPLOADS_CONFIG.AUDIOS_DIR, basename);
+    if (fs.existsSync(inAudiosDir)) return inAudiosDir;
+
+    const inUploadsRoot = path.resolve(UPLOADS_CONFIG.ROOT_DIR, basename);
+    if (fs.existsSync(inUploadsRoot)) return inUploadsRoot;
+  }
+
+  // 3. Strip any leading slashes or backend/uploads prefixes and check UPLOADS_CONFIG.ROOT_DIR
+  const normalizedRel = rawPath.replace(/^[\\/]+/, '').replace(/^(backend[\\/])?uploads[\\/]/, '');
+  if (UPLOADS_CONFIG?.ROOT_DIR) {
+    const inUploadsRel = path.resolve(UPLOADS_CONFIG.ROOT_DIR, normalizedRel);
+    if (fs.existsSync(inUploadsRel)) return inUploadsRel;
+
+    const inAttachmentsRel = path.resolve(UPLOADS_CONFIG.ATTACHMENTS_DIR, normalizedRel);
+    if (fs.existsSync(inAttachmentsRel)) return inAttachmentsRel;
+  }
+
+  // 4. Check relative to process.cwd()
+  const cleanRel = rawPath.replace(/^[\\/]+/, '');
+  const direct = path.resolve(process.cwd(), cleanRel);
   if (fs.existsSync(direct)) return direct;
-  if (rawPath.startsWith('backend/') || rawPath.startsWith('backend\\')) {
-    const stripped = rawPath.replace(/^backend[\\/]/, '');
+
+  if (cleanRel.startsWith('backend/') || cleanRel.startsWith('backend\\')) {
+    const stripped = cleanRel.replace(/^backend[\\/]/, '');
     const strippedPath = path.resolve(process.cwd(), stripped);
     if (fs.existsSync(strippedPath)) return strippedPath;
   }
-  const withBackend = path.resolve(process.cwd(), 'backend', rawPath);
+
+  const withBackend = path.resolve(process.cwd(), 'backend', cleanRel);
   if (fs.existsSync(withBackend)) return withBackend;
-  return direct;
+
+  return (UPLOADS_CONFIG?.ATTACHMENTS_DIR && basename)
+    ? path.resolve(UPLOADS_CONFIG.ATTACHMENTS_DIR, basename)
+    : direct;
 }
 
 /**
@@ -136,7 +175,7 @@ export async function processAttachment(attachment) {
     }
   }
 
-  // 2. Images (JPEG, PNG, WebP) and PDF documents -> Base64 inline multimodal part
+  // 4. Images (JPEG, PNG, WebP, GIF, HEIC) and PDF documents -> Base64 inline multimodal part
   if (
     mimeType.startsWith('image/') ||
     mimeType === 'application/pdf' ||
@@ -144,12 +183,24 @@ export async function processAttachment(attachment) {
     filePath.endsWith('.jpg') ||
     filePath.endsWith('.jpeg') ||
     filePath.endsWith('.webp') ||
+    filePath.endsWith('.gif') ||
+    filePath.endsWith('.heic') ||
+    filePath.endsWith('.heif') ||
     filePath.endsWith('.pdf')
   ) {
     try {
       const fileBuffer = await fs.promises.readFile(filePath);
       const base64Data = fileBuffer.toString('base64');
-      const resolvedMime = mimeType || (filePath.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+      let resolvedMime = mimeType;
+      if (!resolvedMime || resolvedMime === 'application/octet-stream') {
+        if (filePath.endsWith('.pdf')) resolvedMime = 'application/pdf';
+        else if (filePath.endsWith('.png')) resolvedMime = 'image/png';
+        else if (filePath.endsWith('.webp')) resolvedMime = 'image/webp';
+        else if (filePath.endsWith('.gif')) resolvedMime = 'image/gif';
+        else if (filePath.endsWith('.heic')) resolvedMime = 'image/heic';
+        else if (filePath.endsWith('.heif')) resolvedMime = 'image/heif';
+        else resolvedMime = 'image/jpeg';
+      }
 
       return {
         type: 'inline',
@@ -162,6 +213,46 @@ export async function processAttachment(attachment) {
       };
     } catch (err) {
       logger.error(`[attachmentProcessor] Failed to read binary attachment ${filePath}: ${err.message}`);
+      return { type: 'text', content: '' };
+    }
+  }
+
+  // 5. Audio files if uploaded via attachments channel -> Base64 inline audio part
+  if (
+    mimeType.startsWith('audio/') ||
+    filePath.endsWith('.mp3') ||
+    filePath.endsWith('.wav') ||
+    filePath.endsWith('.m4a') ||
+    filePath.endsWith('.webm') ||
+    filePath.endsWith('.ogg') ||
+    filePath.endsWith('.aac') ||
+    filePath.endsWith('.flac')
+  ) {
+    try {
+      const fileBuffer = await fs.promises.readFile(filePath);
+      const base64Data = fileBuffer.toString('base64');
+      let resolvedMime = mimeType;
+      if (!resolvedMime || resolvedMime === 'application/octet-stream') {
+        if (filePath.endsWith('.mp3')) resolvedMime = 'audio/mp3';
+        else if (filePath.endsWith('.webm')) resolvedMime = 'audio/webm';
+        else if (filePath.endsWith('.ogg')) resolvedMime = 'audio/ogg';
+        else if (filePath.endsWith('.m4a')) resolvedMime = 'audio/m4a';
+        else if (filePath.endsWith('.aac')) resolvedMime = 'audio/aac';
+        else if (filePath.endsWith('.flac')) resolvedMime = 'audio/flac';
+        else resolvedMime = 'audio/wav';
+      }
+
+      return {
+        type: 'inline',
+        inlinePart: {
+          inlineData: {
+            mimeType: resolvedMime,
+            data: base64Data,
+          },
+        },
+      };
+    } catch (err) {
+      logger.error(`[attachmentProcessor] Failed to read audio attachment ${filePath}: ${err.message}`);
       return { type: 'text', content: '' };
     }
   }

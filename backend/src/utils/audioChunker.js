@@ -46,29 +46,43 @@ export function resolveAudioDiskPath(rawPath) {
   if (!rawPath) return '';
   if (path.isAbsolute(rawPath) && fs.existsSync(rawPath)) return rawPath;
 
-  // Direct check against cwd
-  const direct = path.resolve(process.cwd(), rawPath);
-  if (fs.existsSync(direct)) return direct;
-
-  // Check in canonical UPLOADS_CONFIG.AUDIOS_DIR
   const basename = path.basename(rawPath);
-  const inAudiosDir = path.resolve(UPLOADS_CONFIG.AUDIOS_DIR, basename);
-  if (fs.existsSync(inAudiosDir)) return inAudiosDir;
+
+  // Check in canonical UPLOADS_CONFIG.AUDIOS_DIR first
+  if (basename && UPLOADS_CONFIG?.AUDIOS_DIR) {
+    const inAudiosDir = path.resolve(UPLOADS_CONFIG.AUDIOS_DIR, basename);
+    if (fs.existsSync(inAudiosDir)) return inAudiosDir;
+
+    const inAttachmentsDir = path.resolve(UPLOADS_CONFIG.ATTACHMENTS_DIR, basename);
+    if (fs.existsSync(inAttachmentsDir)) return inAttachmentsDir;
+
+    const inUploadsRoot = path.resolve(UPLOADS_CONFIG.ROOT_DIR, basename);
+    if (fs.existsSync(inUploadsRoot)) return inUploadsRoot;
+  }
 
   // Check relative to UPLOADS_CONFIG.ROOT_DIR
-  const normalizedRel = rawPath.replace(/^(backend[\\/])?uploads[\\/]/, '');
-  const inUploadsRoot = path.resolve(UPLOADS_CONFIG.ROOT_DIR, normalizedRel);
-  if (fs.existsSync(inUploadsRoot)) return inUploadsRoot;
+  const normalizedRel = rawPath.replace(/^[\\/]+/, '').replace(/^(backend[\\/])?uploads[\\/]/, '');
+  if (UPLOADS_CONFIG?.ROOT_DIR) {
+    const inUploadsRoot = path.resolve(UPLOADS_CONFIG.ROOT_DIR, normalizedRel);
+    if (fs.existsSync(inUploadsRoot)) return inUploadsRoot;
+  }
 
-  if (rawPath.startsWith('backend/') || rawPath.startsWith('backend\\')) {
-    const stripped = rawPath.replace(/^backend[\\/]/, '');
+  // Check against cwd
+  const cleanRel = rawPath.replace(/^[\\/]+/, '');
+  const direct = path.resolve(process.cwd(), cleanRel);
+  if (fs.existsSync(direct)) return direct;
+
+  if (cleanRel.startsWith('backend/') || cleanRel.startsWith('backend\\')) {
+    const stripped = cleanRel.replace(/^backend[\\/]/, '');
     const strippedPath = path.resolve(process.cwd(), stripped);
     if (fs.existsSync(strippedPath)) return strippedPath;
   }
-  const withBackend = path.resolve(process.cwd(), 'backend', rawPath);
+  const withBackend = path.resolve(process.cwd(), 'backend', cleanRel);
   if (fs.existsSync(withBackend)) return withBackend;
 
-  return direct;
+  return (UPLOADS_CONFIG?.AUDIOS_DIR && basename)
+    ? path.resolve(UPLOADS_CONFIG.AUDIOS_DIR, basename)
+    : direct;
 }
 
 /**
@@ -391,7 +405,7 @@ export async function transcribeWithGemini(
             },
           },
           {
-            text: 'Please transcribe this Amharic audio recording verbatim. Provide only the verbatim Amharic transcript without translation, conversational preamble, or explanation. If there is no speech or only silence/noise, return an empty response.',
+            text: 'Please transcribe this audio recording verbatim in its spoken language (e.g. Amharic or English). Provide only the verbatim transcript without translation, conversational preamble, or explanation. If there is no speech or only silence/noise, return an empty response.',
           },
         ],
       },
