@@ -8,7 +8,7 @@
  * - Mobile xs: Clean vertical rhythm with full-width metadata ribbon and 50/50 touch-friendly action buttons.
  */
 
-import { useMemo, memo } from 'react';
+import { memo } from 'react';
 import PropTypes from 'prop-types';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
@@ -56,7 +56,7 @@ export const ReportHero = memo(({
 
   // Multi-tier supervisor name and identity resolution (Zero artificial strings)
   const author = report.supervisor || report.user || {};
-  const authorName = useMemo(() => {
+  const authorName = (() => {
     if (author.fullName && author.fullName.trim() !== '' && !author.fullName.includes('undefined')) {
       return author.fullName.trim();
     }
@@ -65,7 +65,7 @@ export const ReportHero = memo(({
     if (author.username) return author.username;
     if (author.email) return author.email.split('@')[0];
     return '';
-  }, [author]);
+  })();
 
   const authorPosition = author.position || author.role || '';
   const authorEmail = author.email || '';

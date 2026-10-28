@@ -18,6 +18,7 @@ import {
   deleteChat,
   uploadChatAttachments,
   uploadChatAudios,
+  deleteComposerAttachment,
   transcribeAudio,
   shareToTelegramDirect,
   downloadGeneratedDocument,
@@ -66,6 +67,14 @@ router.post('/upload-audio', uploadReportAudiosMiddleware, uploadChatAudios);
  * @access Protected (Area Supervisor)
  */
 router.post('/upload-attachments', uploadChatAttachmentsMiddleware, uploadChatAttachments);
+
+/**
+ * @route DELETE /api/v1/chat/attachment
+ * @desc Dismiss staged attachment from composer shelf and purge from Cloudinary CDN
+ * @access Protected (Personal AI Agent)
+ */
+router.delete('/attachment', deleteComposerAttachment);
+router.delete('/attachment/:publicId', deleteComposerAttachment);
 
 /**
  * @route POST /api/v1/chat/share-telegram

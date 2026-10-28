@@ -306,7 +306,7 @@ export const DashboardRecentAuditsLedger = memo(({ reports = [], isLoading = fal
                             variant="outlined"
                             size="small"
                             component={Link}
-                            to={`/reports/${report._id}`}
+                            to={`/reports/${report._id}/details`}
                             endIcon={<OpenInNewIcon fontSize="small" />}
                             sx={{ fontSize: '0.78rem', py: 0.5, px: 1.5, whiteSpace: 'nowrap', minWidth: 130 }}
                           >

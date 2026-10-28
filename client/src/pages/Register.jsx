@@ -46,6 +46,7 @@ export const Register = () => {
   const navigate = useNavigate();
   const [registerUser, { isLoading }] = useRegisterMutation();
   const [serverError, setServerError] = useState('');
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const {
     register,
@@ -61,6 +62,7 @@ export const Register = () => {
   });
 
   const handleGoogleSso = () => {
+    setIsGoogleLoading(true);
     window.location.href = `${API_BASE_URL}/auth/google/sso`;
   };
 
@@ -119,8 +121,26 @@ export const Register = () => {
         </Typography>
 
         {serverError && (
-          <Alert severity="error" sx={{ mb: 2.5, textAlign: 'left' }}>
-            {serverError}
+          <Alert
+            severity={serverError.includes('Google Sign-In') ? 'info' : 'error'}
+            sx={{ mb: 2.5, textAlign: 'left', '& .MuiAlert-message': { width: '100%' } }}
+          >
+            <Typography variant="body2">{serverError}</Typography>
+            {serverError.includes('Google Sign-In') && (
+              <Box sx={{ mt: 1 }}>
+                <MuiButton
+                  size="small"
+                  variant="contained"
+                  color="primary"
+                  onClick={handleGoogleSso}
+                  disabled={isGoogleLoading}
+                  startIcon={isGoogleLoading ? <CircularProgress size={16} color="inherit" /> : null}
+                  sx={{ textTransform: 'none', fontWeight: 600 }}
+                >
+                  {isGoogleLoading ? 'Connecting to Google...' : 'Sign in with Google'}
+                </MuiButton>
+              </Box>
+            )}
           </Alert>
         )}
 
@@ -214,6 +234,8 @@ export const Register = () => {
               <GoogleSsoButton
                 label="Sign up with Google"
                 onClick={handleGoogleSso}
+                isLoading={isGoogleLoading}
+                disabled={isLoading || isGoogleLoading}
               />
             </Grid>
           </Grid>

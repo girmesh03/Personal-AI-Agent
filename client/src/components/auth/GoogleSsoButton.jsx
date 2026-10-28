@@ -107,7 +107,15 @@ export const GoogleSsoButton = forwardRef(
             <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
               <GoogleLogoSvg />
             </Box>
-            <Box component="span" sx={{ whiteSpace: 'nowrap' }}>
+            <Box
+              component="span"
+              sx={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: '100%',
+              }}
+            >
               {label}
             </Box>
           </>

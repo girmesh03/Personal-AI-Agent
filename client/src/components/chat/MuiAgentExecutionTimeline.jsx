@@ -113,19 +113,22 @@ export const MuiAgentExecutionTimeline = ({
         : null;
 
   let dynamicStatusText = '';
-  if (pipelineStatus) {
-    dynamicStatusText = pipelineStatus;
-  } else if (isStreaming) {
-    if (hasReasoning && !hasTextStarted) {
+  if (isStreaming) {
+    if (pipelineStatus) {
+      dynamicStatusText = pipelineStatus;
+    } else if (hasReasoning && !hasTextStarted) {
       // Actively thinking before text output starts
       dynamicStatusText = `Thinking... ${elapsedSeconds}s`;
     } else if (hasTools) {
       const activeTool = toolParts[toolParts.length - 1]?.toolInvocation?.toolName || 'tool';
       dynamicStatusText = `Executing ${activeTool}...`;
+    } else if (hasReasoning) {
+      dynamicStatusText = `Thinking... ${elapsedSeconds}s`;
     } else {
-      // Actively streaming text response or initial handshake: zero fake thinking!
-      dynamicStatusText = '';
+      dynamicStatusText = 'Connecting...';
     }
+  } else if (pipelineStatus) {
+    dynamicStatusText = pipelineStatus;
   } else if (isStopped) {
     dynamicStatusText = hasTimelineContent
       ? (displayDuration ? `Thought for ${displayDuration}s • Stopped` : 'Stopped')

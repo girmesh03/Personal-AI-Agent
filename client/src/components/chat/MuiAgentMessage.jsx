@@ -99,6 +99,35 @@ export const MuiAgentMessage = ({ messageId }) => {
     const turnIndex = currentIds.indexOf(messageId);
     const anchorUserMessageId = turnIndex > 0 ? currentIds[turnIndex - 1] : null;
 
+    // Prune downstream message turns (> turnIndex) from client store to preserve mathematical alternation
+    if (turnIndex !== -1 && store && typeof store.update === 'function') {
+      const keptIds = currentIds.slice(0, turnIndex + 1);
+      const nextMessagesById = {};
+      for (const id of keptIds) {
+        if (store.state?.messagesById?.[id]) {
+          nextMessagesById[id] = store.state.messagesById[id];
+        }
+      }
+      if (nextMessagesById[messageId]) {
+        nextMessagesById[messageId] = {
+          ...nextMessagesById[messageId],
+          text: '',
+          content: '',
+          parts: [],
+          error: undefined,
+          metadata: {
+            ...(nextMessagesById[messageId].metadata || {}),
+            isStopped: false,
+            model: alternateModel || activeModel,
+          },
+        };
+      }
+      store.update({
+        messageIds: keptIds,
+        messagesById: nextMessagesById,
+      });
+    }
+
     // When an alternate model is specified, bypass native actions.regenerate
     // (which drops the model parameter) and invoke adapter.retryTurn directly
     if (alternateModel && adapter && typeof adapter.retryTurn === 'function') {
@@ -146,7 +175,7 @@ export const MuiAgentMessage = ({ messageId }) => {
     if (anchorUserMessageId && actions && typeof actions.retry === 'function') {
       await actions.retry(anchorUserMessageId);
     }
-  }, [actions, adapter, dispatch, message, messageId, messageIds, store]);
+  }, [actions, activeModel, adapter, dispatch, message, messageId, messageIds, store]);
 
   const handleSelectModel = useCallback(
     (newModel) => {
@@ -240,7 +269,7 @@ export const MuiAgentMessage = ({ messageId }) => {
       )}
 
       {/* ROW 4: BOTTOM CONTEXTUAL ACTIONS DECK (Rendered after response completes or when stopped) */}
-      {!isError && !isStreaming && !store?.state?.isStreaming && (Boolean(fullText && fullText.trim()) || isStopped) && (
+      {!isError && !isStreaming && !store?.state?.isStreaming && (Boolean(fullText && fullText.trim()) || isStopped || (message?.toolCalls && message.toolCalls.length > 0)) && (
         <MuiAgentMessageBottomBar
           text={fullText}
           model={message?.metadata?.model || activeModel}

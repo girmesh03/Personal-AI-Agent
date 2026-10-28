@@ -24,7 +24,9 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+
 import app from '../src/app.js';
+import { env } from '../src/config/env.js';
 import { connectDB, disconnectDB } from '../src/config/db.js';
 import { User } from '../src/models/User.js';
 import { Branch } from '../src/models/Branch.js';
@@ -201,6 +203,7 @@ const postmanSSEStream = (endpoint, options = {}) => {
 
 /**
  * Registers and authenticates a test user to obtain session cookies.
+ * Seeds the test user's document directly with authentic BYOK keys from .env.
  */
 const authenticateTestUser = async (email, password, { firstName = 'Supervisor', lastName = 'Test' } = {}) => {
   await postmanRequest('/auth/register', {
@@ -214,6 +217,20 @@ const authenticateTestUser = async (email, password, { firstName = 'Supervisor',
     body: { email, password },
     skipCookies: true,
   });
+
+  const targetUserId = loginRes.body?.data?.user?._id || loginRes.body?.data?.user?.id;
+  if (targetUserId) {
+    const geminiKey = process.env.GEMINI_API_KEY || env?.GEMINI_API_KEY;
+    const addisKey = process.env.ADDIS_AI_API_KEY || process.env.ADDIS_API_KEY || env?.ADDIS_AI_API_KEY;
+    await User.findByIdAndUpdate(targetUserId, {
+      $set: {
+        'settings.apiKeys.geminiApiKey': geminiKey,
+        'settings.apiKeys.addisApiKey': addisKey,
+        'settings.apiKeys.hasGeminiKey': Boolean(geminiKey),
+        'settings.apiKeys.hasAddisKey': Boolean(addisKey),
+      },
+    });
+  }
 
   return {
     user: loginRes.body?.data?.user,

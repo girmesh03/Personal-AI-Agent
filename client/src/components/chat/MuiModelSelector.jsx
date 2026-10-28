@@ -25,6 +25,7 @@
  */
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { useParams } from 'react-router';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
@@ -108,8 +109,8 @@ const MODEL_CARDS = [
  */
 const STT_OPTIONS = [
   { id: 'addis_ai', label: 'Addis AI', subtitle: 'Amharic Native' },
-  { id: 'gemini-3.8-flash', label: 'Gemini 3.8', subtitle: 'Multilingual' },
-  { id: 'gemini-3.1-flash-lite', label: 'Gemini Lite', subtitle: 'Fast' },
+  { id: AI_MODELS.PRO, label: 'Gemini 3.8', subtitle: 'Multilingual' },
+  { id: AI_MODELS.DEFAULT, label: 'Gemini Lite', subtitle: 'Fast' },
 ];
 
 /**
@@ -145,6 +146,7 @@ export const MuiModelSelector = React.memo(
     // Mutations for two-tier persistence
     const [updateAgentConfig] = useUpdateAgentConfigMutation();
     const [updateChatConfig] = useUpdateChatConfigMutation();
+    const { chatId: routeChatId } = useParams();
 
     // Local UI states
     const [anchorEl, setAnchorEl] = useState(null);
@@ -227,13 +229,16 @@ export const MuiModelSelector = React.memo(
         const targetModel = newModel || activeModel;
         const targetBudget = newBudget !== undefined ? newBudget : thinkingBudget;
         const targetLang = newLang || language;
-        const targetSttEngine = newSttEngine || sttEngine;
+        const rawSttEngine = newSttEngine || sttEngine;
+        const targetSttEngine = CHAT_CONSTANTS.STT_ENGINES.includes(rawSttEngine)
+          ? rawSttEngine
+          : CHAT_CONSTANTS.DEFAULT_STT_ENGINE;
 
         // 1. Synchronously update client Redux state
         if (newModel) dispatch(setActiveModel(newModel));
         if (newBudget !== undefined) dispatch(setThinkingBudget(newBudget));
         if (newLang) dispatch(setLanguage(newLang));
-        if (newSttEngine) dispatch(setSttEngine(newSttEngine));
+        if (newSttEngine) dispatch(setSttEngine(targetSttEngine));
 
         try {
           // 2. Tier 1: User Account Default persistence (if checked)
@@ -246,14 +251,19 @@ export const MuiModelSelector = React.memo(
             }).unwrap();
           }
 
-          // 3. Tier 2: Conversation Session persistence (if in active chat)
-          if (activeChatId) {
-            await updateChatConfig({
-              chatId: activeChatId,
-              model: targetModel,
-              thinkingBudget: targetBudget,
-              language: targetLang,
-            }).unwrap();
+          // 3. Tier 2: Conversation Session persistence (strictly when in an active URL chat session)
+          const targetSessionId = routeChatId || (activeChatId && activeChatId.length === 24 && activeChatId === routeChatId ? activeChatId : null);
+          if (targetSessionId) {
+            try {
+              await updateChatConfig({
+                chatId: targetSessionId,
+                model: targetModel,
+                thinkingBudget: targetBudget,
+                language: targetLang,
+              }).unwrap();
+            } catch (chatCfgErr) {
+              console.warn('[MuiModelSelector] Stale chat session config skipped:', chatCfgErr);
+            }
           }
         } catch (err) {
           toast.error(
@@ -269,6 +279,7 @@ export const MuiModelSelector = React.memo(
         dispatch,
         saveAsDefault,
         activeChatId,
+        routeChatId,
         updateAgentConfig,
         updateChatConfig,
       ]

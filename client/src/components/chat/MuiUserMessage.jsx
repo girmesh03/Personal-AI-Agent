@@ -29,8 +29,19 @@ import MuiUserAttachmentShelf from './MuiUserAttachmentShelf.jsx';
 import MuiUserMessageBody from './MuiUserMessageBody.jsx';
 import MuiUserMessageBottomBar from './MuiUserMessageBottomBar.jsx';
 import { useChatAdapter } from '../../contexts/ChatAdapterContext.js';
-import { ATTACHMENT_CONSTANTS, AUDIO_CONSTANTS } from '../../utils/constants.js';
+import { ATTACHMENT_CONSTANTS } from '../../utils/constants.js';
 import { toast } from 'react-toastify';
+import {
+  useUploadAttachmentsMutation,
+  useUploadAudioMutation,
+  useDeleteComposerAttachmentMutation,
+} from '../../redux/features/chatSlice.js';
+import {
+  registerUpload,
+  removeUpload,
+  getUploadState,
+} from '../../utils/attachmentRegistry.js';
+import { validateChatAttachments, isAudioAttachment } from '../../utils/validateChatAttachment.js';
 
 /**
  * Clamping height threshold in pixels (8 full text lines at 25.6px line-height = 204.8px).
@@ -52,6 +63,11 @@ export const MuiUserMessage = ({ messageId }) => {
   const actions = useChatActions(true);
   const store = useChatStore();
   const messageIds = useMessageIds();
+
+  const [uploadAttachments] = useUploadAttachmentsMutation();
+  const [uploadAudio] = useUploadAudioMutation();
+  const [deleteComposerAttachment] = useDeleteComposerAttachmentMutation();
+  const newlyUploadedFilesRef = useRef([]);
 
   // Extract raw text from message parts or content
   const initialText = useMemo(() => {
@@ -107,19 +123,30 @@ export const MuiUserMessage = ({ messageId }) => {
         url = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
       }
 
+      const fileObj = (raw instanceof File || raw instanceof Blob) ? raw : raw.file;
+      const rawHexId =
+        (raw._id && /^[0-9a-fA-F]{24}$/.test(String(raw._id)) ? String(raw._id) : null) ||
+        (raw.audioId && /^[0-9a-fA-F]{24}$/.test(String(raw.audioId)) ? String(raw.audioId) : null) ||
+        (id && /^[0-9a-fA-F]{24}$/.test(String(id)) ? String(id) : null) ||
+        (fileObj && fileObj._id && /^[0-9a-fA-F]{24}$/.test(String(fileObj._id)) ? String(fileObj._id) : null) ||
+        (fileObj && fileObj.audioId && /^[0-9a-fA-F]{24}$/.test(String(fileObj.audioId)) ? String(fileObj.audioId) : null);
+
       list.push({
         id: id || dedupeKey,
-        _id: raw._id || (id && /^[0-9a-fA-F]{24}$/.test(id) ? id : null),
+        _id: rawHexId || raw._id || null,
+        audioId: rawHexId || raw.audioId || null,
         name,
-        fileName: raw.fileName || raw.filename || name,
-        originalName: raw.originalName || name,
+        fileName: raw.fileName || raw.filename || (fileObj && fileObj.fileName) || name,
+        originalName: raw.originalName || (fileObj && fileObj.originalName) || name,
         size,
         mimeType,
         type: mimeType,
         url,
         path: rawPath,
+        publicId: raw.publicId || (fileObj && fileObj.publicId) || null,
+        cloudUrl: raw.cloudUrl || (fileObj && fileObj.cloudUrl) || null,
         duration: raw.duration || null,
-        file: raw.file || null,
+        file: fileObj || null,
       });
     };
 
@@ -209,6 +236,7 @@ export const MuiUserMessage = ({ messageId }) => {
   }, [draftAttachments.length]);
 
   const handleStartEdit = useCallback(() => {
+    newlyUploadedFilesRef.current = [];
     draftTextRef.current = initialText;
     hasDraftTextRef.current = Boolean(initialText && initialText.trim());
     setHasDraftText(Boolean(initialText && initialText.trim()));
@@ -223,13 +251,30 @@ export const MuiUserMessage = ({ messageId }) => {
   }, [initialText, initialAttachments]);
 
   const handleCancelEdit = useCallback(() => {
+    // Abort in-flight uploads and clean up newly uploaded assets from this edit session
+    if (Array.isArray(newlyUploadedFilesRef.current) && newlyUploadedFilesRef.current.length > 0) {
+      newlyUploadedFilesRef.current.forEach((item) => {
+        if (item?.file) {
+          const uploadStatus = removeUpload(item.file);
+          if (!uploadStatus?.wasUploading && (uploadStatus?.publicId || item.publicId || item.fileName)) {
+            void deleteComposerAttachment({
+              publicId: uploadStatus?.publicId || item.publicId,
+              fileName: uploadStatus?.fileName || item.fileName,
+              mimeType: uploadStatus?.mimeType || item.mimeType,
+            });
+          }
+        }
+      });
+      newlyUploadedFilesRef.current = [];
+    }
+
     draftTextRef.current = snapshotRef.current.text;
     hasDraftTextRef.current = Boolean(snapshotRef.current.text && snapshotRef.current.text.trim());
     setHasDraftText(Boolean(snapshotRef.current.text && snapshotRef.current.text.trim()));
     setDraftAttachments(snapshotRef.current.attachments);
     setIsModified(false);
     setIsEditing(false);
-  }, []);
+  }, [deleteComposerAttachment]);
 
   // Click-outside listener on edit container to safely auto-collapse back to view mode on blur
   useEffect(() => {
@@ -260,6 +305,28 @@ export const MuiUserMessage = ({ messageId }) => {
 
   const handleRemoveAttachment = useCallback((idToRemove) => {
     setDraftAttachments((prev) => {
+      const target = prev.find((att) => {
+        const id = att.id || att._id || att.fileName || att.name;
+        return (
+          id === idToRemove ||
+          att.id === idToRemove ||
+          att._id === idToRemove ||
+          att.fileName === idToRemove
+        );
+      });
+
+      if (target?.file) {
+        const uploadStatus = removeUpload(target.file);
+        if (uploadStatus && !uploadStatus.wasUploading && (uploadStatus.publicId || target.publicId || target.fileName)) {
+          void deleteComposerAttachment({
+            publicId: uploadStatus.publicId || target.publicId,
+            fileName: uploadStatus.fileName || target.fileName || target.name,
+            mimeType: uploadStatus.mimeType || target.mimeType || target.file.type,
+          });
+        }
+        newlyUploadedFilesRef.current = newlyUploadedFilesRef.current.filter((item) => item.file !== target.file);
+      }
+
       const next = prev.filter((att) => {
         const id = att.id || att._id || att.fileName || att.name;
         return (
@@ -269,77 +336,143 @@ export const MuiUserMessage = ({ messageId }) => {
           att.fileName !== idToRemove
         );
       });
+
       const textChanged = (draftTextRef.current ?? '').trim() !== (snapshotRef.current.text ?? '').trim();
       const attsChanged = next.length !== snapshotRef.current.attachments.length;
       setIsModified(textChanged || attsChanged);
       return next;
     });
-  }, []);
+  }, [deleteComposerAttachment]);
 
   const handleAttachFiles = useCallback((newFiles) => {
     if (!Array.isArray(newFiles) || newFiles.length === 0) return;
 
-    setDraftAttachments((prev) => {
-      const currentCount = prev.length;
-      const allowedCount = ATTACHMENT_CONSTANTS.MAX_FILES_COUNT - currentCount;
-      if (allowedCount <= 0) {
-        toast.warning(`Maximum ${ATTACHMENT_CONSTANTS.MAX_FILES_COUNT} files allowed per message.`);
-        return prev;
-      }
+    const currentFiles = draftAttachments.map((a) => a.file).filter(Boolean);
+    const validation = validateChatAttachments(newFiles, currentFiles, { showToast: true });
+    if (!validation.isValid || !Array.isArray(validation.validFiles) || validation.validFiles.length === 0) {
+      return;
+    }
 
-      const currentBatchSize = prev.reduce((acc, att) => acc + (Number(att.size) || 0), 0);
-      const filesToAdd = newFiles.slice(0, allowedCount);
-      let cumulativeAddedSize = 0;
-      const validFiles = [];
+    const validFiles = validation.validFiles;
 
-      for (const f of filesToAdd) {
-        // Enforce single file size limit (25MB)
-        if (f.size > ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES) {
-          toast.error(`"${f.name}" exceeds the maximum single file size of 25MB.`);
-          continue;
-        }
+    validFiles.forEach((file, idx) => {
+      const isAudio = isAudioAttachment(file);
+      const tempId = `draft-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 7)}`;
 
-        // Enforce extension whitelist
-        const name = (f.name || '').toLowerCase();
-        const hasValidExt =
-          ATTACHMENT_CONSTANTS.ALLOWED_EXTENSIONS.some((ext) => name.endsWith(ext)) ||
-          AUDIO_CONSTANTS.ALLOWED_EXTENSIONS.some((ext) => name.endsWith(ext));
-        if (!hasValidExt) {
-          toast.error(`"${f.name}" has an unsupported file format.`);
-          continue;
-        }
+      const initialItem = {
+        id: tempId,
+        name: file.name,
+        fileName: file.name,
+        originalName: file.name,
+        size: file.size,
+        mimeType: file.type || (isAudio ? 'audio/webm' : 'application/octet-stream'),
+        type: isAudio ? 'audio' : (file.type?.startsWith('image/') ? 'image' : 'doc'),
+        file,
+        isUploading: true,
+      };
 
-        // Enforce cumulative batch size limit (50MB)
-        if (currentBatchSize + cumulativeAddedSize + f.size > ATTACHMENT_CONSTANTS.MAX_BATCH_SIZE_BYTES) {
-          toast.error('Total attachment batch size cannot exceed 50MB.');
-          break;
-        }
-
-        cumulativeAddedSize += f.size;
-        validFiles.push(f);
-      }
-
-      if (validFiles.length === 0) return prev;
-
-      const formatted = validFiles.map((f, idx) => ({
-        id: `draft-${Date.now()}-${idx}`,
-        name: f.name,
-        fileName: f.name,
-        originalName: f.name,
-        size: f.size,
-        mimeType: f.type,
-        type: f.type,
-        file: f,
-      }));
-
-      const next = [...prev, ...formatted];
+      setDraftAttachments((prev) => [...prev, initialItem]);
       setIsModified(true);
-      return next;
+
+      const formData = new FormData();
+      let mutationPromise;
+      if (isAudio) {
+        formData.append('audios', file);
+        mutationPromise = uploadAudio(formData);
+      } else {
+        formData.append('attachments', file);
+        mutationPromise = uploadAttachments(formData);
+      }
+
+      const uploadPromise = mutationPromise
+        .unwrap()
+        .then((res) => {
+          let itemData = null;
+          if (isAudio) {
+            const list = res?.data?.audios || res?.audios || [];
+            itemData = list[0] ? { ...list[0], isAudio: true } : null;
+          } else {
+            const list = res?.data?.attachments || res?.attachments || [];
+            itemData = list[0] ? { ...list[0], isAudio: false } : null;
+          }
+
+          if (itemData) {
+            const record = {
+              file,
+              publicId: itemData.publicId,
+              fileName: itemData.fileName || file.name,
+              mimeType: itemData.mimeType || file.type,
+              isAudio,
+              _id: itemData._id || itemData.id,
+            };
+            newlyUploadedFilesRef.current.push(record);
+
+            setDraftAttachments((prev) =>
+              prev.map((att) => {
+                if (att.id === tempId || att.file === file) {
+                  return {
+                    ...att,
+                    ...itemData,
+                    id: String(itemData._id || itemData.id || att.id),
+                    _id: itemData._id || itemData.id,
+                    url: itemData.url || att.url,
+                    path: itemData.path || att.path,
+                    cloudUrl: itemData.cloudUrl,
+                    publicId: itemData.publicId,
+                    isUploading: false,
+                  };
+                }
+                return att;
+              })
+            );
+          }
+          return itemData;
+        })
+        .catch((err) => {
+          setDraftAttachments((prev) =>
+            prev.map((att) => {
+              if (att.id === tempId || att.file === file) {
+                return { ...att, isUploading: false, error: err };
+              }
+              return att;
+            })
+          );
+          throw err;
+        });
+
+      const abortFn = () => {
+        try {
+          if (mutationPromise && typeof mutationPromise.abort === 'function') {
+            mutationPromise.abort();
+          }
+        } catch {
+          // Ignored on abort
+        }
+      };
+
+      const onResolvedAfterCancelCleanup = (result) => {
+        if (result) {
+          const publicId = result.publicId;
+          const fileName = result.fileName;
+          const mimeType = result.mimeType || file.type;
+          void deleteComposerAttachment({ publicId, fileName, mimeType });
+        }
+      };
+
+      registerUpload(file, uploadPromise, abortFn, onResolvedAfterCancelCleanup);
     });
-  }, []);
+  }, [draftAttachments, uploadAudio, uploadAttachments, deleteComposerAttachment]);
 
   // 2. LINEAR PRUNING SUBMISSION HANDLER
   const handleSubmitEdit = useCallback(async () => {
+    const isAnyUploading = draftAttachments.some(
+      (att) => att.isUploading || (att.file && getUploadState(att.file).isUploading)
+    );
+    if (isAnyUploading) {
+      toast.warning('Please wait for attachments to finish uploading.');
+      return;
+    }
+
     const textToSubmit = (inputRef.current?.value ?? draftTextRef.current ?? '').trim();
     if (!textToSubmit && draftAttachments.length === 0) return;
 
@@ -349,6 +482,9 @@ export const MuiUserMessage = ({ messageId }) => {
       toast.error('Total attachment batch size cannot exceed 50MB. Please remove some attachments.');
       return;
     }
+
+    // Mark uploads as committed so cancel cleanup won't purge them
+    newlyUploadedFilesRef.current = [];
 
     // Resolve target turn index k in conversation
     const currentIds = Array.isArray(messageIds) ? messageIds : store.state.messageIds;
@@ -385,12 +521,17 @@ export const MuiUserMessage = ({ messageId }) => {
         mime.includes('webm') ||
         name.endsWith('.webm') ||
         name.endsWith('.wav') ||
-        name.endsWith('.mp3');
+        name.endsWith('.mp3') ||
+        name.endsWith('.m4a') ||
+        name.endsWith('.aac') ||
+        name.endsWith('.ogg') ||
+        name.endsWith('.mp4');
 
       parts.push({
         type: isAudio ? 'audio' : 'file',
         id: att.id || att._id,
         _id: att._id || att.id,
+        audioId: att.audioId || (isAudio ? (att._id || att.id) : null),
         filename: att.originalName || att.name || att.fileName || (actualFile && actualFile.name),
         name: att.originalName || att.name || att.fileName || (actualFile && actualFile.name),
         originalName: att.originalName || att.name || att.fileName || (actualFile && actualFile.name),
@@ -400,6 +541,8 @@ export const MuiUserMessage = ({ messageId }) => {
         size: att.size || (actualFile && actualFile.size),
         url: att.url,
         path: att.path,
+        publicId: att.publicId,
+        cloudUrl: att.cloudUrl,
         duration: att.duration,
         file: actualFile,
       });
@@ -456,7 +599,10 @@ export const MuiUserMessage = ({ messageId }) => {
   if (!message) return null;
 
   const status = message.status || 'idle';
-  const disabledSubmit = !isModified || (!hasDraftText && draftAttachments.length === 0);
+  const isAnyUploading = draftAttachments.some(
+    (att) => att.isUploading || (att.file && getUploadState(att.file).isUploading)
+  );
+  const disabledSubmit = !isModified || isAnyUploading || (!hasDraftText && draftAttachments.length === 0);
 
   // 1. EDIT MODE: Unified single outlined editor card ("Keep the UI on edit mode as it is")
   if (isEditing) {

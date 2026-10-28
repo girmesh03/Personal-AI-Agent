@@ -80,10 +80,11 @@ export const sendChatMessageValidation = [
   // Multi-modal turn invariant: at least one of text, audios, attachments, or retryTurnIndex/isRetry must be provided
   body().custom((_, { req }) => {
     const b = req?.body || {};
+    const textCandidate = b.text !== undefined ? b.text : b.message;
     const hasText =
-      b.text &&
-      typeof b.text === 'string' &&
-      b.text.trim().length > 0;
+      textCandidate &&
+      typeof textCandidate === 'string' &&
+      textCandidate.trim().length > 0;
     const hasAudios = Array.isArray(b.audios) && b.audios.length > 0;
     const hasAttachments =
       Array.isArray(b.attachments) && b.attachments.length > 0;
@@ -196,6 +197,16 @@ export const sendChatMessageValidation = [
       `Message text cannot exceed ${CHAT_CONSTANTS.MAX_MESSAGE_LENGTH} characters.`
     ),
 
+  body('message')
+    .optional({ nullable: true })
+    .isString()
+    .withMessage('Message text must be a string.')
+    .trim()
+    .isLength({ max: CHAT_CONSTANTS.MAX_MESSAGE_LENGTH })
+    .withMessage(
+      `Message text cannot exceed ${CHAT_CONSTANTS.MAX_MESSAGE_LENGTH} characters.`
+    ),
+
   body('audios')
     .optional()
     .isArray({ max: AUDIO_CONSTANTS.MAX_FILES_COUNT })
@@ -205,9 +216,10 @@ export const sendChatMessageValidation = [
 
   body('audios.*')
     .optional()
-    .trim()
     .custom((value) => {
-      if (!isValidObjectId(value)) {
+      const id = typeof value === 'object' && value !== null ? (value._id || value.id) : value;
+      const strId = String(id || '').trim();
+      if (!isValidObjectId(strId)) {
         throw new Error('Each audio reference must be a valid audio ID.');
       }
       return true;
@@ -225,9 +237,10 @@ export const sendChatMessageValidation = [
         (sum, item) => sum + (Number(item?.size) || 0),
         0
       );
-      if (totalSize > ATTACHMENT_CONSTANTS.MAX_BATCH_SIZE_BYTES) {
+      const maxBatch = Math.max(ATTACHMENT_CONSTANTS.MAX_BATCH_SIZE_BYTES, AUDIO_CONSTANTS.MAX_BATCH_SIZE_BYTES);
+      if (totalSize > maxBatch) {
         throw new Error(
-          `Total attachment batch size cannot exceed ${ATTACHMENT_CONSTANTS.MAX_BATCH_SIZE_BYTES} bytes (50MB).`
+          `Total attachment batch size cannot exceed ${maxBatch} bytes (50MB).`
         );
       }
       return true;
@@ -249,7 +262,10 @@ export const sendChatMessageValidation = [
           ext = path.extname(req.body.attachments[index].originalName).toLowerCase();
         }
       }
-      if (!ATTACHMENT_CONSTANTS.ALLOWED_EXTENSIONS.includes(ext)) {
+      const isAllowedExt =
+        ATTACHMENT_CONSTANTS.ALLOWED_EXTENSIONS.includes(ext) ||
+        AUDIO_CONSTANTS.ALLOWED_EXTENSIONS.includes(ext);
+      if (!isAllowedExt) {
         throw new Error(`File extension '${ext}' is not permitted.`);
       }
       return true;
@@ -265,6 +281,9 @@ export const sendChatMessageValidation = [
       }
       if (!filePath || typeof filePath !== 'string' || !filePath.trim()) {
         throw new Error('Attachment path is required.');
+      }
+      if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+        return true;
       }
       if (filePath.includes('..') || path.isAbsolute(filePath)) {
         throw new Error('Attachment path must be a safe relative storage path.');
@@ -282,7 +301,18 @@ export const sendChatMessageValidation = [
       if (!mimeType || typeof mimeType !== 'string' || !mimeType.trim()) {
         throw new Error('Attachment mimeType is required.');
       }
-      if (!ATTACHMENT_CONSTANTS.ALLOWED_MIME_TYPES.includes(mimeType.trim())) {
+      const trimmedMime = mimeType.trim().toLowerCase();
+      const baseMime = trimmedMime.split(';')[0].trim();
+      const isAllowedMime =
+        ATTACHMENT_CONSTANTS.ALLOWED_MIME_TYPES.includes(trimmedMime) ||
+        ATTACHMENT_CONSTANTS.ALLOWED_MIME_TYPES.includes(baseMime) ||
+        AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(trimmedMime) ||
+        AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(baseMime) ||
+        baseMime.startsWith('audio/') ||
+        baseMime === 'video/webm' ||
+        baseMime === 'video/mp4' ||
+        baseMime === 'application/ogg';
+      if (!isAllowedMime) {
         throw new Error('Unsupported attachment MIME format.');
       }
       return true;
@@ -296,9 +326,10 @@ export const sendChatMessageValidation = [
         return true;
       }
       const num = Number(size);
-      if (isNaN(num) || num < 1 || num > ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES) {
+      const maxSize = Math.max(ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES, AUDIO_CONSTANTS.MAX_FILE_SIZE_BYTES);
+      if (isNaN(num) || num < 1 || num > maxSize) {
         throw new Error(
-          `Attachment file size must be between 1 byte and ${ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES} bytes (25MB).`
+          `Attachment file size must be between 1 byte and ${maxSize} bytes (25MB).`
         );
       }
       return true;

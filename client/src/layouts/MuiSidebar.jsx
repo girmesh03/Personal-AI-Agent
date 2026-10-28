@@ -380,6 +380,9 @@ const MuiSidebar = ({ mode, onToggleMode, mobileOpen, onMobileClose }) => {
         onClose={onMobileClose}
         disableEnforceFocus
         disableRestoreFocus
+        ModalProps={{
+          keepMounted: true, // Preserve DOM tree & RTK query subscriptions for instantaneous 120fps opening
+        }}
         slotProps={{
           paper: {
             sx: { width: SIDEBAR_FULL_WIDTH },

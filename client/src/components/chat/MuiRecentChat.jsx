@@ -59,8 +59,11 @@ export const MuiRecentChat = ({ isMini = false, onMobileClose }) => {
   const user = useSelector(selectCurrentUser);
   const reduxActiveChatId = useSelector((state) => state.chat?.activeChatId);
 
-  // RTK Query: chat list query & lifecycle mutations
-  const { data: chatData, isLoading: isLoadingChats } = useGetChatsQuery(undefined, { skip: !user });
+  // RTK Query: chat list query & lifecycle mutations (instant cache retrieval, no redundant refetch on drawer open)
+  const { data: chatData, isLoading: isLoadingChats } = useGetChatsQuery(undefined, {
+    skip: !user,
+    refetchOnMountOrArgChange: false,
+  });
   const chats = useMemo(() => chatData?.chats || [], [chatData?.chats]);
 
   const [deleteChat, { isLoading: isDeletingChat }] = useDeleteChatMutation();

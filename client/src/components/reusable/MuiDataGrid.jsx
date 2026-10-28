@@ -9,7 +9,7 @@
  *  5. Theme-Aware Design Tokens: Semi-bold headers, clean zebra hover, dark/light compatibility.
  */
 
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
@@ -40,6 +40,19 @@ const CustomLoadingOverlay = () => {
 };
 
 CustomLoadingOverlay.displayName = 'CustomLoadingOverlay';
+
+const CustomNoRowsOverlay = ({ icon, title, subtitle, action }) => (
+  <GridOverlay sx={{ bgcolor: 'transparent', py: 4 }}>
+    <MuiEmptyState
+      icon={icon}
+      title={title}
+      subtitle={subtitle}
+      action={action}
+      sx={{ border: 'none' }}
+    />
+  </GridOverlay>
+);
+CustomNoRowsOverlay.displayName = 'MuiDataGridNoRowsOverlay';
 
 /**
  * Universal reusable DataGrid component.
@@ -92,21 +105,17 @@ export const MuiDataGrid = memo(({
   const theme = useTheme();
 
   // Memoized custom empty state overlay
-  const NoRowsOverlayComponent = useMemo(() => {
-    const Overlay = () => (
-      <GridOverlay sx={{ bgcolor: 'transparent', py: 4 }}>
-        <MuiEmptyState
-          icon={emptyIcon}
-          title={emptyTitle}
-          subtitle={emptySubtitle}
-          action={emptyAction}
-          sx={{ border: 'none' }}
-        />
-      </GridOverlay>
-    );
-    Overlay.displayName = 'MuiDataGridNoRowsOverlay';
-    return Overlay;
-  }, [emptyIcon, emptyTitle, emptySubtitle, emptyAction]);
+  const NoRowsOverlayComponent = useCallback(
+    () => (
+      <CustomNoRowsOverlay
+        icon={emptyIcon}
+        title={emptyTitle}
+        subtitle={emptySubtitle}
+        action={emptyAction}
+      />
+    ),
+    [emptyIcon, emptyTitle, emptySubtitle, emptyAction]
+  );
 
   // Fallback row id resolver
   const defaultGetRowId = useMemo(

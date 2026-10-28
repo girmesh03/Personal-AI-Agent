@@ -117,14 +117,14 @@ const STT_OPTIONS = [
     description: 'Specialized state-of-the-art ASR engine tuned for conversational and technical Amharic audio.',
   },
   {
-    id: 'gemini-3.8-flash',
+    id: AI_MODELS.PRO,
     name: 'Gemini 3.8 Flash',
     badge: 'Multimodal Audio',
     badgeColor: 'secondary',
     description: 'Multimodal native audio understanding with high-fidelity acoustic context.',
   },
   {
-    id: 'gemini-3.1-flash-lite',
+    id: AI_MODELS.DEFAULT,
     name: 'Gemini 3.1 Flash Lite',
     badge: 'Low Latency',
     badgeColor: 'info',
@@ -270,7 +270,15 @@ const ApiCredentialsSection = memo(({ apiKeysConfig, updateApiKeys, isSavingKeys
             fullWidth
             defaultValue=""
             placeholder={apiKeysConfig.hasAddisKey ? '••••••••••••••••••••' : 'addis_live_...'}
-            helperText="If omitted, voice messages seamlessly auto-transcribe via Google Gemini multimodal audio."
+            helperText={
+              <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                <span>Get your key at</span>
+                <Link href="https://addisassistant.com" target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25 }}>
+                  Addis AI Portal <OpenInNewIcon sx={{ fontSize: 12 }} />
+                </Link>
+                <span>· If omitted, voice auto-transcribes via Gemini.</span>
+              </Box>
+            }
           />
         </Grid>
 
@@ -324,7 +332,7 @@ export const ProfileAgentConfigTab = ({ user }) => {
   }, []);
 
   const [defaultModel, setDefaultModel] = useState(
-    initialConfig.defaultModel || AI_MODELS.DEFAULT || 'gemini-3.1-flash-lite'
+    initialConfig.defaultModel || AI_MODELS.DEFAULT
   );
   const [thinkingBudget, setThinkingBudget] = useState(
     typeof initialConfig.defaultThinkingBudget === 'number'

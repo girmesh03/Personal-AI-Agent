@@ -96,23 +96,22 @@ export const CloudIntegrationsTab = () => {
   // Listen for OAuth redirect parameters and refresh status
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('google_auth') === 'success') {
-      setIsConnecting(false);
+    const authStatus = params.get('google_auth');
+    if (!authStatus) return;
+
+    if (authStatus === 'success') {
       toast.success('Google Drive connected successfully!');
       refetch();
-      const newUrl = window.location.pathname + (params.get('tab') ? `?tab=${params.get('tab')}` : '');
-      window.history.replaceState({}, document.title, newUrl);
-    } else if (params.get('google_auth') === 'error') {
-      setIsConnecting(false);
+    } else if (authStatus === 'error') {
       const err = params.get('error') || 'Failed to authenticate with Google.';
       if (err.toLowerCase().includes('access_denied')) {
         toast.error('Google authorization denied (Error 403). While in testing mode, your Google account must be added to the developer\'s Google Cloud Console "Test users" list.');
       } else {
         toast.error(`Google connection failed: ${err}`);
       }
-      const newUrl = window.location.pathname + (params.get('tab') ? `?tab=${params.get('tab')}` : '');
-      window.history.replaceState({}, document.title, newUrl);
     }
+    const newUrl = window.location.pathname + (params.get('tab') ? `?tab=${params.get('tab')}` : '');
+    window.history.replaceState({}, document.title, newUrl);
   }, [refetch]);
 
   /**

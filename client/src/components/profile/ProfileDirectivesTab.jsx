@@ -10,7 +10,6 @@ import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Typography from '@mui/material/Typography';
-import Grid from '@mui/material/Grid';
 import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
 import Divider from '@mui/material/Divider';
@@ -31,12 +30,10 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import ClearIcon from '@mui/icons-material/Clear';
-import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import SaveIcon from '@mui/icons-material/Save';
 import BlockIcon from '@mui/icons-material/Block';
 import SpellcheckIcon from '@mui/icons-material/Spellcheck';
 import RuleIcon from '@mui/icons-material/Rule';
-import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import PropTypes from 'prop-types';
 import { toast } from 'react-toastify';
 
@@ -47,7 +44,6 @@ import {
 import MuiButton from '../reusable/MuiButton.jsx';
 import MuiTextField from '../reusable/MuiTextField.jsx';
 import ProfileReportTemplatesSection from './ProfileReportTemplatesSection.jsx';
-import { REPORT_CONSTANTS } from '../../utils/constants.js';
 
 /**
  * Directives & Report Templates SSOT tab.

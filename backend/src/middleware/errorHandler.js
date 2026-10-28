@@ -13,6 +13,7 @@ import {
 } from '../errors/CustomError.js';
 import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
+import { formatUserFriendlyError } from '../utils/errorFormatter.js';
 
 /**
  * Global Express 4-argument error-handling middleware.
@@ -91,7 +92,7 @@ export const errorHandler = (err, req, res, _next) => {
 
   return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
     success: false,
-    message: env.NODE_ENV === 'production' ? 'Something went wrong on our end. Please try again later.' : err.message,
+    message: formatUserFriendlyError(err),
     data: null,
     errorCode: 'INTERNAL_SERVER_ERROR',
     details: null,

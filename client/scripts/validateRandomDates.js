@@ -2,8 +2,6 @@ import {
   gregorianToJdn,
   jdnToEthiopian,
   ethiopianToGregorianDate,
-  ethiopianToJdn,
-  jdnToGregorian,
   ETHIOPIAN_MONTHS,
 } from '../src/utils/ethiopianCalendar.js';
 
@@ -103,5 +101,5 @@ validationSuite.forEach((item, idx) => {
 });
 
 console.log(`\n========================================================================================`);
-console.log(`   VALIDATION SUMMARY: ${passed}/${validationSuite.length} PASSED (${Math.round((passed / validationSuite.length) * 100)}%)`);
+console.log(`   VALIDATION SUMMARY: ${passed}/${validationSuite.length} PASSED, ${failed} FAILED (${Math.round((passed / validationSuite.length) * 100)}%)`);
 console.log(`========================================================================================\n`);

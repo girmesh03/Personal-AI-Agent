@@ -9,6 +9,7 @@ import asyncHandler from 'express-async-handler';
 import { User } from '../models/User.js';
 import { HTTP_STATUS } from '../utils/constants.js';
 import { ConflictError, UnauthenticatedError, BadRequestError } from '../errors/CustomError.js';
+import storageService from '../services/storageService.js';
 
 /**
  * Retrieves the currently authenticated user's profile.
@@ -49,7 +50,9 @@ export const updateProfile = asyncHandler(async (req, res) => {
     let userObj;
 
     await session.withTransaction(async () => {
-      const user = await User.findById(req.user._id).session(session);
+      const user = await User.findById(req.user._id)
+        .select('+settings.apiKeys.geminiApiKey +settings.apiKeys.addisApiKey')
+        .session(session);
       if (!user) {
         throw new UnauthenticatedError('User account could not be found. Please log in again.', 'USER_NOT_FOUND');
       }
@@ -76,6 +79,23 @@ export const updateProfile = asyncHandler(async (req, res) => {
 
       if (position !== undefined) {
         user.position = position.trim();
+      }
+
+      if (validatedBody.settings?.apiKeys) {
+        const { geminiApiKey, addisApiKey } = validatedBody.settings.apiKeys;
+        if (!user.settings) user.settings = {};
+        if (!user.settings.apiKeys) user.settings.apiKeys = {};
+        if (geminiApiKey !== undefined) {
+          const clean = geminiApiKey && geminiApiKey.trim() ? geminiApiKey.trim() : null;
+          user.settings.apiKeys.geminiApiKey = clean;
+          user.settings.apiKeys.hasGeminiKey = Boolean(clean);
+        }
+        if (addisApiKey !== undefined) {
+          const clean = addisApiKey && addisApiKey.trim() ? addisApiKey.trim() : null;
+          user.settings.apiKeys.addisApiKey = clean;
+          user.settings.apiKeys.hasAddisKey = Boolean(clean);
+        }
+        user.markModified('settings');
       }
 
       await user.save({ session });
@@ -105,19 +125,28 @@ export const updateProfile = asyncHandler(async (req, res) => {
  */
 export const updateAvatar = asyncHandler(async (req, res) => {
   const validatedBody = req.validated?.body || req.body || {};
-  const { avatar } = validatedBody;
+  const { avatar, avatarPublicId } = validatedBody;
 
   const session = await mongoose.startSession();
   try {
     let userObj;
 
     await session.withTransaction(async () => {
-      const user = await User.findById(req.user._id).session(session);
+      const user = await User.findById(req.user._id)
+        .select('+settings.apiKeys.geminiApiKey +settings.apiKeys.addisApiKey')
+        .session(session);
       if (!user) {
         throw new UnauthenticatedError('User account could not be found. Please log in again.', 'USER_NOT_FOUND');
       }
 
+      if (user.avatarPublicId && user.avatarPublicId !== avatarPublicId) {
+        void storageService.cleanupAvatarAsset(user.avatarPublicId, user.avatar);
+      }
+
       user.avatar = avatar;
+      if (avatarPublicId !== undefined) {
+        user.avatarPublicId = avatarPublicId;
+      }
       await user.save({ session });
       userObj = user.toJSON();
     });
@@ -149,12 +178,19 @@ export const removeAvatar = asyncHandler(async (req, res) => {
     let userObj;
 
     await session.withTransaction(async () => {
-      const user = await User.findById(req.user._id).session(session);
+      const user = await User.findById(req.user._id)
+        .select('+settings.apiKeys.geminiApiKey +settings.apiKeys.addisApiKey')
+        .session(session);
       if (!user) {
         throw new UnauthenticatedError('User account could not be found. Please log in again.', 'USER_NOT_FOUND');
       }
 
+      if (user.avatarPublicId || user.avatar) {
+        void storageService.cleanupAvatarAsset(user.avatarPublicId, user.avatar);
+      }
+
       user.avatar = null;
+      user.avatarPublicId = null;
       await user.save({ session });
       userObj = user.toJSON();
     });
@@ -299,7 +335,9 @@ export const updateUserAgentConfig = asyncHandler(async (req, res) => {
   try {
     let updatedUser;
     await session.withTransaction(async () => {
-      const user = await User.findById(req.user._id).session(session);
+      const user = await User.findById(req.user._id)
+        .select('+settings.apiKeys.geminiApiKey +settings.apiKeys.addisApiKey')
+        .session(session);
       if (!user) {
         throw new UnauthenticatedError('User not found. Please log in again.');
       }
@@ -393,7 +431,9 @@ export const updateSupervisorDirectives = asyncHandler(async (req, res) => {
   try {
     let updatedDirectives;
     await session.withTransaction(async () => {
-      const user = await User.findById(req.user._id).session(session);
+      const user = await User.findById(req.user._id)
+        .select('+settings.apiKeys.geminiApiKey +settings.apiKeys.addisApiKey')
+        .session(session);
       if (!user) {
         throw new UnauthenticatedError('User not found. Please log in again.');
       }
@@ -527,8 +567,7 @@ export const connectTelegramIntegration = asyncHandler(async (req, res) => {
   let verifiedBotUsername = b.botUsername || null;
   if (cleanBotToken) {
     const isMock = cleanBotToken.startsWith('mock_') ||
-      cleanBotToken.includes('MockValidFormat') ||
-      (process.env.NODE_ENV === 'test' && b.botUsername);
+      cleanBotToken.includes('MockValidFormat');
 
     if (!isMock) {
       try {

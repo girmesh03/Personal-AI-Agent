@@ -41,7 +41,9 @@ export const protect = asyncHandler(async (req, _res, next) => {
   // verifyAccessToken throws UnauthenticatedError on expired or invalid token
   const decoded = verifyAccessToken(token);
 
-  const user = await User.findById(decoded.id).select('-password');
+  const user = await User.findById(decoded.id).select(
+    '-password +settings.apiKeys.geminiApiKey +settings.apiKeys.addisApiKey +integrations.telegram.botToken'
+  );
   if (!user) {
     throw new UnauthenticatedError('Account not found. Please log in again.', 'UNAUTHENTICATED');
   }

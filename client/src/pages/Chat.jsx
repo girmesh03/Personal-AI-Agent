@@ -194,14 +194,39 @@ export const Chat = () => {
   const sttEngine = useSelector(selectSttEngine);
   const reduxActiveChatId = useSelector((state) => state.chat.activeChatId);
 
+  // Instantiates the idiomatic MuiChatAdapter with live store dispatcher and lifecycle callbacks
+  const adapter = useMemo(() => {
+    return new MuiChatAdapter({
+      dispatch,
+      onSessionCreated: ({ chatId: createdId }) => {
+        if (createdId) {
+          dispatch(setActiveChatId(createdId));
+        }
+      },
+      onTurnCompleted: ({ chatId: completedId }) => {
+        // Stream completed: messages stay rendered in store without being wiped by route navigation.
+        // The browser URL was already synchronized via replaceState on session creation.
+        if (completedId) {
+          dispatch(setActiveChatId(completedId));
+        }
+      },
+      onError: (err) => {
+        if (err?.name !== 'AbortError') {
+          console.warn('[Chat] Stream notice:', err?.message || err);
+        }
+      },
+    });
+  }, [dispatch]);
+
   // Synchronize activeChatId in Redux on route param changes
   useEffect(() => {
     if (chatId) {
       dispatch(setActiveChatId(chatId));
-    } else if (location.state?.newChatAt) {
+    } else {
       dispatch(setActiveChatId(null));
+      adapter.clearActiveChatId?.();
     }
-  }, [dispatch, chatId, location.state?.newChatAt]);
+  }, [dispatch, chatId, adapter]);
 
   // Handle Google Drive OAuth callback redirect parameters (?google_auth=success or ?google_auth=error)
   useEffect(() => {
@@ -224,30 +249,6 @@ export const Chat = () => {
       window.history.replaceState({}, document.title, newUrl);
     }
   }, [location.search, location.pathname]);
-
-  // Instantiates the idiomatic MuiChatAdapter with live store dispatcher and lifecycle callbacks
-  const adapter = useMemo(() => {
-    return new MuiChatAdapter({
-      dispatch,
-      onSessionCreated: ({ chatId }) => {
-        if (chatId) {
-          dispatch(setActiveChatId(chatId));
-        }
-      },
-      onTurnCompleted: ({ chatId }) => {
-        // Stream completed: messages stay rendered in store without being wiped by route navigation.
-        // The browser URL was already synchronized via replaceState on session creation.
-        if (chatId) {
-          dispatch(setActiveChatId(chatId));
-        }
-      },
-      onError: (err) => {
-        if (err?.name !== 'AbortError') {
-          console.warn('[Chat] Stream notice:', err?.message || err);
-        }
-      },
-    });
-  }, [dispatch]);
 
   // Hydrate config if opening an existing chat thread
   const {

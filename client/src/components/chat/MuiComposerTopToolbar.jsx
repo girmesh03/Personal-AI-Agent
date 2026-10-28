@@ -16,6 +16,8 @@ import CircularProgress from '@mui/material/CircularProgress';
 import AudioFileIcon from '@mui/icons-material/AudioFile';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import { useChatComposer } from '@mui/x-chat-headless';
+import { useDeleteComposerAttachmentMutation } from '../../redux/features/chatSlice.js';
+import { getUploadState, removeUpload, usePendingUploadCount } from '../../utils/attachmentRegistry.js';
 import { formatBytesToMb } from '../../utils/validateChatAttachment.js';
 import { ATTACHMENT_CONSTANTS, AUDIO_CONSTANTS } from '../../utils/constants.js';
 
@@ -54,6 +56,8 @@ const isImageAttachment = (file) => {
  */
 export const MuiComposerTopToolbar = forwardRef((props, ref) => {
   const composer = useChatComposer();
+  const [deleteComposerAttachment] = useDeleteComposerAttachmentMutation();
+  usePendingUploadCount();
   const attachments = composer?.attachments || [];
 
   // Zero Attachment Invariant: Collapse completely when no files are pending
@@ -93,6 +97,7 @@ export const MuiComposerTopToolbar = forwardRef((props, ref) => {
         const fileSize = file?.size || 0;
         const isImage = isImageAttachment(file);
         const isAudio = isAudioAttachment(file);
+        const uploadState = getUploadState(file);
 
         return (
           <Box
@@ -161,7 +166,7 @@ export const MuiComposerTopToolbar = forwardRef((props, ref) => {
               )}
 
               {/* Consumer-Grade Inline Upload Progress Ring */}
-              {(attachment.isUploading || attachment.uploadProgress !== undefined) && (
+              {(attachment.isUploading === true || uploadState.isUploading === true || (typeof attachment.uploadProgress === 'number' && attachment.uploadProgress < 100)) && (
                 <Box
                   sx={{
                     position: 'absolute',
@@ -222,6 +227,18 @@ export const MuiComposerTopToolbar = forwardRef((props, ref) => {
               size="small"
               aria-label={`Remove attachment ${fileName}`}
               onClick={() => {
+                const uploadResult = removeUpload(file);
+                const publicId = uploadResult?.publicId || attachment.publicId;
+                const targetFileName = uploadResult?.fileName || attachment.fileName;
+                const wasUploading = uploadResult?.wasUploading ?? uploadState.isUploading;
+
+                if (!wasUploading && (publicId || targetFileName)) {
+                  void deleteComposerAttachment({
+                    publicId,
+                    mimeType: uploadResult?.mimeType || file?.type,
+                    fileName: targetFileName,
+                  });
+                }
                 if (typeof composer?.removeAttachment === 'function') {
                   composer.removeAttachment(attachment.localId);
                 }

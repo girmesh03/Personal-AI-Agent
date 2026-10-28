@@ -11,6 +11,7 @@ import { apiSlice } from '../redux/app/apiSlice.js';
 import { executeWithReauth } from '../redux/app/authClient.js';
 import { chatApi, setActiveChatId, setPipelineStatus } from '../redux/features/chatSlice.js';
 import { AUDIO_CONSTANTS, CHAT_PAGINATION, formatModelDisplayName } from '../utils/constants.js';
+import { getUploadState } from '../utils/attachmentRegistry.js';
 
 /**
  * Default API base URL from client environment configuration.
@@ -498,11 +499,16 @@ export class MuiChatAdapter {
 
       if (Array.isArray(message?.audios) && message.audios.length > 0) {
         message.audios.forEach((a) => {
-          const id = typeof a === 'string' ? a : (a?._id || a?.id);
+          const id = typeof a === 'string' ? a : (a?._id || a?.id || a?.audioId);
           if (id && /^[0-9a-fA-F]{24}$/.test(String(id))) {
             if (!uploadedAudioIds.includes(String(id))) {
               uploadedAudioIds.push(String(id));
             }
+          } else if (typeof a === 'object' && a !== null) {
+            uploadedAttachments.push({
+              ...a,
+              isAudio: true,
+            });
           }
         });
       }
@@ -541,6 +547,7 @@ export class MuiChatAdapter {
 
           const isAudioItem =
             att.type === 'audio' ||
+            att.isAudio === true ||
             (cleanType && (
               AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(cleanType) ||
               cleanType.startsWith('audio/') ||
@@ -549,14 +556,65 @@ export class MuiChatAdapter {
             )) ||
             AUDIO_CONSTANTS.ALLOWED_EXTENSIONS.some((ext) => attName.endsWith(ext));
 
+          if (file) {
+            const eagerState = getUploadState(file);
+            if (eagerState?.result) {
+              if (isAudioItem || eagerState.result.isAudio || eagerState.result.purpose === 'chat_voice_input') {
+                const rawAudioId = eagerState.result._id || eagerState.result.id;
+                if (rawAudioId && !uploadedAudioIds.includes(String(rawAudioId))) {
+                  uploadedAudioIds.push(String(rawAudioId));
+                }
+              } else {
+                uploadedAttachments.push({
+                  _id: eagerState.result._id,
+                  fileName: eagerState.result.fileName || file.name,
+                  originalName: eagerState.result.originalName || file.name,
+                  mimeType: eagerState.result.mimeType || file.type,
+                  size: eagerState.result.size || file.size,
+                  path: eagerState.result.path,
+                  url: eagerState.result.url,
+                  cloudUrl: eagerState.result.cloudUrl,
+                  publicId: eagerState.result.publicId,
+                });
+              }
+              return;
+            }
+
+            // Direct ID decoration on file from earlier upload
+            const fileDirectId = file._id || file.audioId;
+            if (fileDirectId && /^[0-9a-fA-F]{24}$/.test(String(fileDirectId))) {
+              if (isAudioItem && !uploadedAudioIds.includes(String(fileDirectId))) {
+                uploadedAudioIds.push(String(fileDirectId));
+                return;
+              }
+            }
+          }
+
           if (!file) {
             // Pre-existing uploaded attachment or audio from an earlier turn
             if (isAudioItem) {
-              const rawId = att._id || att.id;
+              const rawId = att._id || att.id || att.audioId;
               if (rawId && /^[0-9a-fA-F]{24}$/.test(String(rawId))) {
                 if (!uploadedAudioIds.includes(String(rawId))) {
                   uploadedAudioIds.push(String(rawId));
                 }
+              } else {
+                // If ID is not a 24-hex ObjectId, still pass audio descriptor into uploadedAttachments
+                // so backend dual-pool matching can match it against stored targetTurn audios!
+                const safeFileName = att.fileName || att.originalName || att.name || 'voice-note.webm';
+                uploadedAttachments.push({
+                  _id: att._id || undefined,
+                  id: att.id || undefined,
+                  fileName: safeFileName,
+                  originalName: att.originalName || att.name || safeFileName,
+                  mimeType: cleanType || att.mimeType || att.type || 'audio/webm',
+                  size: Number(att.size) || 1,
+                  path: att.path || undefined,
+                  url: att.url || null,
+                  cloudUrl: att.cloudUrl || undefined,
+                  publicId: att.publicId || undefined,
+                  isAudio: true,
+                });
               }
             } else if (att.fileName || att.originalName || att.name || att.path || att.url) {
               const rawPath = att.path || (att.url && att.url.replace(/^.*\/uploads\//, 'uploads/')) || att.url;
@@ -582,6 +640,8 @@ export class MuiChatAdapter {
                 size: Number(att.size) || 1,
                 path: cleanPath || undefined,
                 url: att.url || (cleanPath ? `/${cleanPath}` : null),
+                cloudUrl: att.cloudUrl || undefined,
+                publicId: att.publicId || undefined,
               });
             }
             return;
@@ -686,8 +746,8 @@ export class MuiChatAdapter {
       sttEngine:
         (typeof this.getSttEngine === 'function' ? this.getSttEngine() : undefined) ||
         this.activeSttEngine,
-      audios: uploadedAudioIds.length > 0 ? uploadedAudioIds : undefined,
-      attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
+      audios: isEdit ? uploadedAudioIds : (uploadedAudioIds.length > 0 ? uploadedAudioIds : undefined),
+      attachments: isEdit ? uploadedAttachments : (uploadedAttachments.length > 0 ? uploadedAttachments : undefined),
     };
 
     if (this.activeAbortController) {
@@ -708,7 +768,10 @@ export class MuiChatAdapter {
 
     return new ReadableStream({
       async start(controller) {
-        const assistantMessageId = `asst-${Date.now()}`;
+        const assistantMessageId =
+          isRetry && message?.metadata?.targetAssistantMessageId
+            ? message.metadata.targetAssistantMessageId
+            : `asst-${Date.now()}`;
         controller.enqueue({
           type: 'start',
           messageId: assistantMessageId,
@@ -997,6 +1060,9 @@ export class MuiChatAdapter {
                   adapterInstance.onTurnCompleted?.({
                     chatId: adapterInstance.currentChatId,
                     messageId: data.messageId,
+                    userTurnId: data.userTurnId,
+                    userAudios: data.userAudios,
+                    userAttachments: data.userAttachments,
                     title: data.title,
                     model: data.model,
                     usage: data.usage,

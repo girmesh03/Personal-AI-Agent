@@ -218,7 +218,7 @@ export function ethiopianToGregorianDate(year, month, day) {
  * @param {boolean} [includeAmharic=false] - Deprecated parameter; app language mandate strictly requires English.
  * @returns {string} Formatted English string, e.g. "February 14, 2019".
  */
-export function formatEthiopianFullDate(eth, includeAmharic = false) {
+export function formatEthiopianFullDate(eth) {
   if (!eth || !eth.year || !eth.month || !eth.day) return '';
   const monthMeta = ETHIOPIAN_MONTHS[eth.month - 1] || { name: `Month ${eth.month}`, amharic: '' };
   return `${monthMeta.name} ${eth.day}, ${eth.year}`;

@@ -13,7 +13,7 @@
 import { Branch } from '../models/Branch.js';
 import { Report } from '../models/Report.js';
 import { toEthiopianDateString } from './ethiopianCalendar.js';
-import { CHAT_CONSTANTS } from './constants.js';
+import { CHAT_CONSTANTS, AI_MODELS } from './constants.js';
 
 /**
  * Standard enterprise fallback persona if none is configured on user settings.
@@ -326,10 +326,10 @@ export async function assembleSystemPrompt({
     '- Exemplars: "deep fryer" => "ዲፕ ፍራየር", "chiller" => "ቺለር", "POS" => "ፒኦኤስ", "checklist" => "ቼክሊስት", "generator" => "ጄኔሬተር".',
     '',
     'AUTONOMOUS USER SETTINGS & DIRECTIVES CRUD (SINGLE SOURCE OF TRUTH):',
-    'You are equipped with "get_user_settings" and "update_user_settings" (and backwards-compatible alias "save_supervisor_directive") to inspect and persist configuration directly in User.settings in MongoDB inside an ACID transaction session:',
+    'You are equipped with "get_user_settings", "update_user_settings", and "save_user_directive" (with backwards-compatible alias "save_supervisor_directive") to inspect and persist configuration directly in User.settings in MongoDB inside an ACID transaction session:',
     '  1. Directives: Negative vocabulary (negativeVocabularyToAdd, negativeVocabularyToRemove), phrase replacements (phraseMappingsToAdd, phraseMappingsToRemove), custom operational/personal instructions (customInstructionsToAdd, customInstructionsToRemove), or clearDirectives.',
-    '  2. Agent Configuration: Persona lens, defaultModel (gemini-3.1-flash-lite, gemini-3.8-flash, gemini-3-flash-preview), defaultThinkingBudget (0 to 8192 tokens), defaultLanguage ("am", "en", "auto"), or resetAgentConfig.',
-    '  3. Speech-to-Text Engine: sttEngine ("addis_ai", "gemini-3.8-flash", "gemini-3.1-flash-lite").',
+    `  2. Agent Configuration: Persona lens, defaultModel (${AI_MODELS.SUPPORTED.join(', ')}), defaultThinkingBudget (0 to 8192 tokens), defaultLanguage ("am", "en", "auto"), or resetAgentConfig.`,
+    `  3. Speech-to-Text Engine: sttEngine (${AI_MODELS.STT_ENGINES.map((s) => `"${s}"`).join(', ')}).`,
     '  4. Report Templates: singleBranchTemplate, multiBranchTemplate, resetSingleBranchTemplate, resetMultiBranchTemplate.',
     '',
     'MANDATORY DIRECTIVE INSPECTION & EXECUTION PROTOCOL (PRIORITY 0):',
@@ -572,7 +572,7 @@ export async function assembleSystemPrompt({
     '   - Actions: Act as an elite, articulate, warm Personal AI companion. Answer directly and comprehensively. ZERO database tool calls (EXCEPT for universal user settings tools: get_user_settings / update_user_settings, and document/drive tools). ZERO report template wrapping. ZERO branch mentions.',
     '',
     'UNIVERSAL CROSS-QUADRANT USER SETTINGS EXEMPTION:',
-    '- The settings tools (get_user_settings, update_user_settings, save_supervisor_directive) are universally accessible across ALL quadrants. Even during casual, personal, or advisory dialogue, if the user asks to save a rule, adjust default models or budget, change persona, or view settings, execute the tool immediately.',
+    '- The settings tools (get_user_settings, update_user_settings, save_user_directive) are universally accessible across ALL quadrants. Even during casual, personal, or advisory dialogue, if the user asks to save a rule, adjust default models or budget, change persona, or view settings, execute the tool immediately.',
     '',
     'UNIVERSAL CROSS-QUADRANT CLOUD WORKSPACE & DOCUMENT GENERATION EXEMPTION (PURE DYNAMIC AGENCY):',
     driveStatusPrompt,
@@ -601,7 +601,7 @@ export async function assembleSystemPrompt({
     '  3. If the supervisor asks for bullet indentation (e.g. "add more indentation to bullet", "more indent", "60px indent"): pass bulletIndent: "more" or "large" or a specific pixel value (e.g. "60px") to share_to_telegram.',
     '  4. If the supervisor asks for font size (e.g. "font size 14 in ms word", "40px"): pass fontSize: "14 in ms word" or "40px" to share_to_telegram.',
     '  5. If the supervisor asks to adjust line spacing (e.g. "reduce space between lines", "compact line spacing"): pass lineSpacing: "compact" to share_to_telegram.',
-    '  6. If the supervisor indicates this formatting directive should be permanent or default: pass saveAsDefault: true or invoke save_supervisor_directive so future posts automatically respect their style preference.',
+    '  6. If the user indicates this formatting directive should be permanent or default: pass saveAsDefault: true or invoke save_user_directive so future posts automatically respect their style preference.',
     '',
     'CONVERSATIONAL DYNAMICS & INGESTION NEUTRALITY:',
     '- Ingestion Neutrality: Audio notes, attached files (Word, Excel, PDF), and images must NEVER be automatically assumed to be operational reports. Only route to Quadrant 2 if the actual transcribed speech or document content explicitly describes restaurant audits, branch activities, or operational metrics.',

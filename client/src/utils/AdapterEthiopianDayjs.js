@@ -11,7 +11,6 @@ import {
   toEthiopianDate,
   ethiopianToGregorianDate,
   getDaysInEthiopianMonth,
-  getDayOfWeekForEthiopianDate,
   ETHIOPIAN_MONTHS,
   ETHIOPIAN_DAYS_OF_WEEK,
 } from './ethiopianCalendar.js';

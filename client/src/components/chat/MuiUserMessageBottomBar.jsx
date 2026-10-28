@@ -174,7 +174,7 @@ export const MuiUserMessageBottomBar = ({
           <Tooltip
             title={
               disabledSubmit
-                ? 'Enter text or attach a file/image to send.'
+                ? 'Enter text or attach a file/image to send, and wait for any active uploads to complete.'
                 : 'Save and submit edit'
             }
             arrow

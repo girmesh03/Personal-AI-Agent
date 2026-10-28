@@ -12,17 +12,17 @@ import multer from 'multer';
 import { AUDIO_CONSTANTS, ATTACHMENT_CONSTANTS, UPLOADS_CONFIG } from '../utils/constants.js';
 import { BadRequestError } from '../errors/CustomError.js';
 
-// Resolve canonical uploads destination directory deterministically
-const AUDIO_UPLOAD_DIR = UPLOADS_CONFIG.AUDIOS_DIR;
-const ATTACHMENT_UPLOAD_DIR = UPLOADS_CONFIG.ATTACHMENTS_DIR;
+// Ensure all domain storage directories exist synchronously at module initialization
+for (const dir of Object.values(UPLOADS_CONFIG.DOMAIN_DIRS || {})) {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+if (!fs.existsSync(UPLOADS_CONFIG.ATTACHMENTS_DIR)) {
+  fs.mkdirSync(UPLOADS_CONFIG.ATTACHMENTS_DIR, { recursive: true });
+}
 
-// Ensure storage directories exist synchronously at module initialization
-if (!fs.existsSync(AUDIO_UPLOAD_DIR)) {
-  fs.mkdirSync(AUDIO_UPLOAD_DIR, { recursive: true });
-}
-if (!fs.existsSync(ATTACHMENT_UPLOAD_DIR)) {
-  fs.mkdirSync(ATTACHMENT_UPLOAD_DIR, { recursive: true });
-}
+const AUDIO_UPLOAD_DIR = UPLOADS_CONFIG.AUDIOS_DIR;
 
 /**
  * Multer disk storage engine configuring destination and collision-free UUID filenames.
@@ -183,11 +183,37 @@ export const uploadSingleAudioMiddleware = (req, res, next) => {
 };
 
 /**
- * Multer disk storage engine for chat document and image attachments.
+ * Multer disk storage engine for chat document, image, and audio attachments.
+ * Dynamically partitions uploads into domain directories: images/, audios/, or files/.
  */
 const attachmentDiskStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, ATTACHMENT_UPLOAD_DIR);
+  destination: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const rawMime = (file.mimetype || '').toLowerCase();
+    const cleanMime = rawMime.split(';')[0].trim();
+
+    const isImage =
+      ATTACHMENT_CONSTANTS.ALLOWED_IMAGE_MIME_TYPES.includes(file.mimetype) ||
+      ATTACHMENT_CONSTANTS.ALLOWED_IMAGE_EXTENSIONS.includes(ext) ||
+      cleanMime.startsWith('image/');
+
+    const isAudio =
+      AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(file.mimetype) ||
+      AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(cleanMime) ||
+      cleanMime.startsWith('audio/') ||
+      AUDIO_CONSTANTS.ALLOWED_EXTENSIONS.includes(ext) ||
+      (ext === '.webm' && (cleanMime === 'video/webm' || cleanMime === 'audio/webm'));
+
+    if (isImage) {
+      file.domain = 'images';
+      cb(null, UPLOADS_CONFIG.IMAGES_DIR);
+    } else if (isAudio) {
+      file.domain = 'audios';
+      cb(null, UPLOADS_CONFIG.AUDIOS_DIR);
+    } else {
+      file.domain = 'files';
+      cb(null, UPLOADS_CONFIG.FILES_DIR);
+    }
   },
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
@@ -198,16 +224,30 @@ const attachmentDiskStorage = multer.diskStorage({
 
 /**
  * Multer file filter enforcing strict attachment MIME types and extension whitelists.
+ * Accepts all supported media from both ATTACHMENT_CONSTANTS and AUDIO_CONSTANTS.
  */
 const attachmentFileFilter = (_req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase();
-  const isValidMime = ATTACHMENT_CONSTANTS.ALLOWED_MIME_TYPES.includes(file.mimetype);
-  const isValidExt = ATTACHMENT_CONSTANTS.ALLOWED_EXTENSIONS.includes(ext);
+  const rawMime = (file.mimetype || '').toLowerCase();
+  const cleanMime = rawMime.split(';')[0].trim();
 
-  if (!isValidMime || !isValidExt) {
+  const isAttachmentMime = ATTACHMENT_CONSTANTS.ALLOWED_MIME_TYPES.includes(file.mimetype);
+  const isAttachmentExt = ATTACHMENT_CONSTANTS.ALLOWED_EXTENSIONS.includes(ext);
+
+  const isAudioMime =
+    AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(file.mimetype) ||
+    AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(cleanMime) ||
+    cleanMime.startsWith('audio/') ||
+    (ext === '.webm' && (cleanMime === 'video/webm' || cleanMime === 'audio/webm'));
+  const isAudioExt = AUDIO_CONSTANTS.ALLOWED_EXTENSIONS.includes(ext);
+
+  const isValid = (isAttachmentMime && isAttachmentExt) || (isAudioMime && isAudioExt);
+
+  if (!isValid) {
+    const allAllowedExts = [...ATTACHMENT_CONSTANTS.ALLOWED_EXTENSIONS, ...AUDIO_CONSTANTS.ALLOWED_EXTENSIONS];
     return cb(
       new BadRequestError(
-        `Unsupported attachment format (${ext || 'unknown'}). Allowed formats: ${ATTACHMENT_CONSTANTS.ALLOWED_EXTENSIONS.join(', ')}.`
+        `Unsupported attachment format (${ext || 'unknown'}). Allowed formats: ${allAllowedExts.join(', ')}.`
       )
     );
   }

@@ -8,7 +8,7 @@
  * - Right Cluster: Text-only [Copy] with animated feedback and [Regenerate] with linear history pruning.
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router';
 import PropTypes from 'prop-types';
@@ -85,14 +85,9 @@ export const MuiAgentMessageBottomBar = ({
 
   const [shareTelegram] = useShareTelegramMutation();
   const [telegramAnchor, setTelegramAnchor] = useState(null);
-  const [telegramFormat, setTelegramFormat] = useState(telegram.defaultFormat || 'text');
+  const [userSelectedFormat, setUserSelectedFormat] = useState(null);
+  const telegramFormat = userSelectedFormat || telegram.defaultFormat || 'text';
   const [sharingChannel, setSharingChannel] = useState(null);
-
-  useEffect(() => {
-    if (telegram.defaultFormat) {
-      setTelegramFormat(telegram.defaultFormat);
-    }
-  }, [telegram.defaultFormat]);
 
   const telegramChannels = [
     {
@@ -124,7 +119,7 @@ export const MuiAgentMessageBottomBar = ({
     if (!text || sharingChannel) return;
     setSharingChannel(channel);
     try {
-      const res = await shareTelegram({
+      await shareTelegram({
         text,
         targetChannel: channel,
         asImage: telegramFormat === 'image',
@@ -394,7 +389,7 @@ export const MuiAgentMessageBottomBar = ({
                   <ToggleButtonGroup
                     value={telegramFormat}
                     exclusive
-                    onChange={(_e, val) => val && setTelegramFormat(val)}
+                    onChange={(_e, val) => val && setUserSelectedFormat(val)}
                     size="small"
                     fullWidth
                     sx={{ mb: 1 }}

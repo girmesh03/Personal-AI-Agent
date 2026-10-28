@@ -4,7 +4,7 @@
  * Zero-lag form responsiveness with mode: 'onBlur', zero debounces, and zero watch calls.
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { useForm } from 'react-hook-form';
 import Box from '@mui/material/Box';
@@ -42,8 +42,16 @@ export const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [login, { isLoading }] = useLoginMutation();
-  const [serverError, setServerError] = useState('');
+  const [serverError, setServerError] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    const err = params.get('error');
+    if (err === 'GOOGLE_SSO_NOT_CONFIGURED') {
+      return 'Google SSO is not configured on this server. Please sign in with email and password.';
+    }
+    return err ? `Sign in error: ${err}` : '';
+  });
   const [ssoPrompt, setSsoPrompt] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const from = location.state?.from?.pathname || ROUTES.DASHBOARD;
 
@@ -59,20 +67,8 @@ export const Login = () => {
     },
   });
 
-  // Check URL query parameters for SSO errors
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const err = params.get('error');
-    if (err) {
-      if (err === 'GOOGLE_SSO_NOT_CONFIGURED') {
-        setServerError('Google SSO is not configured on this server. Please sign in with email and password.');
-      } else {
-        setServerError(`Sign in error: ${err}`);
-      }
-    }
-  }, [location.search]);
-
   const handleGoogleSso = () => {
+    setIsGoogleLoading(true);
     window.location.href = `${API_BASE_URL}/auth/google/sso`;
   };
 
@@ -143,22 +139,9 @@ export const Login = () => {
               '& .MuiAlert-message': { width: '100%' },
             }}
           >
-            <Typography variant="body2" sx={{ mb: ssoPrompt ? 1.5 : 0 }}>
+            <Typography variant="body2">
               {serverError}
             </Typography>
-            {ssoPrompt && (
-              <Box sx={{ mt: 1 }}>
-                <MuiButton
-                  size="small"
-                  variant="contained"
-                  color="primary"
-                  onClick={handleGoogleSso}
-                  sx={{ textTransform: 'none', fontWeight: 600 }}
-                >
-                  Sign in with Google
-                </MuiButton>
-              </Box>
-            )}
           </Alert>
         )}
 
@@ -227,6 +210,8 @@ export const Login = () => {
               <GoogleSsoButton
                 label="Sign in with Google"
                 onClick={handleGoogleSso}
+                isLoading={isGoogleLoading}
+                disabled={isLoading || isGoogleLoading}
               />
             </Grid>
           </Grid>

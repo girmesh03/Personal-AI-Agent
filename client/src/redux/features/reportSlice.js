@@ -68,17 +68,6 @@ export const reportSlice = apiSlice.injectEndpoints({
     }),
 
     /**
-     * Export report document (text, csv, docx, pdf, xlsx) or dispatch to Google Drive.
-     */
-    exportReport: builder.mutation({
-      query: ({ reportId, format = 'pdf', destination = 'download' }) => ({
-        url: `/reports/${reportId}/export`,
-        method: 'POST',
-        body: { format, destination },
-      }),
-    }),
-
-    /**
      * Soft-archive an operational report.
      */
     archiveReport: builder.mutation({
@@ -132,7 +121,6 @@ export const {
   useArchiveReportMutation,
   useRestoreReportMutation,
   useDeleteReportMutation,
-  useExportReportMutation,
 } = reportSlice;
 
 export default reportSlice;

@@ -16,9 +16,19 @@ const BACKEND_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
  */
 export const UPLOADS_CONFIG = Object.freeze({
   ROOT_DIR: path.resolve(BACKEND_ROOT, 'uploads'),
+  AVATARS_DIR: path.resolve(BACKEND_ROOT, 'uploads/avatars'),
+  IMAGES_DIR: path.resolve(BACKEND_ROOT, 'uploads/images'),
+  FILES_DIR: path.resolve(BACKEND_ROOT, 'uploads/files'),
   AUDIOS_DIR: path.resolve(BACKEND_ROOT, 'uploads/audios'),
   ATTACHMENTS_DIR: path.resolve(BACKEND_ROOT, 'uploads/attachments'),
   TEMP_DIR: path.resolve(BACKEND_ROOT, 'uploads/temp'),
+  DOMAIN_DIRS: Object.freeze({
+    avatars: path.resolve(BACKEND_ROOT, 'uploads/avatars'),
+    images: path.resolve(BACKEND_ROOT, 'uploads/images'),
+    files: path.resolve(BACKEND_ROOT, 'uploads/files'),
+    audios: path.resolve(BACKEND_ROOT, 'uploads/audios'),
+    temp: path.resolve(BACKEND_ROOT, 'uploads/temp'),
+  }),
 });
 
 /**

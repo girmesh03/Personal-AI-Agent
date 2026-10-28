@@ -6,8 +6,60 @@
  * and dual live/stub mode with zero-failure invariants.
  */
 
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { env } from '../config/env.js';
 import { TELEGRAM_CONSTANTS } from '../utils/constants.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Lazy memoized embedded font definitions for SVG rendering
+let cachedFontDefs = null;
+
+function getEmbeddedFontDefs() {
+  if (cachedFontDefs !== null) return cachedFontDefs;
+  try {
+    const regularPath = path.resolve(__dirname, '../assets/fonts/NotoSansEthiopic-Regular.woff');
+    const boldPath = path.resolve(__dirname, '../assets/fonts/NotoSansEthiopic-Bold.woff');
+
+    let regularBase64 = '';
+    let boldBase64 = '';
+
+    if (fs.existsSync(regularPath)) {
+      regularBase64 = fs.readFileSync(regularPath).toString('base64');
+    }
+    if (fs.existsSync(boldPath)) {
+      boldBase64 = fs.readFileSync(boldPath).toString('base64');
+    }
+
+    if (regularBase64 || boldBase64) {
+      cachedFontDefs = `
+    <defs>
+      <style>
+        ${regularBase64 ? `@font-face {
+          font-family: 'Noto Sans Ethiopic';
+          src: url('data:font/woff;charset=utf-8;base64,${regularBase64}') format('woff');
+          font-weight: normal;
+          font-style: normal;
+        }` : ''}
+        ${boldBase64 ? `@font-face {
+          font-family: 'Noto Sans Ethiopic';
+          src: url('data:font/woff;charset=utf-8;base64,${boldBase64}') format('woff');
+          font-weight: bold;
+          font-style: normal;
+        }` : ''}
+      </style>
+    </defs>`;
+    } else {
+      cachedFontDefs = '';
+    }
+  } catch (err) {
+    cachedFontDefs = '';
+  }
+  return cachedFontDefs;
+}
 
 /**
  * Escapes standard HTML special characters.
@@ -475,7 +527,9 @@ export async function generateTextImageCard(text = '', options = {}) {
     return `<rect x="${bMargin}" y="${bMargin}" width="${width - 2 * bMargin}" height="${finalHeight - 2 * bMargin}" fill="none" stroke="${bColor}" stroke-width="${bWidth}" rx="${bRadius}"/>`;
   })() : '';
 
+  const fontDefs = getEmbeddedFontDefs();
   const svg = `<svg width="${width}" height="${finalHeight}" viewBox="0 0 ${width} ${finalHeight}" xmlns="http://www.w3.org/2000/svg" xml:space="preserve">
+    ${fontDefs}
     <rect width="${width}" height="${finalHeight}" fill="${bgColor}"/>
     ${borderMarkup}
     ${elements.join('\n    ')}

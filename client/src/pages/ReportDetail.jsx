@@ -31,7 +31,6 @@ import MuiConfirmDialog from '../components/reusable/MuiConfirmDialog.jsx';
 import MuiEmptyState from '../components/reusable/MuiEmptyState.jsx';
 
 import ReportHero from '../components/reports/ReportHero.jsx';
-import ReportDeliveryActionBar from '../components/reports/ReportDeliveryActionBar.jsx';
 import ReportAmharicDossier from '../components/reports/ReportAmharicDossier.jsx';
 import ReportVisitsLedger from '../components/reports/ReportVisitsLedger.jsx';
 import ReportActivitiesCard from '../components/reports/ReportActivitiesCard.jsx';
@@ -335,10 +334,7 @@ export const ReportDetail = memo(() => {
         actionLoading={actionLoading}
       />
 
-      {/* ROW 3: The 5 Corporate Delivery Channels Action Bar */}
-      <ReportDeliveryActionBar report={report} />
-
-      {/* ROW 4: Synthesized Authoritative Corporate Amharic Dossier */}
+      {/* ROW 3: Synthesized Authoritative Corporate Amharic Dossier */}
       <ReportAmharicDossier transcription={report.transcription} />
 
       {/* ROW 5: Structured Subdocument Panels Deck with Item-Level Editing */}

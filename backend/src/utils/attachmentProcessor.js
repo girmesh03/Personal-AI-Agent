@@ -36,16 +36,37 @@ export function resolveFilePath(rawPath) {
 
   const basename = path.basename(rawPath);
 
-  // 2. Check in canonical UPLOADS_CONFIG.ATTACHMENTS_DIR by filename
-  if (basename && UPLOADS_CONFIG?.ATTACHMENTS_DIR) {
-    const inAttachmentsDir = path.resolve(UPLOADS_CONFIG.ATTACHMENTS_DIR, basename);
-    if (fs.existsSync(inAttachmentsDir)) return inAttachmentsDir;
+  // 2. Check in canonical domain directories by filename
+  if (basename && UPLOADS_CONFIG) {
+    if (UPLOADS_CONFIG.ATTACHMENTS_DIR) {
+      const inAttachmentsDir = path.resolve(UPLOADS_CONFIG.ATTACHMENTS_DIR, basename);
+      if (fs.existsSync(inAttachmentsDir)) return inAttachmentsDir;
+    }
 
-    const inAudiosDir = path.resolve(UPLOADS_CONFIG.AUDIOS_DIR, basename);
-    if (fs.existsSync(inAudiosDir)) return inAudiosDir;
+    if (UPLOADS_CONFIG.IMAGES_DIR) {
+      const inImagesDir = path.resolve(UPLOADS_CONFIG.IMAGES_DIR, basename);
+      if (fs.existsSync(inImagesDir)) return inImagesDir;
+    }
 
-    const inUploadsRoot = path.resolve(UPLOADS_CONFIG.ROOT_DIR, basename);
-    if (fs.existsSync(inUploadsRoot)) return inUploadsRoot;
+    if (UPLOADS_CONFIG.FILES_DIR) {
+      const inFilesDir = path.resolve(UPLOADS_CONFIG.FILES_DIR, basename);
+      if (fs.existsSync(inFilesDir)) return inFilesDir;
+    }
+
+    if (UPLOADS_CONFIG.AUDIOS_DIR) {
+      const inAudiosDir = path.resolve(UPLOADS_CONFIG.AUDIOS_DIR, basename);
+      if (fs.existsSync(inAudiosDir)) return inAudiosDir;
+    }
+
+    if (UPLOADS_CONFIG.TEMP_DIR) {
+      const inTempDir = path.resolve(UPLOADS_CONFIG.TEMP_DIR, basename);
+      if (fs.existsSync(inTempDir)) return inTempDir;
+    }
+
+    if (UPLOADS_CONFIG.ROOT_DIR) {
+      const inUploadsRoot = path.resolve(UPLOADS_CONFIG.ROOT_DIR, basename);
+      if (fs.existsSync(inUploadsRoot)) return inUploadsRoot;
+    }
   }
 
   // 3. Strip any leading slashes or backend/uploads prefixes and check UPLOADS_CONFIG.ROOT_DIR
@@ -86,25 +107,91 @@ export function resolveFilePath(rawPath) {
  */
 export async function processAttachment(attachment) {
   const rawPath = attachment.path || attachment.fileName;
-  if (
-    !rawPath ||
-    typeof rawPath !== 'string' ||
-    rawPath.startsWith('blob:') ||
-    rawPath.startsWith('http://') ||
-    rawPath.startsWith('https://')
-  ) {
-    logger.warn(`[attachmentProcessor] Skipping invalid or non-disk attachment path: ${rawPath}`);
-    return { type: 'text', content: '' };
-  }
+  const candidateUrl =
+    (attachment.cloudUrl && (attachment.cloudUrl.startsWith('http://') || attachment.cloudUrl.startsWith('https://')))
+      ? attachment.cloudUrl
+      : (attachment.url && (attachment.url.startsWith('http://') || attachment.url.startsWith('https://')))
+        ? attachment.url
+        : (typeof rawPath === 'string' && (rawPath.startsWith('http://') || rawPath.startsWith('https://')))
+          ? rawPath
+          : null;
 
-  const filePath = resolveFilePath(rawPath);
-  if (!filePath || !fs.existsSync(filePath)) {
-    logger.warn(`[attachmentProcessor] Attachment file not found on disk: ${filePath}`);
-    return { type: 'text', content: '' };
+  let filePath = '';
+  if (rawPath && typeof rawPath === 'string' && !rawPath.startsWith('blob:') && !rawPath.startsWith('http')) {
+    filePath = resolveFilePath(rawPath);
   }
 
   const mimeType = (attachment.mimeType || '').toLowerCase();
-  const originalName = attachment.originalName || path.basename(filePath);
+  const originalName = attachment.originalName || (filePath ? path.basename(filePath) : (candidateUrl ? path.basename(new URL(candidateUrl).pathname) : 'attachment'));
+
+  // If missing from local disk, attempt fallback fetch from Cloudinary / remote URL
+  if ((!filePath || !fs.existsSync(filePath)) && candidateUrl) {
+    try {
+      const fetchRes = await fetch(candidateUrl);
+      if (fetchRes.ok) {
+        const arrayBuf = await fetchRes.arrayBuffer();
+        const fileBuffer = Buffer.from(arrayBuf);
+        const base64Data = fileBuffer.toString('base64');
+
+        if (
+          mimeType.startsWith('image/') ||
+          mimeType === 'application/pdf' ||
+          originalName.endsWith('.png') ||
+          originalName.endsWith('.jpg') ||
+          originalName.endsWith('.jpeg') ||
+          originalName.endsWith('.webp') ||
+          originalName.endsWith('.pdf')
+        ) {
+          let resolvedMime = mimeType || 'image/jpeg';
+          return {
+            type: 'inline',
+            inlinePart: {
+              inlineData: {
+                mimeType: resolvedMime,
+                data: base64Data,
+              },
+            },
+          };
+        }
+
+        if (
+          mimeType.startsWith('audio/') ||
+          originalName.endsWith('.mp3') ||
+          originalName.endsWith('.wav') ||
+          originalName.endsWith('.m4a') ||
+          originalName.endsWith('.webm') ||
+          originalName.endsWith('.ogg') ||
+          originalName.endsWith('.aac')
+        ) {
+          let resolvedMime = mimeType || 'audio/wav';
+          return {
+            type: 'inline',
+            inlinePart: {
+              inlineData: {
+                mimeType: resolvedMime,
+                data: base64Data,
+              },
+            },
+          };
+        }
+
+        if (mimeType.startsWith('text/') || originalName.endsWith('.txt') || originalName.endsWith('.md') || originalName.endsWith('.csv')) {
+          const textContent = fileBuffer.toString('utf8');
+          return {
+            type: 'text',
+            content: `<attachment name="${originalName}" type="${mimeType || 'text/plain'}">\n${textContent}\n</attachment>`,
+          };
+        }
+      }
+    } catch (fetchErr) {
+      logger.warn(`[attachmentProcessor] Remote fallback fetch failed for ${candidateUrl}: ${fetchErr.message}`);
+    }
+  }
+
+  if (!filePath || !fs.existsSync(filePath)) {
+    logger.warn(`[attachmentProcessor] Attachment file not found on disk or remote: ${rawPath}`);
+    return { type: 'text', content: '' };
+  }
 
   // 1. Text & Markdown Files (.txt, .md, text/plain, text/markdown, text/csv)
   if (

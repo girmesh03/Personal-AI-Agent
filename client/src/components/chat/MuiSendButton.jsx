@@ -17,10 +17,12 @@
 import React from 'react';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
+import CircularProgress from '@mui/material/CircularProgress';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import StopIcon from '@mui/icons-material/Stop';
 import { useChatStatus, useChatActions, useChatStore } from '@mui/x-chat-headless';
 import { useStore } from '@mui/x-internals/store';
+import { usePendingUploadCount } from '../../utils/attachmentRegistry.js';
 
 /**
  * MuiSendButton component.
@@ -32,14 +34,16 @@ export const MuiSendButton = (props) => {
   const store = useChatStore();
   const status = useChatStatus();
   const actions = useChatActions();
+  const pendingUploads = usePendingUploadCount();
 
   // Boolean selectors: strictly 0 re-renders while typing characters 2 through 500!
   const hasValue = useStore(store, (state) => Boolean(state.composerValue && state.composerValue.trim().length > 0));
   const hasAttachments = useStore(store, (state) => Boolean(state.composerAttachments && state.composerAttachments.length > 0));
 
   const isStreaming = Boolean(status?.isStreaming);
+  const isUploading = pendingUploads > 0;
   const isDisabledExternally = Boolean(props.disabled);
-  const canSend = (hasValue || hasAttachments) && !isStreaming && !isDisabledExternally;
+  const canSend = (hasValue || hasAttachments) && !isStreaming && !isDisabledExternally && !isUploading;
 
   const handleSendTrigger = React.useCallback(
     (e) => {
@@ -100,16 +104,16 @@ export const MuiSendButton = (props) => {
   // States 1 & 2: Idle Drafting (Send Mode)
   return (
     <Tooltip
-      title={canSend ? 'Send message' : ''}
+      title={isUploading ? 'Uploading media...' : (canSend ? 'Send message' : '')}
       arrow
-      disableHoverListener={!canSend}
+      disableHoverListener={!canSend && !isUploading}
       disableFocusListener
       disableTouchListener
     >
       <span>
         <IconButton
           type="submit"
-          aria-label="Send message"
+          aria-label={isUploading ? 'Uploading media...' : 'Send message'}
           size="small"
           disabled={!canSend}
           onPointerDown={(e) => {
@@ -136,7 +140,11 @@ export const MuiSendButton = (props) => {
             flexShrink: 0,
           }}
         >
-          <ArrowUpwardIcon sx={{ fontSize: 19 }} />
+          {isUploading ? (
+            <CircularProgress size={16} thickness={5} sx={{ color: 'action.disabled' }} />
+          ) : (
+            <ArrowUpwardIcon sx={{ fontSize: 19 }} />
+          )}
         </IconButton>
       </span>
     </Tooltip>

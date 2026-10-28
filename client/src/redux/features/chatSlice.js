@@ -205,6 +205,7 @@ export const chatApi = apiSlice.injectEndpoints({
         url: '/chat',
         params,
       }),
+      keepUnusedDataFor: 86400,
       providesTags: (result) =>
         result?.chats
           ? [
@@ -308,6 +309,17 @@ export const chatApi = apiSlice.injectEndpoints({
     }),
 
     /**
+     * Dismisses staged attachment from composer shelf and purges from Cloud CDN.
+     */
+    deleteComposerAttachment: builder.mutation({
+      query: ({ publicId, mimeType, fileName }) => ({
+        url: '/chat/attachment',
+        method: 'DELETE',
+        params: { publicId, mimeType, fileName },
+      }),
+    }),
+
+    /**
      * Dispatches operational broadcast to Telegram channel (text or image card).
      */
     shareTelegram: builder.mutation({
@@ -330,6 +342,7 @@ export const {
   useRenameChatMutation,
   useUpdateChatConfigMutation,
   useDeleteChatMutation,
+  useDeleteComposerAttachmentMutation,
   useShareTelegramMutation,
 } = chatApi;
 

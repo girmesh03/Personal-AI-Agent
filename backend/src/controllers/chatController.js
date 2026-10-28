@@ -17,16 +17,18 @@ import env from '../config/env.js';
 import logger from '../config/logger.js';
 import { Chat } from '../models/Chat.js';
 import { Audio } from '../models/Audio.js';
-import { HTTP_STATUS, CHAT_CONSTANTS, ATTACHMENT_CONSTANTS, AUDIO_CONSTANTS, AI_MODELS, formatSttEngineDisplayName } from '../utils/constants.js';
+import { HTTP_STATUS, CHAT_CONSTANTS, ATTACHMENT_CONSTANTS, AUDIO_CONSTANTS, AI_MODELS, UPLOADS_CONFIG, formatSttEngineDisplayName } from '../utils/constants.js';
 import { User } from '../models/User.js';
 import { NotFoundError, BadRequestError, UnauthenticatedError } from '../errors/CustomError.js';
 import { assembleSystemPrompt } from '../utils/promptAssembler.js';
 import { agentToolDeclarations, executeAgentTool } from '../tools/agentTools.js';
 import { processAttachments, resolveFilePath } from '../utils/attachmentProcessor.js';
-import { transcribeAudioDocument, transcribeAudio as transcribeAudioUtil } from '../utils/audioChunker.js';
+import { transcribeAudioDocument, transcribeAudio as transcribeAudioUtil, resolveAudioDiskPath } from '../utils/audioChunker.js';
 import { dispatchToTelegram, resolveChannelChatId } from '../services/telegramService.js';
 import { generatedDocumentRegistry } from '../services/documentGenerationService.js';
 import { getBilingualSearchTerms, escapeRegex } from '../utils/transliterate.js';
+import storageService from '../services/storageService.js';
+import { formatUserFriendlyError } from '../utils/errorFormatter.js';
 
 /**
  * Helper to emit a formatted Server-Sent Event frame.
@@ -47,11 +49,15 @@ function sendSSE(res, event, data) {
 /**
  * Compiles a single user turn's parts with ground-truth fidelity across text, audio transcripts,
  * document text contexts, and inline base64 image vision parts. Zero dummy strings.
+ * Enforces Dual-Track Hybrid Audio Ingestion: on the active turn, attaches raw audio
+ * inline parts for native acoustic comprehension; on historical turns, rehydrates
+ * via persistent text transcripts to prevent audio token explosion.
  *
  * @param {object} msg - User turn message subdocument.
+ * @param {object} [options={}] - Options { isHistorical: boolean }.
  * @returns {Promise<Array<object>>} Gemini Content parts array.
  */
-export async function compileUserTurnParts(msg) {
+export async function compileUserTurnParts(msg, { isHistorical = false } = {}) {
   const parts = [];
   const textSections = [];
   let inlineParts = [];
@@ -78,23 +84,37 @@ export async function compileUserTurnParts(msg) {
           if (transcript) {
             formattedList.push(`[Transcribed Audio (ID: ${a._id}, File: "${fileName}")]:\n${transcript}`);
           }
-          // Pass audio recording as multimodal inline part (<= 20MB) for direct acoustic comprehension
-          const diskPath = resolveAudioDiskPath(a.path || a.fileName);
-          if (diskPath && fs.existsSync(diskPath)) {
-            try {
-              const fileStats = fs.statSync(diskPath);
-              if (fileStats.size > 0 && fileStats.size <= 20 * 1024 * 1024) {
-                const audioBuffer = await fs.promises.readFile(diskPath);
-                let resolvedMime = a.mimeType || 'audio/wav';
-                if (resolvedMime === 'video/webm') resolvedMime = 'audio/webm';
-                inlineParts.push({
-                  inlineData: {
-                    mimeType: resolvedMime,
-                    data: audioBuffer.toString('base64'),
-                  },
-                });
-              }
-            } catch (_readErr) {}
+          // Dual-Track Hybrid Audio Ingestion: Only attach raw audio buffer on active turn (not historical)
+          if (!isHistorical) {
+            let audioBuffer = null;
+            const diskPath = resolveAudioDiskPath(a.path || a.fileName);
+            if (diskPath && fs.existsSync(diskPath)) {
+              try {
+                const fileStats = fs.statSync(diskPath);
+                if (fileStats.size > 0 && fileStats.size <= 20 * 1024 * 1024) {
+                  audioBuffer = await fs.promises.readFile(diskPath);
+                }
+              } catch (_readErr) {}
+            } else if (a.url && a.url.startsWith('http')) {
+              try {
+                const fetchRes = await fetch(a.url);
+                if (fetchRes.ok) {
+                  const arrayBuf = await fetchRes.arrayBuffer();
+                  audioBuffer = Buffer.from(arrayBuf);
+                }
+              } catch (_fetchErr) {}
+            }
+
+            if (audioBuffer && audioBuffer.length > 0 && audioBuffer.length <= 20 * 1024 * 1024) {
+              let resolvedMime = a.mimeType || 'audio/wav';
+              if (resolvedMime === 'video/webm') resolvedMime = 'audio/webm';
+              inlineParts.push({
+                inlineData: {
+                  mimeType: resolvedMime,
+                  data: audioBuffer.toString('base64'),
+                },
+              });
+            }
           }
         }
         if (formattedList.length > 0) {
@@ -183,7 +203,7 @@ export async function buildGeminiHistory({ chat, userTurn, isContinue, stoppedTu
     for (let i = 0; i < anchorIdx; i++) {
       const msg = chat.messages[i];
       if (msg.role === 'user') {
-        const parts = await compileUserTurnParts(msg);
+        const parts = await compileUserTurnParts(msg, { isHistorical: true });
         geminiContents.push({ role: 'user', parts });
       } else if (msg.role === 'assistant') {
         geminiContents.push({
@@ -194,7 +214,7 @@ export async function buildGeminiHistory({ chat, userTurn, isContinue, stoppedTu
     }
 
     // Anchor user prompt
-    const anchorParts = await compileUserTurnParts(userTurn);
+    const anchorParts = await compileUserTurnParts(userTurn, { isHistorical: false });
     geminiContents.push({ role: 'user', parts: anchorParts });
 
     // Stopped model response
@@ -221,7 +241,7 @@ export async function buildGeminiHistory({ chat, userTurn, isContinue, stoppedTu
     for (let i = 0; i < historyLimit; i++) {
       const msg = chat.messages[i];
       if (msg.role === 'user') {
-        const parts = await compileUserTurnParts(msg);
+        const parts = await compileUserTurnParts(msg, { isHistorical: true });
         geminiContents.push({ role: 'user', parts });
       } else if (msg.role === 'assistant') {
         geminiContents.push({
@@ -231,8 +251,8 @@ export async function buildGeminiHistory({ chat, userTurn, isContinue, stoppedTu
       }
     }
 
-    // Active latest user turn
-    const latestParts = await compileUserTurnParts(activeUserMsg);
+    // Active latest user turn (Dual-Track: raw audio enabled)
+    const latestParts = await compileUserTurnParts(activeUserMsg, { isHistorical: false });
     geminiContents.push({
       role: 'user',
       parts: latestParts,
@@ -371,10 +391,42 @@ export const streamChat = asyncHandler(async (req, res) => {
 
     userTurn = null;
     stoppedTurn = null;
+    let effectiveAttachments = Array.isArray(b.attachments) ? [...b.attachments] : [];
+    let effectiveAudios = Array.isArray(b.audios) ? [...b.audios] : [];
 
-    // Extract user BYOK credentials if configured
-    const userAddisKey = req.user.settings?.apiKeys?.addisApiKey || null;
-    const userGeminiKey = req.user.settings?.apiKeys?.geminiApiKey || null;
+    // Robust BYOK Key Resolution (Zero Silent Fallback Law)
+    let userGeminiKey = req.user.settings?.apiKeys?.geminiApiKey || null;
+    let userAddisKey = req.user.settings?.apiKeys?.addisApiKey || null;
+    let userTelegramToken = req.user.integrations?.telegram?.botToken || null;
+
+    if (!userGeminiKey || !userAddisKey || !userTelegramToken) {
+      const userWithKey = await User.findById(req.user._id)
+        .select('+settings.apiKeys.geminiApiKey +settings.apiKeys.addisApiKey +integrations.telegram.botToken')
+        .lean();
+      if (userWithKey?.settings?.apiKeys?.geminiApiKey) {
+        userGeminiKey = userWithKey.settings.apiKeys.geminiApiKey;
+      }
+      if (userWithKey?.settings?.apiKeys?.addisApiKey) {
+        userAddisKey = userWithKey.settings.apiKeys.addisApiKey;
+      }
+      if (userWithKey?.integrations?.telegram?.botToken) {
+        userTelegramToken = userWithKey.integrations.telegram.botToken;
+      }
+    }
+
+    const effectiveGeminiKey = userGeminiKey;
+    const effectiveAddisKey = userAddisKey;
+
+    if (!effectiveGeminiKey) {
+      res.write(`event: error\ndata: ${JSON.stringify({
+        message: 'Google Gemini API key not configured. Please add your personal API key in Profile > AI Agent Settings to start chatting.',
+        code: 'MISSING_GEMINI_KEY',
+        actionRequired: 'CONFIGURE_GEMINI_KEY',
+      })}\n\n`);
+      res.write(`event: done\ndata: ${JSON.stringify({ isError: true, chat: chat?.toJSON ? chat.toJSON() : chat })}\n\n`);
+      res.end();
+      return;
+    }
 
     if (isContinue) {
       // CONTINUATION CONTRACT: Never create a new user turn.
@@ -405,6 +457,8 @@ export const streamChat = asyncHandler(async (req, res) => {
         throw new BadRequestError('Cannot continue: corresponding user message not found in conversation.');
       }
       userTurn = chat.messages[anchorIdx];
+      effectiveAudios = Array.isArray(userTurn.audios) ? [...userTurn.audios] : [];
+      effectiveAttachments = Array.isArray(userTurn.attachments) ? [...userTurn.attachments] : [];
 
       // Re-hydrate multi-modal context from anchor user turn
       if (Array.isArray(userTurn.audios) && userTurn.audios.length > 0) {
@@ -415,8 +469,8 @@ export const streamChat = asyncHandler(async (req, res) => {
             if (!audioDoc.transcription || audioDoc.status !== 'transcribed') {
               const updated = await transcribeAudioDocument(audioDoc._id, {
                 sttEngine: activeSttEngine,
-                addisApiKey: userAddisKey,
-                geminiApiKey: userGeminiKey,
+                addisApiKey: effectiveAddisKey,
+                geminiApiKey: effectiveGeminiKey,
               });
               if (updated?.transcription && updated.transcription.trim()) {
                 transcriptText = updated.transcription.trim();
@@ -494,8 +548,12 @@ export const streamChat = asyncHandler(async (req, res) => {
 
       if (anchorIdx >= 0 && chat.messages[anchorIdx] && chat.messages[anchorIdx].role === 'user') {
         userTurn = chat.messages[anchorIdx];
-        // Prune any assistant turns after the anchor user message to restore exact pre-retry turn sequence
+      effectiveAudios = Array.isArray(userTurn.audios) ? [...userTurn.audios] : [];
+      effectiveAttachments = Array.isArray(userTurn.attachments) ? [...userTurn.attachments] : [];
+        // Vector 3: Prune any assistant turns after the anchor user message to restore exact pre-retry turn sequence
+        const pruned = chat.messages.slice(anchorIdx + 1);
         chat.messages = chat.messages.slice(0, anchorIdx + 1);
+        void storageService.cleanupPrunedTurnAssets(pruned);
       } else {
         logger.warn(`[chatController] Could not find valid user turn for retry in chat: ${chat._id}`);
         throw new BadRequestError('Cannot retry: corresponding user message not found in conversation.');
@@ -511,8 +569,8 @@ export const streamChat = asyncHandler(async (req, res) => {
             if (!audioDoc.transcription || audioDoc.status !== 'transcribed' || shouldReTranscribe) {
               const updated = await transcribeAudioDocument(audioDoc._id, {
                 sttEngine: activeSttEngine,
-                addisApiKey: userAddisKey,
-                geminiApiKey: userGeminiKey,
+                addisApiKey: effectiveAddisKey,
+                geminiApiKey: effectiveGeminiKey,
               });
               if (updated?.transcription && updated.transcription.trim()) {
                 transcriptText = updated.transcription.trim();
@@ -579,10 +637,78 @@ export const streamChat = asyncHandler(async (req, res) => {
       }
 
       // Re-hydrate attachments and audios on edit turns
-      let effectiveAttachments = Array.isArray(b.attachments) ? [...b.attachments] : [];
-      let effectiveAudios = Array.isArray(b.audios) ? [...b.audios] : [];
+      effectiveAttachments = Array.isArray(b.attachments) ? [...b.attachments] : [];
+      effectiveAudios = Array.isArray(b.audios) ? [...b.audios] : [];
 
       if (isEdit && targetTurn) {
+        // 1. Resolve stored Audio documents for targetTurn
+        let storedAudioDocs = [];
+        if (Array.isArray(targetTurn.audios) && targetTurn.audios.length > 0) {
+          const validAudioIds = targetTurn.audios
+            .map((a) => (typeof a === 'object' && a !== null ? (a._id || a.id) : a))
+            .filter(Boolean)
+            .filter((id) => mongoose.Types.ObjectId.isValid(id));
+          if (validAudioIds.length > 0) {
+            storedAudioDocs = await Audio.find({ _id: { $in: validAudioIds }, user: req.user._id });
+          }
+        }
+
+        // 2. Match storedAudioDocs against effectiveAudios AND effectiveAttachments (dual-pool matching)
+        if (storedAudioDocs.length > 0) {
+          storedAudioDocs.forEach((storedAudio) => {
+            const storedIdStr = String(storedAudio._id);
+            const isKept =
+              effectiveAudios.some((item) => {
+                const rawId = typeof item === 'object' && item !== null ? (item._id || item.id || item.fileName || item.name) : item;
+                const str = String(rawId || '');
+                return (
+                  str === storedIdStr ||
+                  (storedAudio.fileName && str === storedAudio.fileName) ||
+                  (storedAudio.originalName && str === storedAudio.originalName) ||
+                  (typeof item === 'object' && item !== null && (
+                    (item.fileName && item.fileName === storedAudio.fileName) ||
+                    (item.originalName && item.originalName === storedAudio.originalName) ||
+                    (item.name && item.name === storedAudio.originalName) ||
+                    (item.publicId && item.publicId === storedAudio.publicId)
+                  ))
+                );
+              }) ||
+              effectiveAttachments.some((att) => {
+                const rawId = att._id || att.id || att.fileName || att.name;
+                const str = String(rawId || '');
+                return (
+                  str === storedIdStr ||
+                  (storedAudio.fileName && (att.fileName === storedAudio.fileName || att.originalName === storedAudio.fileName)) ||
+                  (storedAudio.originalName && (att.fileName === storedAudio.originalName || att.originalName === storedAudio.originalName)) ||
+                  (att.name && (att.name === storedAudio.fileName || att.name === storedAudio.originalName)) ||
+                  (att.publicId && att.publicId === storedAudio.publicId)
+                );
+              });
+
+            if (isKept) {
+              // Ensure storedAudio._id is preserved in effectiveAudios
+              const alreadyInAudios = effectiveAudios.some((a) => {
+                const aId = typeof a === 'object' && a !== null ? (a._id || a.id) : a;
+                return String(aId) === storedIdStr;
+              });
+              if (!alreadyInAudios) {
+                effectiveAudios.push(storedAudio._id);
+              }
+              // Remove from effectiveAttachments so processAttachments doesn't treat it as a document
+              effectiveAttachments = effectiveAttachments.filter((att) => {
+                const matchAtt =
+                  (att._id && String(att._id) === storedIdStr) ||
+                  (att.id && String(att.id) === storedIdStr) ||
+                  (att.fileName && (att.fileName === storedAudio.fileName || att.fileName === storedAudio.originalName)) ||
+                  (att.originalName && (att.originalName === storedAudio.fileName || att.originalName === storedAudio.originalName)) ||
+                  (att.name && (att.name === storedAudio.fileName || att.name === storedAudio.originalName)) ||
+                  (att.publicId && att.publicId === storedAudio.publicId);
+                return !matchAtt;
+              });
+            }
+          });
+        }
+
         if (effectiveAttachments.length > 0) {
           effectiveAttachments = effectiveAttachments.map((att) => {
             const diskPath = att.path && !att.path.startsWith('blob:') && !att.path.startsWith('http')
@@ -613,6 +739,8 @@ export const streamChat = asyncHandler(async (req, res) => {
                 size: matchedStored.size,
                 path: matchedStored.path,
                 url: matchedStored.url || `/uploads/attachments/${matchedStored.fileName}`,
+                cloudUrl: matchedStored.cloudUrl,
+                publicId: matchedStored.publicId,
               };
             }
             return att;
@@ -628,6 +756,10 @@ export const streamChat = asyncHandler(async (req, res) => {
       }
 
       if (effectiveAudios.length > 0) {
+        sendSSE(res, 'status', {
+          stage: 'transcribing_audio',
+          message: 'Transcribing voice notes...',
+        });
         for (const audioItem of effectiveAudios) {
           const audioId = typeof audioItem === 'object' && audioItem !== null ? (audioItem._id || audioItem.id) : audioItem;
           if (!audioId) continue;
@@ -638,8 +770,8 @@ export const streamChat = asyncHandler(async (req, res) => {
               if (!audioDoc.transcription || audioDoc.status !== 'transcribed') {
                 const updated = await transcribeAudioDocument(audioDoc._id, {
                   sttEngine: activeSttEngine,
-                  addisApiKey: userAddisKey,
-                  geminiApiKey: userGeminiKey,
+                  addisApiKey: effectiveAddisKey,
+                  geminiApiKey: effectiveGeminiKey,
                 });
                 if (updated?.transcription && updated.transcription.trim()) {
                   transcriptText = updated.transcription.trim();
@@ -653,6 +785,33 @@ export const streamChat = asyncHandler(async (req, res) => {
                 const fileName = audioDoc.originalName || audioDoc.fileName || 'audio.wav';
                 audioPromptSections.push(`[Transcribed Audio (ID: ${audioDoc._id}, File: "${fileName}")]:\n${transcriptText}`);
               }
+
+              // Multimodal Raw Audio Inline Parts for Turn 0 (Dual-Track Hybrid Ingestion)
+              try {
+                let audioBuffer = null;
+                const diskPath = resolveAudioDiskPath(audioDoc.path || audioDoc.fileName);
+                if (diskPath && fs.existsSync(diskPath)) {
+                  audioBuffer = await fs.promises.readFile(diskPath);
+                } else if (audioDoc.url && audioDoc.url.startsWith('http')) {
+                  const fetchRes = await fetch(audioDoc.url);
+                  if (fetchRes.ok) {
+                    const arrayBuf = await fetchRes.arrayBuffer();
+                    audioBuffer = Buffer.from(arrayBuf);
+                  }
+                }
+                if (audioBuffer && audioBuffer.length > 0 && audioBuffer.length <= 20 * 1024 * 1024) {
+                  let resolvedMime = audioDoc.mimeType || 'audio/webm';
+                  if (resolvedMime === 'video/webm') resolvedMime = 'audio/webm';
+                  inlineParts.push({
+                    inlineData: {
+                      mimeType: resolvedMime,
+                      data: audioBuffer.toString('base64'),
+                    },
+                  });
+                }
+              } catch (rawAudioErr) {
+                logger.warn(`[chatController] Could not attach raw audio inline data: ${rawAudioErr.message}`);
+              }
             }
           } catch (audioErr) {
             logger.warn(`[chatController] Failed to transcribe audio ${audioId}: ${audioErr.message}`);
@@ -661,15 +820,68 @@ export const streamChat = asyncHandler(async (req, res) => {
       }
 
       if (effectiveAttachments.length > 0) {
+        sendSSE(res, 'status', {
+          stage: 'processing_documents',
+          message: 'Processing documents...',
+        });
         const attResult = await processAttachments(effectiveAttachments);
         attachmentTextContext = attResult.textContext;
-        inlineParts = attResult.inlineParts;
+        inlineParts.push(...attResult.inlineParts);
       }
 
       if (isEdit && editIdx >= 0) {
         if (editIdx === 0) {
           chat.title = null;
         }
+        // Downstream turns (> editIdx) are fully pruned and their assets destroyed
+        const downstreamPruned = chat.messages.slice(editIdx + 1);
+        void storageService.cleanupPrunedTurnAssets(downstreamPruned);
+
+        // For the edited turn (at editIdx), calculate delta of removed assets and destroy only them
+        if (targetTurn && Array.isArray(targetTurn.attachments)) {
+          const keptIdentifiers = new Set();
+          for (const a of effectiveAttachments) {
+            if (a.publicId) keptIdentifiers.add(a.publicId);
+            if (a.fileName) keptIdentifiers.add(a.fileName);
+            if (a.name) keptIdentifiers.add(a.name);
+            if (a.originalName) keptIdentifiers.add(a.originalName);
+            if (a._id) keptIdentifiers.add(String(a._id));
+            if (a.id) keptIdentifiers.add(String(a.id));
+          }
+
+          const removedAttachments = targetTurn.attachments.filter((orig) => {
+            const matched =
+              (orig.publicId && keptIdentifiers.has(orig.publicId)) ||
+              (orig.fileName && keptIdentifiers.has(orig.fileName)) ||
+              (orig.originalName && keptIdentifiers.has(orig.originalName)) ||
+              (orig._id && keptIdentifiers.has(String(orig._id))) ||
+              (orig.id && keptIdentifiers.has(String(orig.id)));
+            return !matched;
+          });
+
+          if (removedAttachments.length > 0) {
+            void storageService.cleanupPrunedTurnAssets([{ attachments: removedAttachments }]);
+          }
+        }
+
+        if (targetTurn && Array.isArray(targetTurn.audios) && targetTurn.audios.length > 0) {
+          const keptAudioIds = new Set(
+            effectiveAudios
+              .map((a) => (typeof a === 'object' && a !== null ? (a._id || a.id) : a))
+              .filter(Boolean)
+              .map(String)
+          );
+          const removedAudioIds = targetTurn.audios
+            .map((a) => (typeof a === 'object' && a !== null ? (a._id || a.id) : a))
+            .filter(Boolean)
+            .map(String)
+            .filter((id) => !keptAudioIds.has(id));
+          if (removedAudioIds.length > 0) {
+            void storageService.cleanupAudiosById(removedAudioIds);
+          }
+        }
+
+        // Slice chat messages to before editIdx
         chat.messages = chat.messages.slice(0, editIdx);
       }
 
@@ -690,10 +902,13 @@ export const streamChat = asyncHandler(async (req, res) => {
         }
       }
 
+      const rawTextInput = b.text !== undefined ? b.text : b.message;
+      const resolvedUserText = (typeof rawTextInput === 'string') ? rawTextInput.trim() : '';
+
       userTurn = {
         id: b.id || new mongoose.Types.ObjectId().toString(),
         role: 'user',
-        text: (b.text && typeof b.text === 'string') ? b.text.trim() : '',
+        text: resolvedUserText,
         audioTranscriptions,
         documentTextContext: attachmentTextContext || null,
         audios: effectiveAudios,
@@ -707,7 +922,7 @@ export const streamChat = asyncHandler(async (req, res) => {
     const partsForPrompt = [];
     const promptText =
       (userTurn?.text && typeof userTurn.text === 'string' && userTurn.text.trim()) ||
-      (b.text && typeof b.text === 'string' && b.text.trim()) ||
+      ((typeof (b.text !== undefined ? b.text : b.message) === 'string') ? (b.text !== undefined ? b.text : b.message).trim() : '') ||
       '';
     if (promptText) {
       partsForPrompt.push(promptText);
@@ -725,11 +940,26 @@ export const streamChat = asyncHandler(async (req, res) => {
       );
     }
 
-    const compiledUserMessageText = partsForPrompt.join('\n\n');
+    const hasText = Boolean(promptText);
+    const hasAudios = Boolean(effectiveAudios.length > 0);
+    const hasAttachments = Boolean(effectiveAttachments.length > 0);
 
-    if (!compiledUserMessageText.trim() && inlineParts.length === 0 && !isRetry && !isContinue) {
-      throw new BadRequestError('No speech, text, or valid attachment content detected in message.');
+    if (!hasText && !hasAudios && !hasAttachments && inlineParts.length === 0 && !isRetry && !isContinue) {
+      throw new BadRequestError('Message turn must include at least text, voice audio, or an attachment.');
     }
+
+    // Universal message contract: synthesize orientation prompt if user provided media but no text
+    if (!hasText && partsForPrompt.length === 0) {
+      if (hasAudios && inlineParts.length > 0) {
+        partsForPrompt.push('Please listen to and analyze the attached voice audio recording in detail.');
+      } else if (hasAttachments && inlineParts.length > 0) {
+        partsForPrompt.push('Please review and analyze the attached file(s) in detail.');
+      } else {
+        partsForPrompt.push('Please review the provided media and respond accordingly.');
+      }
+    }
+
+    const compiledUserMessageText = partsForPrompt.join('\n\n');
 
     // Persist user turn immediately and emit session event so client locks onto session ID before stream completes
     await chat.save();
@@ -754,26 +984,8 @@ export const streamChat = asyncHandler(async (req, res) => {
     });
 
     // 10. Multi-Step Autonomous Tool Execution Loop (maxSteps: 5)
-    // BYOK Resolution: User-custom key takes precedence -> Server .env fallback -> Clean SSE error frame
-    let userApiKey = req.user.settings?.apiKeys?.geminiApiKey;
-    if (!userApiKey) {
-      const userWithKey = await User.findById(req.user._id).select('+settings.apiKeys.geminiApiKey').lean();
-      userApiKey = userWithKey?.settings?.apiKeys?.geminiApiKey;
-    }
-    const apiKey = userApiKey || env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      res.write(`event: error\ndata: ${JSON.stringify({
-        message: 'A Google Gemini API Key is required to chat with your Personal AI Agent. Please enter your free API key in Profile > AI Agent Settings.',
-        code: 'MISSING_GEMINI_KEY',
-        actionRequired: 'CONFIGURE_GEMINI_KEY',
-      })}\n\n`);
-      res.write(`event: done\ndata: ${JSON.stringify({ isError: true, chat: chat?.toJSON ? chat.toJSON() : chat })}\n\n`);
-      res.end();
-      return;
-    }
-
-    const ai = new GoogleGenAI({ apiKey });
+    // Instantiates GoogleGenAI with validated BYOK personal key (or test suite server key)
+    const ai = new GoogleGenAI({ apiKey: effectiveGeminiKey });
     const rawModel =
       b.model ||
       chat.config?.model ||
@@ -795,7 +1007,7 @@ export const streamChat = asyncHandler(async (req, res) => {
     fullThought = '';
     toolsCalled.length = 0;
     let step = 0;
-    const maxSteps = 5;
+    const maxSteps = 10;
     activeModel = modelName;
     let tokenUsage = { promptTokens: 0, candidatesTokens: 0, totalTokens: 0 };
 
@@ -867,16 +1079,25 @@ export const streamChat = asyncHandler(async (req, res) => {
           `[chatController] Dispatched prompt to Gemini (${activeModel}, thinkingBudget: ${thinkingBudget}). Awaiting TTFT...`
         );
 
+        const isMultimodalOrReasoning = Boolean(
+          (inlineParts && inlineParts.length > 0) ||
+          (effectiveAudios && effectiveAudios.length > 0) ||
+          (effectiveAttachments && effectiveAttachments.length > 0) ||
+          (thinkingBudget && thinkingBudget > 0)
+        );
+        const ttftTimeoutMs = isMultimodalOrReasoning ? 35000 : 18000;
+        const ttftTimeoutSec = ttftTimeoutMs / 1000;
+
         let firstTokenReceived = false;
         const watchdogController = new AbortController();
         const watchdogTimeout = setTimeout(() => {
           if (!firstTokenReceived && !isClientAborted) {
             logger.warn(
-              `[chatController] TTFT watchdog triggered: No tokens received from ${activeModel} within 12s. Aborting attempt ${streamAttempts}...`
+              `[chatController] TTFT watchdog triggered: No tokens received from ${activeModel} within ${ttftTimeoutSec}s. Aborting attempt ${streamAttempts}...`
             );
-            watchdogController.abort(new Error(`TTFT watchdog timeout: No tokens received from ${activeModel} within 12s`));
+            watchdogController.abort(new Error(`TTFT watchdog timeout: No tokens received from ${activeModel} within ${ttftTimeoutSec}s`));
           }
-        }, 12000);
+        }, ttftTimeoutMs);
 
         const clientCloseListener = () => {
           clearTimeout(watchdogTimeout);
@@ -887,6 +1108,10 @@ export const streamChat = asyncHandler(async (req, res) => {
         req.on('close', clientCloseListener);
 
         try {
+          sendSSE(res, 'status', {
+            stage: 'connecting',
+            message: 'Connecting to Operon agent...',
+          });
           const responseStream = await ai.models.generateContentStream({
             model: activeModel,
             contents: geminiContents,
@@ -968,7 +1193,7 @@ export const streamChat = asyncHandler(async (req, res) => {
           if (isWatchdogTimeout) {
             const mappedFallback = AI_MODELS.QUOTA_RETRY_MAP[activeModel] || AI_MODELS.FALLBACK;
             logger.warn(
-              `[chatController] Model ${activeModel} stalled (>12s TTFT). Failing over to ${mappedFallback} (attempt ${streamAttempts}/${maxStreamAttempts})...`
+              `[chatController] Model ${activeModel} stalled (>${ttftTimeoutSec}s TTFT). Failing over to ${mappedFallback} (attempt ${streamAttempts}/${maxStreamAttempts})...`
             );
             sendSSE(res, 'reset_stream', {
               stage: 'model_failover',
@@ -977,6 +1202,10 @@ export const streamChat = asyncHandler(async (req, res) => {
               attempt: streamAttempts,
               maxAttempts: maxStreamAttempts,
               reason: 'ttft_watchdog_timeout',
+            });
+            sendSSE(res, 'status', {
+              stage: 'model_failover',
+              message: `Failing over to ${mappedFallback}...`,
             });
             activeModel = mappedFallback;
             await new Promise((r) => setTimeout(r, 500));
@@ -1011,6 +1240,10 @@ export const streamChat = asyncHandler(async (req, res) => {
                 attempt: streamAttempts,
                 maxAttempts: maxStreamAttempts,
               });
+              sendSSE(res, 'status', {
+                stage: 'model_failover',
+                message: `Quota reached. Failing over to ${mappedFallback}...`,
+              });
               activeModel = mappedFallback;
               await new Promise((r) => setTimeout(r, backoffMs));
               continue;
@@ -1031,6 +1264,10 @@ export const streamChat = asyncHandler(async (req, res) => {
               alternateModel,
               attempt: streamAttempts,
               maxAttempts: maxStreamAttempts,
+            });
+            sendSSE(res, 'status', {
+              stage: 'model_failover',
+              message: `High demand. Retrying with ${alternateModel}...`,
             });
             activeModel = alternateModel;
             await new Promise((r) => setTimeout(r, backoffMs));
@@ -1183,6 +1420,9 @@ export const streamChat = asyncHandler(async (req, res) => {
       title: chat.title,
       model: activeModel,
       usage: tokenUsage,
+      userTurnId: userTurn?.id || null,
+      userAudios: userTurn?.audios || [],
+      userAttachments: userTurn?.attachments || [],
     });
     res.end();
   } catch (err) {
@@ -1209,6 +1449,10 @@ export const streamChat = asyncHandler(async (req, res) => {
     const failedModel = typeof activeModel !== 'undefined' && activeModel ? activeModel : AI_MODELS.DEFAULT;
     const suggestedModels = AI_MODELS.SUPPORTED.filter((m) => m !== failedModel);
 
+    const friendlyErrorMessage = isQuota
+      ? `Model quota limit reached for ${failedModel}. Please select an alternative model.`
+      : formatUserFriendlyError(err);
+
     // Guaranteed Assistant Persistence on Terminal Error (Pillar 1)
     // Strictly maintains U -> A -> U -> A alternating turn invariant in MongoDB
     if (chat && userTurn) {
@@ -1223,16 +1467,14 @@ export const streamChat = asyncHandler(async (req, res) => {
             toolCalls: toolsCalled || [],
             model: failedModel,
             isError: true,
-            error: isQuota
-              ? `Model quota limit reached for ${failedModel}. Please select an alternative model.`
-              : (err.message || 'Streaming failed.'),
+            error: friendlyErrorMessage,
             createdAt: new Date(),
           };
           chat.messages.push(errorAssistantTurn);
           await chat.save();
         } else {
           lastMsg.isError = true;
-          lastMsg.error = err.message || 'Streaming failed.';
+          lastMsg.error = friendlyErrorMessage;
           if (fullText) lastMsg.text = fullText;
           await chat.save();
         }
@@ -1242,9 +1484,7 @@ export const streamChat = asyncHandler(async (req, res) => {
     }
 
     sendSSE(res, 'error', {
-      message: isQuota
-        ? `Model quota limit reached for ${failedModel}. Please select an alternative model.`
-        : (err.message || 'Streaming failed.'),
+      message: friendlyErrorMessage,
       failedModel,
       reason,
       suggestedModels,
@@ -1488,6 +1728,9 @@ export const deleteChat = asyncHandler(async (req, res) => {
     throw new NotFoundError('Chat session not found.');
   }
 
+  // Vector 1: Chat Session Deletion - Cloudinary & Disk asset purge
+  await storageService.cleanupChatAssets(chat);
+
   res.status(HTTP_STATUS.OK).json({
     success: true,
     message: 'Chat session deleted successfully.',
@@ -1523,29 +1766,41 @@ export const uploadChatAudios = asyncHandler(async (req, res) => {
     );
   }
 
+  // Eager upload to Cloud CDN (Cloudinary) or fallback
+  const cloudUploadResults = await Promise.all(
+    files.map(async (file) => {
+      let cleanMime = (file.mimetype || '').split(';')[0].trim().toLowerCase();
+      if (cleanMime === 'video/webm' || (file.originalname && file.originalname.toLowerCase().endsWith('.webm'))) {
+        cleanMime = 'audio/webm';
+      }
+      const uploadRes = await storageService.uploadFile({
+        filePath: file.path,
+        fileName: file.filename,
+        mimeType: cleanMime || 'audio/webm',
+        folder: 'personal-agent/audios',
+        resourceType: 'video',
+      });
+      return {
+        user: req.user._id,
+        fileName: file.filename,
+        originalName: file.originalname,
+        mimeType: cleanMime || 'audio/webm',
+        size: file.size,
+        path: file.path.replace(/\\/g, '/'),
+        cloudUrl: uploadRes.isCloud ? uploadRes.secure_url : null,
+        publicId: uploadRes.publicId || null,
+        purpose: 'chat_voice_input',
+        status: 'uploaded',
+      };
+    })
+  );
+
   const session = await mongoose.startSession();
   try {
     let createdAudios;
 
     await session.withTransaction(async () => {
-      const audioPayloads = files.map((file) => {
-        let cleanMime = (file.mimetype || '').split(';')[0].trim().toLowerCase();
-        if (cleanMime === 'video/webm' || (file.originalname && file.originalname.toLowerCase().endsWith('.webm'))) {
-          cleanMime = 'audio/webm';
-        }
-        return {
-          user: req.user._id,
-          fileName: file.filename,
-          originalName: file.originalname,
-          mimeType: cleanMime || 'audio/webm',
-          size: file.size,
-          path: file.path.replace(/\\/g, '/'),
-          purpose: 'chat_voice_input',
-          status: 'uploaded',
-        };
-      });
-
-      createdAudios = await Audio.create(audioPayloads, { session });
+      createdAudios = await Audio.create(cloudUploadResults, { session });
     });
 
     res.status(HTTP_STATUS.CREATED).json({
@@ -1586,14 +1841,26 @@ export const uploadChatAttachments = asyncHandler(async (req, res) => {
     );
   }
 
-  const attachments = files.map((file) => ({
-    fileName: file.filename,
-    originalName: file.originalname,
-    mimeType: file.mimetype,
-    size: file.size,
-    path: path.relative(process.cwd(), file.path).replace(/\\/g, '/'),
-    url: `/uploads/attachments/${file.filename}`,
-  }));
+  const attachments = await Promise.all(
+    files.map(async (file) => {
+      const uploadRes = await storageService.uploadFile({
+        filePath: file.path,
+        fileName: file.filename,
+        mimeType: file.mimetype,
+        folder: 'personal-agent/attachments',
+      });
+      return {
+        fileName: file.filename,
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
+        path: path.relative(process.cwd(), file.path).replace(/\\/g, '/'),
+        url: uploadRes.isCloud ? uploadRes.secure_url : `/uploads/${file.domain || 'files'}/${file.filename}`,
+        cloudUrl: uploadRes.isCloud ? uploadRes.secure_url : null,
+        publicId: uploadRes.publicId || null,
+      };
+    })
+  );
 
   res.status(HTTP_STATUS.CREATED).json({
     success: true,
@@ -1601,6 +1868,60 @@ export const uploadChatAttachments = asyncHandler(async (req, res) => {
     data: {
       attachments,
     },
+  });
+});
+
+/**
+ * Dismisses a single staged attachment from the composer draft shelf and purges it from Cloudinary CDN.
+ *
+ * @route DELETE /api/v1/chat/attachment/:publicId
+ * @access Private
+ */
+export const deleteComposerAttachment = asyncHandler(async (req, res) => {
+  const publicId = req.params.publicId || req.params[0] || req.query.publicId;
+  const { mimeType, fileName } = req.query;
+
+  if (!publicId && !fileName) {
+    return res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: 'No staged attachment identifier provided.',
+      data: { result: 'noop' },
+    });
+  }
+
+  let result = { result: 'ok' };
+  if (publicId || fileName) {
+    result = await storageService.cleanupComposerAttachment(publicId, mimeType, fileName);
+  }
+
+  // Also remove from local disk storage across domains if fileName is provided
+  if (fileName) {
+    storageService.safeUnlinkDiskFile(fileName);
+  }
+
+  // If a staged Audio document exists for this upload, purge it and unlink disk file
+  if (publicId || fileName) {
+    try {
+      const audioQuery = {
+        user: req.user._id,
+        $or: [
+          ...(publicId ? [{ publicId }] : []),
+          ...(fileName ? [{ fileName }, { originalName: fileName }] : []),
+        ],
+      };
+      const audioDoc = await Audio.findOne(audioQuery).select('path fileName publicId');
+      if (audioDoc) {
+        if (audioDoc.path) storageService.safeUnlinkDiskFile(audioDoc.path, UPLOADS_CONFIG.AUDIOS_DIR);
+        if (audioDoc.fileName) storageService.safeUnlinkDiskFile(audioDoc.fileName, UPLOADS_CONFIG.AUDIOS_DIR);
+      }
+      await Audio.deleteMany(audioQuery);
+    } catch (_) {}
+  }
+
+  res.status(HTTP_STATUS.OK).json({
+    success: true,
+    message: 'Staged attachment removed and purged from storage.',
+    data: result,
   });
 });
 
@@ -1813,6 +2134,7 @@ export default {
   deleteChat,
   uploadChatAttachments,
   uploadChatAudios,
+  deleteComposerAttachment,
   transcribeAudio,
   shareToTelegramDirect,
   downloadGeneratedDocument,

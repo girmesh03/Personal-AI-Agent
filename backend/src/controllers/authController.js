@@ -99,7 +99,10 @@ export const register = asyncHandler(async (req, res) => {
       // Check if a user with this email already exists
       const existingUser = await User.findOne({ email }).session(session);
       if (existingUser) {
-        throw new ConflictError('A user with this email address already exists.');
+        if (existingUser.authProvider === 'google' && !existingUser.isPasswordSet) {
+          throw new ConflictError('This email is already registered via Google Sign-In. Please sign in with Google or sign in to set a password in your Profile.');
+        }
+        throw new ConflictError('A user with this email address already exists. Please sign in instead.');
       }
 
       // Name Auto-Derivation Invariant (Invariant 6): Extract clean human names if omitted

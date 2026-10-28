@@ -84,8 +84,22 @@ const attachmentSchema = new mongoose.Schema(
     mimeType: {
       type: String,
       required: [true, 'Attachment MIME type is required.'],
-      enum: {
-        values: ATTACHMENT_CONSTANTS.ALLOWED_MIME_TYPES,
+      validate: {
+        validator: function (val) {
+          if (!val || typeof val !== 'string') return false;
+          const clean = val.toLowerCase().trim();
+          const base = clean.split(';')[0].trim();
+          return (
+            ATTACHMENT_CONSTANTS.ALLOWED_MIME_TYPES.includes(clean) ||
+            ATTACHMENT_CONSTANTS.ALLOWED_MIME_TYPES.includes(base) ||
+            AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(clean) ||
+            AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(base) ||
+            base.startsWith('audio/') ||
+            base === 'video/webm' ||
+            base === 'video/mp4' ||
+            base === 'application/ogg'
+          );
+        },
         message: '{VALUE} is not a supported attachment MIME type.',
       },
       trim: true,
@@ -95,13 +109,23 @@ const attachmentSchema = new mongoose.Schema(
       required: [true, 'Attachment size in bytes is required.'],
       min: [1, 'Attachment file cannot be empty.'],
       max: [
-        ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES,
-        `Attachment size exceeds the ${ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB limit.`,
+        Math.max(ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES, AUDIO_CONSTANTS.MAX_FILE_SIZE_BYTES),
+        `Attachment size exceeds the ${Math.max(ATTACHMENT_CONSTANTS.MAX_FILE_SIZE_BYTES, AUDIO_CONSTANTS.MAX_FILE_SIZE_BYTES) / (1024 * 1024)}MB limit.`,
       ],
     },
     path: {
       type: String,
       required: [true, 'Attachment relative storage path is required.'],
+      trim: true,
+    },
+    cloudUrl: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    publicId: {
+      type: String,
+      default: null,
       trim: true,
     },
   },
@@ -110,11 +134,14 @@ const attachmentSchema = new mongoose.Schema(
 
 /**
  * Derived virtual getter: url
- * Normalizes relative storage path to an accessible HTTP URL path.
+ * Normalizes relative storage path to an accessible HTTP URL path or returns Cloudinary CDN url.
  * @memberof attachmentSchema
- * @returns {string|null} Relative HTTP URL.
+ * @returns {string|null} Relative HTTP URL or HTTPS Cloud CDN URL.
  */
 attachmentSchema.virtual('url').get(function () {
+  if (this.cloudUrl) {
+    return this.cloudUrl;
+  }
   if (!this.path) return null;
   const normalized = this.path.replace(/\\/g, '/');
   return normalized.startsWith('/') ? normalized : `/${normalized}`;

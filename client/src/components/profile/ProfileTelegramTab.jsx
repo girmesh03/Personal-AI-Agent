@@ -4,7 +4,6 @@
  * Enforces zero-lag typing with react-hook-form mode: 'onBlur' and zero watch calls.
  */
 
-import { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';

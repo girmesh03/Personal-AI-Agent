@@ -35,6 +35,7 @@ import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreen';
 import { useForm } from 'react-hook-form';
 import { useChatComposer, useChatStatus } from '@mui/x-chat-headless';
+import { getPendingUploadCount } from '../../utils/attachmentRegistry.js';
 
 /**
  * MuiComposerInput component.
@@ -143,12 +144,14 @@ export const MuiComposerInput = React.forwardRef(function MuiComposerInput(props
   // Key down handler: plain Enter creates a newline naturally; Ctrl+Enter or Cmd+Enter submits
   const handleKeyDown = useCallback(
     (e) => {
+      const isUploading = getPendingUploadCount() > 0;
       const isKeyboardSubmit =
         (e.ctrlKey || e.metaKey) &&
         e.key === 'Enter' &&
         !e.nativeEvent.isComposing &&
         !isComposingRef.current &&
         !status?.isStreaming &&
+        !isUploading &&
         !composer?.disabled &&
         !props.disabled;
 
@@ -199,7 +202,7 @@ export const MuiComposerInput = React.forwardRef(function MuiComposerInput(props
     >
       <InputBase
         multiline
-        minRows={isMaximized ? 10 : 1}
+        minRows={isMaximized ? 10 : 3}
         maxRows={isMaximized ? 20 : 8}
         inputRef={handleRef}
         name={name}

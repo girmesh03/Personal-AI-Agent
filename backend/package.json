@@ -12,7 +12,8 @@
     "test:branches": "node scripts/testBranches.js",
     "test:chat": "node scripts/testChat.js",
     "test:reports": "node scripts/testReports.js",
-    "test": "node scripts/testAuth.js && node scripts/testUsers.js && node scripts/testBranches.js && node scripts/testChat.js && node scripts/testReports.js"
+    "test:journey": "node scripts/testPhase14UserJourney.js",
+    "test": "node scripts/testAuth.js && node scripts/testUsers.js && node scripts/testBranches.js && node scripts/testChat.js && node scripts/testReports.js && node scripts/testPhase14UserJourney.js"
   },
   "keywords": [],
   "author": "",

@@ -75,6 +75,16 @@ const audioSchema = new mongoose.Schema(
       required: [true, 'Audio relative storage path is required.'],
       trim: true,
     },
+    cloudUrl: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    publicId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
     duration: {
       type: Number,
       default: null, // Audio duration in seconds
@@ -129,6 +139,9 @@ const audioSchema = new mongoose.Schema(
  * @returns {string|null} Relative HTTP URL.
  */
 audioSchema.virtual('url').get(function () {
+  if (this.cloudUrl) {
+    return this.cloudUrl;
+  }
   if (this.fileName) {
     return `/uploads/audios/${this.fileName}`;
   }

@@ -12,7 +12,13 @@ import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import { useChatComposer, useChatStatus } from '@mui/x-chat-headless';
-import { validateChatAttachments } from '../../utils/validateChatAttachment.js';
+import {
+  useUploadAttachmentsMutation,
+  useUploadAudioMutation,
+  useDeleteComposerAttachmentMutation,
+} from '../../redux/features/chatSlice.js';
+import { registerUpload } from '../../utils/attachmentRegistry.js';
+import { validateChatAttachments, isAudioAttachment } from '../../utils/validateChatAttachment.js';
 import { CHAT_FILE_ACCEPT } from '../../utils/constants.js';
 
 /**
@@ -25,6 +31,9 @@ export const MuiAttachButton = ({ disabled = false }) => {
   const inputRef = useRef(null);
   const composer = useChatComposer();
   const status = useChatStatus();
+  const [uploadAttachments] = useUploadAttachmentsMutation();
+  const [uploadAudio] = useUploadAudioMutation();
+  const [deleteComposerAttachment] = useDeleteComposerAttachmentMutation();
 
   const isStreaming = Boolean(status?.isStreaming);
   const isComposerDisabled = Boolean(composer?.disabled);
@@ -47,18 +56,77 @@ export const MuiAttachButton = ({ disabled = false }) => {
 
       const validation = validateChatAttachments(files, currentFiles, { showToast: true });
 
-      if (validation.isValid && Array.isArray(validation.validFiles)) {
+      if (validation.isValid && Array.isArray(validation.validFiles) && validation.validFiles.length > 0) {
         validation.validFiles.forEach((file) => {
           if (typeof composer?.addAttachment === 'function') {
             composer.addAttachment(file);
           }
+
+          const isAudio = isAudioAttachment(file);
+          const formData = new FormData();
+          let mutationPromise;
+
+          if (isAudio) {
+            formData.append('audios', file);
+            mutationPromise = uploadAudio(formData);
+          } else {
+            formData.append('attachments', file);
+            mutationPromise = uploadAttachments(formData);
+          }
+
+          const uploadPromise = mutationPromise
+            .unwrap()
+            .then((res) => {
+              if (isAudio) {
+                const audioList = res?.data?.audios || res?.audios || [];
+                const first = audioList[0] || null;
+                if (first && file) {
+                  file._id = first._id || first.id;
+                  file.audioId = first._id || first.id;
+                  file.fileName = first.fileName;
+                  file.publicId = first.publicId;
+                  file.cloudUrl = first.cloudUrl;
+                }
+                return first ? { ...first, isAudio: true } : null;
+              }
+              const uploadedList = res?.data?.attachments || res?.attachments || [];
+              const first = uploadedList[0] || null;
+              if (first && file) {
+                file._id = first._id || first.id;
+                file.fileName = first.fileName;
+                file.publicId = first.publicId;
+                file.cloudUrl = first.cloudUrl;
+              }
+              return first ? { ...first, isAudio: false } : null;
+            });
+
+          const abortFn = () => {
+            try {
+              if (mutationPromise && typeof mutationPromise.abort === 'function') {
+                mutationPromise.abort();
+              }
+            } catch {
+              // Ignored on abort
+            }
+          };
+
+          const onResolvedAfterCancelCleanup = (result) => {
+            if (result) {
+              const publicId = result.publicId;
+              const fileName = result.fileName;
+              const mimeType = result.mimeType || file.type;
+              void deleteComposerAttachment({ publicId, fileName, mimeType });
+            }
+          };
+
+          registerUpload(file, uploadPromise, abortFn, onResolvedAfterCancelCleanup);
         });
       }
 
       // Reset native input value so user can re-select the same file if needed
       e.target.value = '';
     },
-    [composer]
+    [composer, uploadAttachments, uploadAudio, deleteComposerAttachment]
   );
 
   return (

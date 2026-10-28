@@ -63,6 +63,29 @@ export const isFileFormatAllowed = (file) => {
 };
 
 /**
+ * Checks if a file represents an audio recording or note.
+ * Uses centralized AUDIO_CONSTANTS from utils/constants.js.
+ *
+ * @function isAudioAttachment
+ * @param {File|Blob} file - File or Blob object to inspect.
+ * @returns {boolean} True if file matches audio MIME or extension.
+ */
+export const isAudioAttachment = (file) => {
+  if (!file) return false;
+  const mime = (file.type || '').toLowerCase();
+  const cleanMime = mime.split(';')[0].trim();
+  const name = (file.name || '').toLowerCase();
+  return (
+    AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(cleanMime) ||
+    AUDIO_CONSTANTS.ALLOWED_MIME_TYPES.includes(mime) ||
+    cleanMime.startsWith('audio/') ||
+    cleanMime === 'video/webm' ||
+    cleanMime === 'application/ogg' ||
+    AUDIO_CONSTANTS.ALLOWED_EXTENSIONS.some((ext) => name.endsWith(ext))
+  );
+};
+
+/**
  * Validates a batch of files before attaching or uploading in chat.
  * Enforces the 4 strict pre-send validation gates:
  * 1. MIME and Extension Whitelist

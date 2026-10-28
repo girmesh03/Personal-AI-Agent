@@ -19,7 +19,7 @@ import { HTTP_STATUS, REPORT_CONSTANTS, AUDIO_CONSTANTS } from '../utils/constan
 import { NotFoundError, BadRequestError } from '../errors/CustomError.js';
 import { logger } from '../config/logger.js';
 import { getBilingualSearchTerms, escapeRegex } from '../utils/transliterate.js';
-import { reportExportService } from '../services/reportExportService.js';
+import storageService from '../services/storageService.js';
 
 
 /**
@@ -628,7 +628,7 @@ export const deleteReportPermanently = asyncHandler(async (req, res) => {
           _id: { $in: report.audios },
           user: req.user._id,
         })
-          .select('path')
+          .select('path publicId')
           .session(session)
           .lean();
 
@@ -637,6 +637,9 @@ export const deleteReportPermanently = asyncHandler(async (req, res) => {
             audioPathsToUnlink.push(a.path);
           }
         }
+
+        // Vector 7: Clean up Cloud CDN assets
+        void storageService.cleanupReportAudios(audioDocs);
 
         // Remove Audio records from database
         await Audio.deleteMany({
@@ -702,29 +705,40 @@ export const uploadReportAudios = asyncHandler(async (req, res) => {
     );
   }
 
+  const cloudUploadResults = await Promise.all(
+    files.map(async (file) => {
+      let cleanMime = (file.mimetype || '').split(';')[0].trim().toLowerCase();
+      if (cleanMime === 'video/webm' || (file.originalname && file.originalname.toLowerCase().endsWith('.webm'))) {
+        cleanMime = 'audio/webm';
+      }
+      const uploadRes = await storageService.uploadFile({
+        filePath: file.path,
+        fileName: file.filename,
+        mimeType: cleanMime || 'audio/webm',
+        folder: 'personal-agent/audios',
+        resourceType: 'video',
+      });
+      return {
+        user: req.user._id,
+        fileName: file.filename,
+        originalName: file.originalname,
+        mimeType: cleanMime || 'audio/webm',
+        size: file.size,
+        path: file.path.replace(/\\/g, '/'),
+        cloudUrl: uploadRes.isCloud ? uploadRes.secure_url : null,
+        publicId: uploadRes.publicId || null,
+        purpose: 'report_narration',
+        status: 'uploaded',
+      };
+    })
+  );
+
   const session = await mongoose.startSession();
   try {
     let createdAudios;
 
     await session.withTransaction(async () => {
-      const audioPayloads = files.map((file) => {
-        let cleanMime = (file.mimetype || '').split(';')[0].trim().toLowerCase();
-        if (cleanMime === 'video/webm' || (file.originalname && file.originalname.toLowerCase().endsWith('.webm'))) {
-          cleanMime = 'audio/webm';
-        }
-        return {
-          user: req.user._id,
-          fileName: file.filename,
-          originalName: file.originalname,
-          mimeType: cleanMime || 'audio/webm',
-          size: file.size,
-          path: file.path.replace(/\\/g, '/'),
-          purpose: 'report_narration',
-          status: 'uploaded',
-        };
-      });
-
-      createdAudios = await Audio.create(audioPayloads, { session });
+      createdAudios = await Audio.create(cloudUploadResults, { session });
     });
 
     res.status(HTTP_STATUS.CREATED).json({
@@ -737,48 +751,6 @@ export const uploadReportAudios = asyncHandler(async (req, res) => {
   } finally {
     await session.endSession();
   }
-});
-
-/**
- * Builds formatted markdown text for operational report document export.
- * @param {object} report - Populated report document.
-/**
- * Exports an operational report to various document formats (text, csv, docx, pdf, xlsx)
- * or uploads directly to the user's default 'Personal AI Agent' Google Drive root folder.
- * Delegating domain synthesis and compilation entirely to reportExportService.
- *
- * @function exportReport
- * @route POST /api/v1/reports/:reportId/export
- * @access Protected (Area Supervisor)
- */
-export const exportReport = asyncHandler(async (req, res) => {
-  const { reportId } = req.validated?.params || req.params;
-  const { format = 'pdf', destination = 'download' } = req.body || {};
-
-  const report = await Report.findOne({
-    _id: reportId,
-    user: req.user._id,
-    isArchived: false,
-  })
-    .populate('visits.branch', 'name code managerName managerPhone')
-    .populate('user', 'firstName lastName fullName email position')
-    .lean();
-
-  if (!report) {
-    throw new NotFoundError('Report not found or has been archived.');
-  }
-
-  const result = await reportExportService.exportReportDocument({
-    report,
-    user: req.user,
-    format,
-    destination,
-  });
-
-  res.status(HTTP_STATUS.OK).json({
-    success: true,
-    data: result,
-  });
 });
 
 export default {
@@ -794,5 +766,4 @@ export default {
   restoreReport,
   deleteReportPermanently,
   uploadReportAudios,
-  exportReport,
 };

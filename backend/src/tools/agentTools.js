@@ -924,9 +924,66 @@ export const agentToolDeclarations = [
     },
   },
   {
+    name: 'save_user_directive',
+    description:
+      'Persist vocabulary rules, preferred terms, phrase replacements, or custom personal/operational instructions to User.settings.directives (Single Source of Truth) in MongoDB inside an ACID transaction.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        negativeVocabularyToAdd: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Words or terms to strictly ban and exclude from generated reports and outputs.',
+        },
+        negativeVocabularyToRemove: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Forbidden words to unban and remove from negative vocabulary.',
+        },
+        phraseMappingsToAdd: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              key: { type: Type.STRING, description: 'Shorthand or colloquial term.' },
+              value: { type: Type.STRING, description: 'Authoritative replacement term.' },
+            },
+            required: ['key', 'value'],
+          },
+          description: 'Key-value replacement mappings to add or update.',
+        },
+        phraseMappingsToRemove: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Keys of phrase mappings to remove.',
+        },
+        customInstructionsToAdd: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Discrete operational or personal directives, style guidelines, or rules to add to user settings.',
+        },
+        customInstructionsToRemove: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Discrete operational or personal directives to remove.',
+        },
+        singleBranchTemplate: {
+          type: Type.STRING,
+          description:
+            'Optional custom Amharic corporate template text for Single-Branch reports (persisted to User.settings.reportTemplates.singleBranch; pass empty string or null to reset to default).',
+        },
+        multiBranchTemplate: {
+          type: Type.STRING,
+          description:
+            'Optional custom Amharic corporate template text for Multi-Branch reports (persisted to User.settings.reportTemplates.multiBranch; pass empty string or null to reset to default).',
+        },
+      },
+    },
+  },
+  {
     name: 'save_supervisor_directive',
     description:
-      'Persist vocabulary rules, forbidden words, phrase replacements, or custom instructions to User.settings.directives (Single Source of Truth) in MongoDB inside an ACID transaction.',
+      'Backwards-compatible alias for save_user_directive. Persist vocabulary rules, forbidden words, phrase replacements, or custom instructions to User.settings.directives.',
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -1049,7 +1106,7 @@ export const agentToolDeclarations = [
         },
         defaultModel: {
           type: Type.STRING,
-          description: 'Update default AI model: gemini-3.1-flash-lite, gemini-3.8-flash, or gemini-3-flash-preview.',
+          description: `Update default AI model: ${AI_MODELS.SUPPORTED.join(', ')}.`,
         },
         defaultThinkingBudget: {
           type: Type.INTEGER,
@@ -1065,7 +1122,7 @@ export const agentToolDeclarations = [
         },
         sttEngine: {
           type: Type.STRING,
-          description: "Update speech-to-text engine: 'addis_ai', 'gemini-3.8-flash', or 'gemini-3.1-flash-lite'.",
+          description: `Update speech-to-text engine: ${AI_MODELS.STT_ENGINES.join(', ')}.`,
         },
         singleBranchTemplate: {
           type: Type.STRING,
@@ -2384,7 +2441,14 @@ export const toolHandlers = {
   },
 
   /**
-   * 17. save_supervisor_directive (Backwards-compatible wrapper targeting User.settings.directives)
+   * 17. save_user_directive (targets User.settings.directives)
+   */
+  save_user_directive: async ({ args = {}, userId, session = null }) => {
+    return await toolHandlers.update_user_settings({ args, userId, session });
+  },
+
+  /**
+   * 17b. save_supervisor_directive (Backwards-compatible wrapper targeting User.settings.directives)
    */
   save_supervisor_directive: async ({ args = {}, userId, session = null }) => {
     return await toolHandlers.update_user_settings({ args, userId, session });

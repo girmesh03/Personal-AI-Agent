@@ -26,9 +26,46 @@ import { AI_MODELS } from '../../utils/constants.js';
  * @returns {string} Human-friendly translated message.
  */
 const normalizeErrorMessage = (rawError) => {
-  const msg = String(rawError?.message || rawError || '');
+  const msg = String(rawError?.message || (typeof rawError === 'string' ? rawError : JSON.stringify(rawError || '')));
+  const code = String(rawError?.code || rawError?.errorCode || '');
 
-  // 1. Database & Network DNS Connectivity
+  // 1. Google Gemini API Key
+  if (
+    msg.includes('API_KEY_INVALID') ||
+    msg.includes('API key not valid') ||
+    msg.includes('invalid api key') ||
+    msg.includes('API_KEY_SERVICE_BLOCKED') ||
+    msg.includes('MISSING_GEMINI_KEY') ||
+    code === 'MISSING_GEMINI_KEY'
+  ) {
+    return 'Your Google Gemini API key appears to be invalid or unconfigured. Please update your API key in Profile > AI Agent Settings.';
+  }
+
+  // 2. Addis AI API Key
+  if (
+    msg.includes('ADDIS_API_KEY') ||
+    msg.includes('Addis AI key') ||
+    msg.includes('addisassistant.com')
+  ) {
+    return 'Your Addis AI key appears to be invalid or unconfigured. Please update your Addis AI key in Profile > AI Agent Settings.';
+  }
+
+  // 3. Permission Denied
+  if (msg.includes('PERMISSION_DENIED') || msg.includes('permission denied')) {
+    return 'Access was denied for your API key. Please check your project permissions in Google AI Studio.';
+  }
+
+  // 4. Model Quota & Rate Limit (All Fallbacks Exhausted)
+  if (
+    msg.includes('429') ||
+    msg.includes('RESOURCE_EXHAUSTED') ||
+    msg.includes('quota') ||
+    code === '429'
+  ) {
+    return 'All available AI models have temporarily reached their hourly quota limit. You can switch to an alternative model below or retry in a few moments.';
+  }
+
+  // 5. Database & Network DNS Connectivity
   if (
     msg.includes('getaddrinfo ENOTFOUND') ||
     msg.includes('MongoServerSelectionError') ||
@@ -37,34 +74,28 @@ const normalizeErrorMessage = (rawError) => {
     return 'Database connection is temporarily unreachable. Please verify network connectivity or retry shortly.';
   }
 
-  // 2. Model Quota & Rate Limit (All Fallbacks Exhausted)
-  if (
-    msg.includes('429') ||
-    msg.includes('RESOURCE_EXHAUSTED') ||
-    msg.includes('quota limit')
-  ) {
-    return 'All available AI models have temporarily reached their hourly quota limit. You can switch to an alternative model below or retry in a few moments.';
-  }
-
-  // 3. Socket / Mid-Stream Disconnection
+  // 6. Socket / Mid-Stream Disconnection
   if (
     msg.includes('ECONNRESET') ||
     msg.includes('socket hang up') ||
-    msg.includes('fetch failed')
+    msg.includes('fetch failed') ||
+    msg.includes('DEADLINE_EXCEEDED') ||
+    msg.includes('ETIMEDOUT')
   ) {
     return 'The network connection was interrupted during streaming. Partial response has been preserved.';
   }
 
-  // 4. Authentication / Session Expiration
+  // 7. Authentication / Session Expiration
   if (
     msg.includes('401') ||
     msg.includes('token') ||
-    msg.includes('Unauthorized')
+    msg.includes('Unauthorized') ||
+    msg.includes('UNAUTHENTICATED')
   ) {
     return 'Your session has expired. Please sign in again to continue.';
   }
 
-  // 5. Upstream Service Unavailable
+  // 8. Upstream Service Unavailable
   if (
     msg.includes('503') ||
     msg.includes('Service Unavailable') ||
@@ -73,8 +104,13 @@ const normalizeErrorMessage = (rawError) => {
     return 'The AI service is currently experiencing high demand across all fallback models. Please retry in a few moments.';
   }
 
-  // 6. Generic Fallback
-  return msg.length > 120
+  // 9. Unsupported Media
+  if (msg.includes('UNSUPPORTED_MEDIA') || msg.includes('unsupported file type')) {
+    return 'The uploaded file format could not be processed. Please upload supported images, PDFs, DOCX, TXT, or MP3/WAV/WebM audio.';
+  }
+
+  // 10. Generic Fallback
+  return msg.length > 120 || msg.includes('at ') || msg.includes('Error:')
     ? 'An unexpected service error occurred while processing your request. Please try again.'
     : msg || 'Generation failed.';
 };

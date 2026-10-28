@@ -6,7 +6,7 @@
  * Renders a native Button (no TextField) with right-docked Clear button, and inherits 100% of styling from AppTheme.
  */
 
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import { useState, useRef, useMemo, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import dayjs from 'dayjs';
 import Button from '@mui/material/Button';

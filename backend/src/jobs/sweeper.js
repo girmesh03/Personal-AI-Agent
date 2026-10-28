@@ -40,6 +40,7 @@ import { Chat } from '../models/Chat.js';
 import { User } from '../models/User.js';
 import { SWEEPER_INTERVAL_MS, ARCHIVED_TTL_SECONDS, UPLOADS_CONFIG } from '../utils/constants.js';
 import { logger } from '../config/logger.js';
+import storageService from '../services/storageService.js';
 
 let sweeperTimer = null;
 let isRunning = false;
@@ -160,7 +161,7 @@ const runPass1ExpiredArchiveSweep = async () => {
           const audioDocs = await Audio.find({
             _id: { $in: report.audios },
           })
-            .select('path')
+            .select('path publicId')
             .session(session)
             .lean();
 
@@ -169,6 +170,9 @@ const runPass1ExpiredArchiveSweep = async () => {
               audioFilesToUnlink.push(a.path);
             }
           }
+
+          // Vector 7: Clean up Cloud CDN assets
+          void storageService.cleanupReportAudios(audioDocs);
 
           // Delete associated Audio documents in session
           await Audio.deleteMany({ _id: { $in: report.audios } }).session(session);
@@ -383,7 +387,64 @@ const runPass2OrphanSweep = async () => {
     }
   }
 
-  // 4. Sweep Parentless Audio Database Records (whose owning User no longer exists)
+  // 4. Vector 5: Sweep Abandoned Staged Uploads older than 2 hours never bound to a chat or report
+  try {
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const stagedAudios = await Audio.find({
+      status: 'uploaded',
+      createdAt: { $lte: twoHoursAgo },
+      purpose: 'chat_voice_input',
+    })
+      .select('path publicId')
+      .lean();
+
+    for (const aud of stagedAudios) {
+      if (isProtectedFixture(aud.path)) continue;
+      const isUsedInChat = await Chat.exists({ 'messages.audios': aud._id });
+      const isUsedInReport = await Report.exists({ audios: aud._id });
+      if (!isUsedInChat && !isUsedInReport) {
+        if (aud.publicId) {
+          void storageService.destroyFile(aud.publicId, 'video');
+        }
+        if (aud.path && fs.existsSync(aud.path)) {
+          try {
+            await fs.promises.unlink(aud.path);
+          } catch (_) {}
+        }
+        await Audio.deleteOne({ _id: aud._id });
+        orphanFilesPurged += 1;
+        logger.info(`[Sweeper:Pass2] Purged abandoned staged audio: ${aud._id}`);
+      }
+    }
+  } catch (stagedErr) {
+    logger.warn(`[Sweeper:Pass2] Error sweeping abandoned staged audios: ${stagedErr.message}`);
+  }
+
+  // 5. Sweep Ephemeral Generated Documents in uploads/generated_documents/ (older than 24 hours)
+  const generatedDocsDir = path.resolve(process.cwd(), 'backend/uploads/generated_documents');
+  if (fs.existsSync(generatedDocsDir)) {
+    try {
+      const files = fs.readdirSync(generatedDocsDir);
+      for (const file of files) {
+        if (isProtectedFixture(file)) continue;
+        const filePath = path.join(generatedDocsDir, file);
+        try {
+          const stats = fs.statSync(filePath);
+          if (now - stats.mtimeMs > TWENTY_FOUR_HOURS_MS) {
+            await fs.promises.unlink(filePath);
+            orphanFilesPurged += 1;
+            logger.info(`[Sweeper:Pass2] Unlinked expired generated document: ${filePath}`);
+          }
+        } catch (fileErr) {
+          logger.warn(`[Sweeper:Pass2] Error processing generated document ${filePath}: ${fileErr.message}`);
+        }
+      }
+    } catch (dirErr) {
+      logger.warn(`[Sweeper:Pass2] Error reading generated documents directory: ${dirErr.message}`);
+    }
+  }
+
+  // 6. Sweep Parentless Audio Database Records (whose owning User no longer exists)
   try {
     const audios = await Audio.find({}).select('user').lean();
     for (const a of audios) {
