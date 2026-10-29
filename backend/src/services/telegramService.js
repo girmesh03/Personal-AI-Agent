@@ -21,8 +21,12 @@ let cachedFontDefs = null;
 function configureFontconfig() {
   if (process.platform === 'linux') {
     const fontsDir = path.resolve(__dirname, '../assets/fonts');
+    const fontsConf = path.join(fontsDir, 'fonts.conf');
     if (!process.env.FONTCONFIG_PATH) {
       process.env.FONTCONFIG_PATH = fontsDir;
+    }
+    if (!process.env.FONTCONFIG_FILE && fs.existsSync(fontsConf)) {
+      process.env.FONTCONFIG_FILE = fontsConf;
     }
     const cacheDir = '/tmp/fonts-cache';
     if (!fs.existsSync(cacheDir)) {

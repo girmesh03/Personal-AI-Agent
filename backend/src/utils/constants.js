@@ -568,7 +568,7 @@ export const TELEGRAM_CONSTANTS = Object.freeze({
     INTER_BULLET_GAP: 14,
     BULLET_RADIUS: 7,
     BULLET_INDENT: 32,
-    FONT_FAMILY: '"Noto Sans Ethiopic", "Abyssinica SIL", "Nyala", "Segoe UI", Arial, sans-serif',
+    FONT_FAMILY: '"Noto Sans Ethiopic", "Noto Sans", "Inter", "DejaVu Sans", "FreeSans", "Segoe UI", Arial, sans-serif',
     BG_COLOR: '#FFFFFF',
     TEXT_COLOR: '#000000',
   }),

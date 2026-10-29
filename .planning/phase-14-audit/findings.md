@@ -170,4 +170,17 @@
   3. *Runtime `FONTCONFIG_PATH` Setup*: In `telegramService.js`, configure `process.env.FONTCONFIG_PATH` to point to the assets fonts directory before `sharp` SVG rasterization.
   4. *Automated User Font Installer (`installFonts.js`)*: In `postinstall` and `render.yaml`, copy `.ttf` fonts to `~/.local/share/fonts/noto-sans-ethiopic/` and run `fc-cache -f`.
 
+### 1.26 English Letters & Standard Punctuation Render as Tofu in Bilingual Telegram Image Cards on Render
+- **Location**: `backend/src/assets/fonts/NotoSansEthiopic-Regular.ttf`, `backend/src/assets/fonts/fonts.conf`, `backend/src/utils/constants.js:154`
+- **Root Cause**:
+  1. The bundled font `NotoSansEthiopic-Regular.ttf` was derived from the `noto-sans-ethiopic-ethiopic` subset, which exclusively contains 528 Ethiopic script characters (`U+1200` to `U+137F`). Its OpenType character map (`cmap`) contains 0 Latin glyphs (`A-Z`, `a-z`) and 0 ASCII punctuation marks (`/`, `(`, `)`).
+  2. In Point 15, `fonts.conf` was configured with only `<dir prefix="relative">.</dir>` without including host Linux font directories (`/usr/share/fonts`).
+  3. Consequently, in mixed Amharic + English messages (such as `የባንክ መረጃ (Awash Bank)` or slash separated words `ቤት ኪራይ/ስቱዲዮ`), Fontconfig was unable to resolve Latin letters or ASCII punctuation, rendering them as tofu boxes (`[□]`).
+- **Resolution (The 4 Pillars of Bilingual Font Parity)**:
+  1. *Dual TrueType Binaries*: Bundle Latin fonts (`NotoSansLatin-Regular.ttf`, `NotoSansLatin-Bold.ttf`, `Inter-Regular.ttf`, `Inter-Bold.ttf`) alongside Ethiopic fonts in `backend/src/assets/fonts/`.
+  2. *Multi-Directory `fonts.conf`*: Add `/usr/share/fonts`, `/usr/local/share/fonts`, and `~/.local/share/fonts` to `fonts.conf`, and declare explicit fallback aliases linking `Noto Sans Ethiopic` to `Noto Sans` and `Inter`.
+  3. *Font Family Fallback Chain*: Update `TELEGRAM_CONSTANTS.IMAGE_CARD.FONT_FAMILY` to `'"Noto Sans Ethiopic", "Noto Sans", "Inter", "DejaVu Sans", "Segoe UI", Arial, sans-serif'`.
+  4. *Installer Synchronization*: Update `installFonts.js` to deploy all `.ttf` files to user font cache.
+
+
 

@@ -30,13 +30,23 @@ function installFonts() {
     const homedir = os.homedir();
     const targetDir = path.join(homedir, '.local', 'share', 'fonts', 'noto-sans-ethiopic');
     const legacyDir = path.join(homedir, '.fonts', 'noto-sans-ethiopic');
+    const configDir = path.join(homedir, '.config', 'fontconfig');
 
     fs.mkdirSync(targetDir, { recursive: true });
     fs.mkdirSync(legacyDir, { recursive: true });
+    fs.mkdirSync(configDir, { recursive: true });
 
     if (!fs.existsSync(FONTS_SRC)) {
       console.warn(`[installFonts] Warning: Source fonts directory not found at ${FONTS_SRC}`);
       return;
+    }
+
+    // Install user fonts.conf
+    const srcConf = path.join(FONTS_SRC, 'fonts.conf');
+    if (fs.existsSync(srcConf)) {
+      const dstConf = path.join(configDir, 'fonts.conf');
+      fs.copyFileSync(srcConf, dstConf);
+      console.log(`[installFonts] Installed user fonts.conf to ${dstConf}`);
     }
 
     const fontFiles = fs.readdirSync(FONTS_SRC).filter((f) => f.endsWith('.ttf') || f.endsWith('.otf'));

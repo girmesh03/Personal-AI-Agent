@@ -103,13 +103,19 @@ Retrieved directly from Phase 11B (`COMPLETE_REMAINING_ARCHITECTURE_AND_IMPLEMEN
   * Implement zero-dependency secret scanner script (`scripts/checkSecrets.js`).
   * Install tracked Git pre-commit hook (`.githooks/pre-commit`) configured via `core.hooksPath` to abort commits when secrets are staged.
   * Integrate `"check:secrets"` script into `package.json` and verification pipeline.
-- **Point 15: Cross-Platform Linux Headless Amharic Font Rendering Engine for Telegram Image Cards (Render & Vercel Parity)** [PLANNING - AWAITING USER APPROVAL]:
+- **Point 15: Cross-Platform Linux Headless Amharic Font Rendering Engine for Telegram Image Cards (Render & Vercel Parity)** [COMPLETE & VERIFIED]:
   * Convert and bundle native TrueType fonts (`NotoSansEthiopic-Regular.ttf` and `NotoSansEthiopic-Bold.ttf`) in `backend/src/assets/fonts/`.
   * Supply portable `fonts.conf` with relative search paths and `/tmp/fonts-cache` writable cache.
   * Auto-initialize `process.env.FONTCONFIG_PATH` in `telegramService.js` before Sharp SVG rasterization on Linux.
   * Add automated user-space font installer (`backend/scripts/installFonts.js`) invoked on `npm install` (postinstall) to copy TTFs to `~/.local/share/fonts/` and run `fc-cache -f`.
   * Update `render.yaml` buildCommand to ensure font cache is built during deployment.
-- **Acceptance Criteria**: AC-1 through AC-50 addressed.
+- **Point 16: Bilingual Latin + Ethiopic Typography Parity & Multi-Font Fallback Engine for Telegram Image Cards** [COMPLETE & VERIFIED]:
+  * Bundle Latin TrueType fonts (`NotoSansLatin-Regular.ttf`, `NotoSansLatin-Bold.ttf`, `Inter-Regular.ttf`, `Inter-Bold.ttf`) alongside Ethiopic fonts in `backend/src/assets/fonts/`.
+  * Update `fonts.conf` to scan local directory AND host Linux font directories (`/usr/share/fonts`, `/usr/local/share/fonts`, `~/.local/share/fonts`).
+  * Configure explicit Fontconfig fallback aliases (`Noto Sans Ethiopic` -> `Noto Sans` -> `Inter` -> `DejaVu Sans`).
+  * Update `FONT_FAMILY` in `constants.js` to full bilingual chain (`"Noto Sans Ethiopic", "Noto Sans", "Inter", sans-serif`).
+  * Verify rasterization of mixed Amharic + English (`Awash Bank`) + ASCII punctuation (`/`, `()`).
+- **Acceptance Criteria**: AC-1 through AC-55 addressed.
 
 
 ## Implementation Roadmap (Stage C - Sequential Execution Plan)
