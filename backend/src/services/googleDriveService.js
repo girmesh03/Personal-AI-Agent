@@ -8,7 +8,6 @@
 
 import { google } from 'googleapis';
 import fs from 'fs';
-import path from 'path';
 import { User } from '../models/User.js';
 import env from '../config/env.js';
 import logger from '../config/logger.js';

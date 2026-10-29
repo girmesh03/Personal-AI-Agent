@@ -146,10 +146,8 @@ export function probeAudioDuration(filePath) {
     );
 
     let stdout = '';
-    let stderr = '';
 
     proc.stdout.on('data', (d) => { stdout += d.toString(); });
-    proc.stderr.on('data', (d) => { stderr += d.toString(); });
 
     proc.on('close', (code) => {
       if (code === 0 && stdout.trim()) {

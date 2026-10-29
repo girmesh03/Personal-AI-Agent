@@ -90,7 +90,13 @@ Retrieved directly from Phase 11B (`COMPLETE_REMAINING_ARCHITECTURE_AND_IMPLEMEN
   * Centralized `safeUnlinkDiskFile` helper in `storageService.js` resolving across all domain directories (`images`, `files`, `audios`, `attachments`, `avatars`, `temp`, `generated_documents`).
   * Dual-purge parity across all 8 vectors: chat deletion, turn edit delta, downstream turn prune, retry discard, composer dismiss, avatar replacement, report deletion, and user cascade.
   * Comprehensive physical disk unlinking verification in `testPhase14TurnEditLifecycle.js`.
-- **Acceptance Criteria**: AC-1 through AC-36 addressed and verified.
+- **Point 13: Zero Unused Imports, Dead Code, and Redundant Bindings Across Chat Controller & Backend Architecture** [COMPLETE & VERIFIED]:
+  * Purge unused `env` import (`chatController.js:16`) and unused `formatSttEngineDisplayName` import (`chatController.js:20`).
+  * Eliminate dead variable `const sttEngineLabel = formatSttEngineDisplayName(activeSttEngine)` (`chatController.js:368`).
+  * Remove dead accumulator variables `stepText` and `stepThought` from generator streaming loop.
+  * Universal hygiene sweep across `backend/src` removing unused identifiers across `errorHandler.js`, `documentGenerationService.js`, `googleDriveService.js`, `telegramService.js`, `audioChunker.js`, and `token.js`.
+  * Automated static verification asserting 0 unused variables across `backend/src`.
+- **Acceptance Criteria**: AC-1 through AC-40 addressed and verified.
 
 
 ## Implementation Roadmap (Stage C - Sequential Execution Plan)

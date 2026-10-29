@@ -252,9 +252,6 @@ function generatePdfDocument(filePath, { title, content, data }) {
         const tableRows = normalizeSpreadsheetData(data);
         if (tableRows.length > 0) {
           doc.moveDown(1.0);
-          const colCount = Math.max(...tableRows.map((r) => r.length));
-          const availableWidth = doc.page.width - 100;
-          const colWidth = Math.max(availableWidth / colCount, 60);
 
           tableRows.forEach((row, rowIndex) => {
             const isHeader = rowIndex === 0;
@@ -287,7 +284,7 @@ function generatePdfDocument(filePath, { title, content, data }) {
  * Generates a Word (.docx) document using docx.
  */
 async function generateWordDocument(filePath, { title, content, data }) {
-  const { Document, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, Packer, AlignmentType } = docx;
+  const { Document, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, Packer } = docx;
 
   const children = [];
 

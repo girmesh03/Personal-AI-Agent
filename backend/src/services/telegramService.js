@@ -9,7 +9,6 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { env } from '../config/env.js';
 import { TELEGRAM_CONSTANTS } from '../utils/constants.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -93,14 +92,12 @@ export function markdownToTelegramHtml(markdown = '') {
 
   const lines = markdown.split('\n');
   const processedLines = [];
-  let inBlockquote = false;
   let blockquoteBuffer = [];
 
   const flushBlockquote = () => {
     if (blockquoteBuffer.length > 0) {
       processedLines.push(`<blockquote expandable>${blockquoteBuffer.join('\n')}</blockquote>`);
       blockquoteBuffer = [];
-      inBlockquote = false;
     }
   };
 
@@ -109,7 +106,6 @@ export function markdownToTelegramHtml(markdown = '') {
     const quoteMatch = line.match(/^>\s?(.*)$/);
 
     if (quoteMatch) {
-      inBlockquote = true;
       blockquoteBuffer.push(escapeHtml(quoteMatch[1]));
     } else {
       flushBlockquote();

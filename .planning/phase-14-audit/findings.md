@@ -135,3 +135,14 @@
   1. Implement centralized `safeUnlinkDiskFile(filePathOrName, domainDir)` in `storageService.js` that checks for absolute paths, relative paths, and filename resolution across all domain directories (`images/`, `files/`, `audios/`, `attachments/`, `avatars/`, `temp/`, `generated_documents/`), strictly respecting `isProtectedFixture`.
   2. Update all 8 cleanup vectors in `storageService.js` to collect both Cloudinary publicIds and local disk paths/filenames, purging both tiers atomically.
   3. Ensure `deleteComposerAttachment` and avatar updates pass local paths/filenames to guarantee complete local disk unlinking.
+
+### 1.23 Unused Imports and Dead Code Bindings in `chatController.js` and Backend Modules
+- **Location**: `backend/src/controllers/chatController.js:16, 20, 368, 1059-1060, 1155-1160` and other backend files.
+- **Root Cause**:
+  1. In `chatController.js:16`, `import env from '../config/env.js'` was retained after refactoring BYOK key resolution to directly read from `req.user.settings.apiKeys`, rendering `env` completely unused in the controller.
+  2. On line 368, `const sttEngineLabel = formatSttEngineDisplayName(activeSttEngine)` was assigned to a local variable that is never read or emitted in any SSE stream or logging block, rendering both the variable and its imported function `formatSttEngineDisplayName` on line 20 completely unused.
+  3. In lines 1059-1060 & 1155-1160, `stepText` and `stepThought` were accumulated per streaming chunk but never read or referenced.
+- **Resolution**:
+  1. Remove unused `env` and `formatSttEngineDisplayName` imports from `chatController.js`.
+  2. Delete dead variable `sttEngineLabel` and dead accumulators `stepText`/`stepThought`.
+  3. Perform a universal sweep across `backend/src` to eliminate all unused imports and dead bindings.

@@ -12,7 +12,6 @@ import {
   UnauthenticatedError,
 } from '../errors/CustomError.js';
 import { logger } from '../config/logger.js';
-import { env } from '../config/env.js';
 import { formatUserFriendlyError } from '../utils/errorFormatter.js';
 
 /**

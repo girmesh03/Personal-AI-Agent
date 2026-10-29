@@ -13,11 +13,10 @@ import path from 'node:path';
 import mongoose from 'mongoose';
 import asyncHandler from 'express-async-handler';
 import { GoogleGenAI } from '@google/genai';
-import env from '../config/env.js';
 import logger from '../config/logger.js';
 import { Chat } from '../models/Chat.js';
 import { Audio } from '../models/Audio.js';
-import { HTTP_STATUS, CHAT_CONSTANTS, ATTACHMENT_CONSTANTS, AUDIO_CONSTANTS, AI_MODELS, UPLOADS_CONFIG, formatSttEngineDisplayName } from '../utils/constants.js';
+import { HTTP_STATUS, CHAT_CONSTANTS, ATTACHMENT_CONSTANTS, AUDIO_CONSTANTS, AI_MODELS, UPLOADS_CONFIG } from '../utils/constants.js';
 import { User } from '../models/User.js';
 import { NotFoundError, BadRequestError, UnauthenticatedError } from '../errors/CustomError.js';
 import { assembleSystemPrompt } from '../utils/promptAssembler.js';
@@ -360,12 +359,11 @@ export const streamChat = asyncHandler(async (req, res) => {
     let attachmentTextContext = '';
     let inlineParts = [];
 
-    // Dynamically resolve active STT engine and human-friendly display label from SSOT constants
+    // Dynamically resolve active STT engine from SSOT constants
     const activeSttEngine =
       (b.sttEngine && AI_MODELS.STT_ENGINES.includes(b.sttEngine) ? b.sttEngine : null) ||
       (AI_MODELS.STT_ENGINES.includes(req.user.settings?.sttEngine) ? req.user.settings.sttEngine : null) ||
       AI_MODELS.DEFAULT_STT_ENGINE;
-    const sttEngineLabel = formatSttEngineDisplayName(activeSttEngine);
 
     // 4. Handle Turn Type: Continuation vs Retry vs Edit vs Fresh Send
     const isContinue =
@@ -1056,8 +1054,6 @@ export const streamChat = asyncHandler(async (req, res) => {
     while (step < maxSteps) {
       step++;
 
-      let stepText = '';
-      let stepThought = '';
       const functionCalls = [];
       const modelStepParts = [];
 
@@ -1067,8 +1063,6 @@ export const streamChat = asyncHandler(async (req, res) => {
 
       while (streamAttempts < maxStreamAttempts && !streamSuccess) {
         streamAttempts++;
-        stepText = '';
-        stepThought = '';
         functionCalls.length = 0;
         modelStepParts.length = 0;
         const textBeforeAttempt = fullText;
@@ -1152,12 +1146,10 @@ export const streamChat = asyncHandler(async (req, res) => {
               if (isClientAborted) break;
               if (part.thought) {
                 const delta = part.text || '';
-                stepThought += delta;
                 fullThought += delta;
                 sendSSE(res, 'thought', { delta });
               } else if (part.text) {
                 const delta = part.text;
-                stepText += delta;
                 fullText += delta;
                 sendSSE(res, 'text', { delta });
               } else if (part.functionCall) {

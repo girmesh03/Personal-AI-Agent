@@ -241,3 +241,23 @@
   1. *Centralized Safe Disk Unlinker (`safeUnlinkDiskFile` in `storageService.js`)*: Created robust path resolution across all domain directories (`images`, `files`, `audios`, `attachments`, `avatars`, `temp`, `generated_documents`, `root`) with `isProtectedFixture` protection.
   2. *Dual-Purge Engine Across All 8 Vectors*: Updated `cleanupChatAssets`, `cleanupPrunedTurnAssets`, `cleanupRetryTurnAssets`, `cleanupComposerAttachment`, `cleanupAvatarAsset`, `cleanupReportAudios`, and `cleanupUserCascadeAssets` to simultaneously destroy Cloudinary assets AND unlink corresponding local disk files.
   3. *Controller Metadata Binding*: Enhanced `deleteComposerAttachment` in `chatController.js` and `updateAvatar`/`removeAvatar` in `userController.js` to ensure physical paths are resolved and unlinked.
+
+## Session 15: 2026-10-29 (Phase 14B Point 13: Zero Unused Imports, Dead Code, and Redundant Bindings Across Chat Controller & Backend Architecture)
+- **Forensic Diagnosis & First-Principles Root Cause**:
+  1. *Unused `env` Import*: `backend/src/controllers/chatController.js:16` imported `env` from `../config/env.js`, but `env` was never referenced in the entire controller because BYOK credentials are dynamically loaded from `req.user.settings.apiKeys` or directly from MongoDB Atlas.
+  2. *Dead Variable `sttEngineLabel` & Unused Import `formatSttEngineDisplayName`*: `chatController.js:368` declared `const sttEngineLabel = formatSttEngineDisplayName(activeSttEngine)` which was never emitted in SSE streams, logged, or read downstream, rendering both the variable and the imported helper unused.
+  3. *Dead Accumulator Variables*: `stepText` and `stepThought` in `chatController.js:1059-1060, 1155-1160` were accumulated per streaming chunk but never read or referenced.
+  4. *Codebase-Wide Static Inspection*: Identified unused imports/variables across `errorHandler.js`, `documentGenerationService.js`, `googleDriveService.js`, `telegramService.js`, `audioChunker.js`, and `token.js`.
+- **Systemic Full-Stack Rectifications**:
+  1. *Chat Controller Hygiene*: Removed `import env from '../config/env.js'`, purged `formatSttEngineDisplayName` from constants imports, deleted `sttEngineLabel` assignment, and removed `stepText`/`stepThought` declarations and assignments.
+  2. *Universal Backend Hygiene*: Removed unused `env` from `errorHandler.js` and `telegramService.js`, removed `path` from `googleDriveService.js`, cleaned `colWidth` and `AlignmentType` in `documentGenerationService.js`, cleaned `stderr` in `audioChunker.js`, and cleanly deleted `maxAge` in `token.js`.
+  3. *Automated Static Verification*: Executed AST lint check across `backend/src/`, confirming **Total unused variables/imports across backend/src: 0**.
+- **Verification Suite Outcomes**:
+  - `node backend/scripts/testPhase14TurnEditLifecycle.js`: **46 / 46 assertions PASSED (100% green)**.
+  - `npm --prefix client run lint`: **0 errors, 0 warnings (100% clean)**.
+  - `npm --prefix client run build`: **Built successfully in 54.57s (100% clean, exit code 0)**.
+- **Protocol Adherence**:
+  - Point 13 surgically appended under Phase 14B in `PHASE_14_EXHAUSTIVE_MULTIMODAL_CHAT_AND_AGENT_RELIABILITY_AUDIT.md`.
+  - Zero git commits created (strictly adhering to user constraint).
+  - Zero browser testing performed by agent (reserved 100% exclusively for user).
+

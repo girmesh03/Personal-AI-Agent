@@ -114,7 +114,8 @@ export const setAccessTokenCookie = (res, accessToken) => {
  * @returns {void}
  */
 export const clearAccessTokenCookie = (res) => {
-  const { maxAge, ...clearOptions } = ACCESS_COOKIE_OPTIONS;
+  const clearOptions = { ...ACCESS_COOKIE_OPTIONS };
+  delete clearOptions.maxAge;
   res.clearCookie('accessToken', { ...clearOptions, path: '/' });
   res.clearCookie('accessToken', { ...clearOptions, path: '/api/v1' });
   res.clearCookie('accessToken', { ...clearOptions, path: '/api/v1/auth' });
@@ -139,7 +140,8 @@ export const setRefreshTokenCookie = (res, refreshToken) => {
  * @returns {void}
  */
 export const clearRefreshTokenCookie = (res) => {
-  const { maxAge, ...clearOptions } = REFRESH_COOKIE_OPTIONS;
+  const clearOptions = { ...REFRESH_COOKIE_OPTIONS };
+  delete clearOptions.maxAge;
   res.clearCookie('refreshToken', { ...clearOptions, path: '/' });
   res.clearCookie('refreshToken', { ...clearOptions, path: '/api/v1' });
   res.clearCookie('refreshToken', { ...clearOptions, path: '/api/v1/auth' });
