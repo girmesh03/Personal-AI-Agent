@@ -17,6 +17,25 @@ const __dirname = path.dirname(__filename);
 // Lazy memoized embedded font definitions for SVG rendering
 let cachedFontDefs = null;
 
+// Ensure fontconfig discovers local TTF fonts in headless Linux environments (Render / Docker)
+function configureFontconfig() {
+  if (process.platform === 'linux') {
+    const fontsDir = path.resolve(__dirname, '../assets/fonts');
+    if (!process.env.FONTCONFIG_PATH) {
+      process.env.FONTCONFIG_PATH = fontsDir;
+    }
+    const cacheDir = '/tmp/fonts-cache';
+    if (!fs.existsSync(cacheDir)) {
+      try {
+        fs.mkdirSync(cacheDir, { recursive: true });
+      } catch (_) {}
+    }
+  }
+}
+
+// Pre-configure font environment on module load
+configureFontconfig();
+
 function getEmbeddedFontDefs() {
   if (cachedFontDefs !== null) return cachedFontDefs;
   try {
@@ -313,6 +332,7 @@ function wrapTextPixels(text, maxWidth, fontSize, isBold = false) {
  * @returns {Promise<Buffer>} PNG image buffer
  */
 export async function generateTextImageCard(text = '', options = {}) {
+  configureFontconfig();
   const reportText = text;
   const C = TELEGRAM_CONSTANTS.IMAGE_CARD;
   const width = options.width || C.WIDTH;

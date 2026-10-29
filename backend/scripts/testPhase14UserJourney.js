@@ -265,8 +265,8 @@ async function runSuite() {
         },
         integrations: {
           telegram: {
-            botToken: '8976641551:AAEfY2gLZrb-OPQ0t4sQyrwpS2q9HdskaW4',
-            managementChatId: '-1003982938439',
+            botToken: env.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '987654321:MockValidFormatBotTokenForTesting_x',
+            managementChatId: env.TELEGRAM_MANAGEMENT_CHAT_ID || process.env.TELEGRAM_MANAGEMENT_CHAT_ID || '-1001234567890',
             connected: true,
             enabled: true,
           },

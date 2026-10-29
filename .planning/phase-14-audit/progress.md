@@ -273,4 +273,32 @@
   4. *Push to Remote*: Pushed `main` to `origin/main` (`git push origin main`), updating GitHub remote and triggering automated production synchronization on Render (backend) and Vercel (client).
 - **Status**: Complete, verified, and synchronized with remote repository.
 
+## Session 17: 2026-10-29 (Phase 14B Points 14 & 15: Secret Leak Eradication & Linux Amharic Font Rendering Engine)
+- **Forensic Diagnoses & Root Causes**:
+  1. *Secret Leak in `testPhase14UserJourney.js:268`*: Live Telegram bot token was hardcoded directly in script test payload. Detected by GitHub Secret Scanning.
+  2. *Amharic Font Failure on Render Linux*: `librsvg` ignores base64 `@font-face` WOFF data URIs and queries Fontconfig for system TTF/OTF fonts. Windows masks this via local `Nyala`/`Ebrima`, but headless Debian containers on Render have zero Ethiopic fonts, producing tofu boxes (`□□□□`).
+- **Systemic Full-Stack Rectifications**:
+  1. *Secret Eradication & Guard (Point 14)*:
+     - Bound `testPhase14UserJourney.js` Telegram credentials dynamically to `env.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '987654321:MockValidFormatBotTokenForTesting_x'`.
+     - Built zero-dependency scanner `scripts/checkSecrets.js` with staged diff inspection (`--staged`) and full workspace scan.
+     - Installed tracked git pre-commit hook `.githooks/pre-commit` configured via `core.hooksPath .githooks` to abort commits containing staged secrets.
+     - Added `"check:secrets"` script to root `package.json` and chained into `npm test` and `npm run verify`.
+  2. *Linux Headless Amharic Font Engine (Point 15)*:
+     - Decompressed and bundled native TrueType fonts `NotoSansEthiopic-Regular.ttf` (322 KB) and `NotoSansEthiopic-Bold.ttf` (321 KB) in `backend/src/assets/fonts/`.
+     - Created `backend/src/assets/fonts/fonts.conf` with relative font discovery and `/tmp/fonts-cache` writable cache.
+     - Auto-configured `process.env.FONTCONFIG_PATH` in `telegramService.js` on Linux environments before Sharp SVG rasterization.
+     - Created automated font installer `backend/scripts/installFonts.js` in `backend/package.json` postinstall and `render.yaml` buildCommand (`fc-cache -f`).
+- **Comprehensive Verification Suite Outcomes**:
+  - `npm run check:secrets`: **0 secrets detected (100% clean)**.
+  - `node backend/scripts/testPhase14TurnEditLifecycle.js`: **46 / 46 assertions PASSED (100% green)**.
+  - `node backend/scripts/testPhase14UserJourney.js`: **31 / 31 assertions PASSED (100% green)**.
+  - `generateTextImageCard` with Amharic text: **Generated 14.9 KB PNG cleanly without errors**.
+  - `npm --prefix client run lint`: **0 errors, 0 warnings (100% clean)**.
+  - `npm --prefix client run build`: **Built successfully in 20.09s (Exit code 0)**.
+- **Protocol Adherence**:
+  - Points 14 and 15 surgically appended under Phase 14B in `PHASE_14_EXHAUSTIVE_MULTIMODAL_CHAT_AND_AGENT_RELIABILITY_AUDIT.md`.
+  - Zero git commits created (strictly awaiting user directive).
+  - Zero browser testing performed by agent (reserved 100% exclusively for user).
+
+
 

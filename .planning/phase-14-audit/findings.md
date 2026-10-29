@@ -146,3 +146,28 @@
   1. Remove unused `env` and `formatSttEngineDisplayName` imports from `chatController.js`.
   2. Delete dead variable `sttEngineLabel` and dead accumulators `stepText`/`stepThought`.
   3. Perform a universal sweep across `backend/src` to eliminate all unused imports and dead bindings.
+
+### 1.24 Telegram Bot Token Hardcoded Credential Leak in `testPhase14UserJourney.js`
+- **Location**: `backend/scripts/testPhase14UserJourney.js:268-269`
+- **Root Cause**:
+  1. In `testPhase14UserJourney.js`, a live Telegram bot token (`8976641551:AAEfY2gLZrb...[REDACTED]`) and management chat ID (`-1003982938439`) were hardcoded directly in the test profile payload rather than dynamically resolving from `env.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN` or a mock string.
+  2. The repository lacked a pre-commit secret scanning hook to intercept staged credentials prior to `git commit`, allowing commit `4c18f7d` to push the token to GitHub where GitHub Secret Scanning detected and alerted on it.
+- **Resolution (The 4 Pillars)**:
+  1. *Code Remediation*: Bind `botToken` and `managementChatId` in `testPhase14UserJourney.js` to `env.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '987654321:MockValidFormatBotTokenForTesting_x'`.
+  2. *Git History Sanitization*: Rewrite commit `4c18f7d` to sanitize the tree, force-pushing to `origin/main` and `origin/phase-14-multimodal-chat-reliability-audit`.
+  3. *Provider Revocation*: Guide the user to revoke the leaked token in `@BotFather` via `/revoke` and update their private `.env`.
+  4. *Multi-Layer Pre-Commit & CI Guards*: Implement `scripts/checkSecrets.js`, tracked `.githooks/pre-commit` hook (via `core.hooksPath`), and `"check:secrets"` npm script to abort any future commit attempting to stage credentials.
+
+### 1.25 Amharic Text Rendering Failure in Telegram Image Cards on Headless Linux (Render Production)
+- **Location**: `backend/src/services/telegramService.js:37-56, 526-538`, `render.yaml:8`
+- **Root Cause**:
+  1. `librsvg` (the SVG rasterizer inside `sharp`) does **not** support `@font-face` rules using base64 data URIs or `.woff` / `.woff2` web fonts. It delegates font resolution strictly to the host operating system's Fontconfig library.
+  2. On local Windows development machines, Windows includes pre-installed Ethiopic fonts (`Nyala`, `Ebrima`), which Fontconfig automatically selected as fallbacks, masking the missing `@font-face` support in `librsvg`.
+  3. On Render Linux containers, no Ethiopic fonts are installed in `/usr/share/fonts/`. Furthermore, Linux Fontconfig ignores `.woff` files even if present on disk, scanning only `.ttf` and `.otf` formats. Consequently, all Amharic characters rendered as empty tofu boxes (`□□□□`) when deployed to Render.
+- **Resolution (The 4 Pillars)**:
+  1. *TrueType Font Binaries*: Provide decompressed `NotoSansEthiopic-Regular.ttf` and `NotoSansEthiopic-Bold.ttf` in `backend/src/assets/fonts/`.
+  2. *Portable `fonts.conf`*: Add `fonts.conf` pointing to the font directory with `/tmp/fonts-cache` writable cache.
+  3. *Runtime `FONTCONFIG_PATH` Setup*: In `telegramService.js`, configure `process.env.FONTCONFIG_PATH` to point to the assets fonts directory before `sharp` SVG rasterization.
+  4. *Automated User Font Installer (`installFonts.js`)*: In `postinstall` and `render.yaml`, copy `.ttf` fonts to `~/.local/share/fonts/noto-sans-ethiopic/` and run `fc-cache -f`.
+
+

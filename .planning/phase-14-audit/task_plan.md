@@ -96,7 +96,20 @@ Retrieved directly from Phase 11B (`COMPLETE_REMAINING_ARCHITECTURE_AND_IMPLEMEN
   * Remove dead accumulator variables `stepText` and `stepThought` from generator streaming loop.
   * Universal hygiene sweep across `backend/src` removing unused identifiers across `errorHandler.js`, `documentGenerationService.js`, `googleDriveService.js`, `telegramService.js`, `audioChunker.js`, and `token.js`.
   * Automated static verification asserting 0 unused variables across `backend/src`.
-- **Acceptance Criteria**: AC-1 through AC-40 addressed and verified.
+- **Point 14: Zero-Secret Leak Invariant, Git History Sanitization, Multi-Layer Secret Scanning & Automated Pre-Commit Guard Engine** [PLANNING - AWAITING USER APPROVAL]:
+  * Eradicate live Telegram Bot Token hardcoded in `backend/scripts/testPhase14UserJourney.js:268`.
+  * Rewrite and sanitize git commit history for `4c18f7d` across `main` and phase branch, followed by remote force-push.
+  * Provide explicit provider-level revocation & rotation steps for the user via `@BotFather`.
+  * Implement zero-dependency secret scanner script (`scripts/checkSecrets.js`).
+  * Install tracked Git pre-commit hook (`.githooks/pre-commit`) configured via `core.hooksPath` to abort commits when secrets are staged.
+  * Integrate `"check:secrets"` script into `package.json` and verification pipeline.
+- **Point 15: Cross-Platform Linux Headless Amharic Font Rendering Engine for Telegram Image Cards (Render & Vercel Parity)** [PLANNING - AWAITING USER APPROVAL]:
+  * Convert and bundle native TrueType fonts (`NotoSansEthiopic-Regular.ttf` and `NotoSansEthiopic-Bold.ttf`) in `backend/src/assets/fonts/`.
+  * Supply portable `fonts.conf` with relative search paths and `/tmp/fonts-cache` writable cache.
+  * Auto-initialize `process.env.FONTCONFIG_PATH` in `telegramService.js` before Sharp SVG rasterization on Linux.
+  * Add automated user-space font installer (`backend/scripts/installFonts.js`) invoked on `npm install` (postinstall) to copy TTFs to `~/.local/share/fonts/` and run `fc-cache -f`.
+  * Update `render.yaml` buildCommand to ensure font cache is built during deployment.
+- **Acceptance Criteria**: AC-1 through AC-50 addressed.
 
 
 ## Implementation Roadmap (Stage C - Sequential Execution Plan)
