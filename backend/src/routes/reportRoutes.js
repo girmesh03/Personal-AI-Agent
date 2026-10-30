@@ -19,6 +19,7 @@ import {
   restoreReport,
   deleteReportPermanently,
   uploadReportAudios,
+  shareReportToTelegram,
 } from '../controllers/reportController.js';
 
 import {
@@ -120,6 +121,13 @@ router.patch('/:reportId/restore', reportIdValidation, validate, restoreReport);
  */
 router.delete('/:reportId/delete', reportIdValidation, validate, deleteReportPermanently);
 router.delete('/:reportId/permanent', reportIdValidation, validate, deleteReportPermanently);
+
+/**
+ * @route POST /api/v1/reports/:reportId/share/telegram
+ * @desc Broadcast operational report transcription to configured Telegram channel
+ * @access Protected (Area Supervisor)
+ */
+router.post('/:reportId/share/telegram', reportIdValidation, validate, shareReportToTelegram);
 
 /**
  * @route DELETE /api/v1/reports/:reportId

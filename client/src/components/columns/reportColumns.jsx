@@ -20,6 +20,7 @@ import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined';
 import RestoreOutlinedIcon from '@mui/icons-material/RestoreOutlined';
 import DeleteForeverOutlinedIcon from '@mui/icons-material/DeleteForeverOutlined';
 import MuiStatusChip from '../reusable/MuiStatusChip.jsx';
+import MuiReportTelegramShareButton from '../reports/MuiReportTelegramShareButton.jsx';
 import { toEthiopianDateString, computeShiftDuration } from '../../utils/ethiopianCalendar.js';
 
 /**
@@ -207,8 +208,8 @@ export const getReportColumns = ({
     {
       field: 'actions',
       headerName: 'Actions',
-      flex: 1.1,
-      minWidth: 140,
+      flex: 1.2,
+      minWidth: 165,
       sortable: false,
       filterable: false,
       renderCell: (params) => {
@@ -237,9 +238,14 @@ export const getReportColumns = ({
               </Tooltip>
             )}
 
-            {/* Active Report Actions: Edit & Archive */}
+            {/* Active Report Actions: Share to Telegram, Edit & Archive */}
             {!isArchived ? (
               <>
+                <MuiReportTelegramShareButton
+                  report={row}
+                  disabled={isMutating}
+                  size="small"
+                />
                 {onEdit && (
                   <Tooltip title="Edit Report" arrow>
                     <span>

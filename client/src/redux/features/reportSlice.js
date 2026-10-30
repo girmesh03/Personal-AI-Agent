@@ -111,6 +111,17 @@ export const reportSlice = apiSlice.injectEndpoints({
         'Dashboard',
       ],
     }),
+
+    /**
+     * Broadcasts an operational report's authoritative Amharic transcription to Telegram.
+     */
+    shareReportToTelegram: builder.mutation({
+      query: ({ reportId, targetChannel = 'management', asImage = false }) => ({
+        url: `/reports/${reportId}/share/telegram`,
+        method: 'POST',
+        body: { targetChannel, asImage },
+      }),
+    }),
   }),
 });
 
@@ -121,6 +132,7 @@ export const {
   useArchiveReportMutation,
   useRestoreReportMutation,
   useDeleteReportMutation,
+  useShareReportToTelegramMutation,
 } = reportSlice;
 
 export default reportSlice;

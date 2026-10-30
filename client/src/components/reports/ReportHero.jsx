@@ -28,6 +28,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined';
 import RestoreOutlinedIcon from '@mui/icons-material/RestoreOutlined';
 import MuiButton from '../reusable/MuiButton.jsx';
+import MuiReportTelegramShareButton from './MuiReportTelegramShareButton.jsx';
 import { toEthiopianDateString, computeShiftDuration } from '../../utils/ethiopianCalendar.js';
 
 export const ReportHero = memo(({
@@ -203,6 +204,15 @@ export const ReportHero = memo(({
             flexShrink: 0,
           }}
         >
+          {/* Active: Share to Telegram */}
+          {!isArchived && (
+            <MuiReportTelegramShareButton
+              report={report}
+              disabled={isMutating}
+              size="medium"
+            />
+          )}
+
           {/* Active: Edit Button */}
           {!isArchived && onEdit && (
             <MuiButton
@@ -315,6 +325,16 @@ export const ReportHero = memo(({
           borderTop: (t) => `1px dashed ${t.palette.divider}`,
         }}
       >
+        {!isArchived && (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <MuiReportTelegramShareButton
+              report={report}
+              disabled={isMutating}
+              size="medium"
+            />
+          </Box>
+        )}
+
         {!isArchived && onEdit && (
           <MuiButton
             variant="contained"

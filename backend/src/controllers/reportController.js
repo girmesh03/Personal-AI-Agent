@@ -15,6 +15,8 @@ import asyncHandler from 'express-async-handler';
 import { Report } from '../models/Report.js';
 import { Branch } from '../models/Branch.js';
 import { Audio } from '../models/Audio.js';
+import { User } from '../models/User.js';
+import { dispatchToTelegram } from '../services/telegramService.js';
 import { HTTP_STATUS, REPORT_CONSTANTS, AUDIO_CONSTANTS } from '../utils/constants.js';
 import { NotFoundError, BadRequestError } from '../errors/CustomError.js';
 import { logger } from '../config/logger.js';
@@ -753,6 +755,60 @@ export const uploadReportAudios = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * Shares an operational report's authoritative Amharic transcription to Telegram.
+ * Enforces tenant isolation (scoped to req.user._id) and resolves user bot credentials.
+ *
+ * @route POST /api/v1/reports/:reportId/share/telegram
+ * @access Protected (Area Supervisor)
+ */
+export const shareReportToTelegram = asyncHandler(async (req, res) => {
+  const { reportId } = req.params;
+  const { targetChannel = 'management', asImage = false } = req.body || {};
+
+  const report = await Report.findOne({ _id: reportId, user: req.user._id }).lean();
+  if (!report) {
+    return res.status(HTTP_STATUS.NOT_FOUND).json({
+      success: false,
+      message: 'Operational report not found.',
+    });
+  }
+
+  const transcription = report.transcription?.trim();
+  if (!transcription) {
+    return res.status(HTTP_STATUS.BAD_REQUEST).json({
+      success: false,
+      message: 'Report does not contain any transcription text to share.',
+    });
+  }
+
+  const user = await User.findById(req.user._id)
+    .select('+integrations.telegram.botToken')
+    .lean();
+
+  const dispatchResult = await dispatchToTelegram({
+    user,
+    targetChannel,
+    text: transcription,
+    asImage: Boolean(asImage),
+  });
+
+  if (!dispatchResult.success && !dispatchResult.isStub) {
+    return res.status(HTTP_STATUS.BAD_GATEWAY).json({
+      success: false,
+      message: dispatchResult.error || 'Failed to dispatch report to Telegram.',
+    });
+  }
+
+  return res.status(HTTP_STATUS.OK).json({
+    success: true,
+    message: dispatchResult.isStub
+      ? `Telegram broadcast simulated in stub mode for channel "${dispatchResult.channel}".`
+      : `Report shared successfully to Telegram (${dispatchResult.channel}).`,
+    data: dispatchResult,
+  });
+});
+
 export default {
   createReport,
   createReportRecord,
@@ -766,4 +822,5 @@ export default {
   restoreReport,
   deleteReportPermanently,
   uploadReportAudios,
+  shareReportToTelegram,
 };

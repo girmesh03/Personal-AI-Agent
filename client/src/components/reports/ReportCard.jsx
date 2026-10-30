@@ -30,6 +30,7 @@ import DeleteForeverOutlinedIcon from '@mui/icons-material/DeleteForeverOutlined
 import AccessTimeOutlinedIcon from '@mui/icons-material/AccessTimeOutlined';
 import StoreOutlinedIcon from '@mui/icons-material/StoreOutlined';
 import MuiStatusChip from '../reusable/MuiStatusChip.jsx';
+import MuiReportTelegramShareButton from './MuiReportTelegramShareButton.jsx';
 import { toEthiopianDateString, computeShiftDuration } from '../../utils/ethiopianCalendar.js';
 
 /**
@@ -242,6 +243,11 @@ export const ReportCard = memo(({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           {!isArchived ? (
             <>
+              <MuiReportTelegramShareButton
+                report={report}
+                disabled={isCardBusy}
+                size="small"
+              />
               {onEdit && (
                 <Tooltip title="Edit Report" arrow>
                   <span>

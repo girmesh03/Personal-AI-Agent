@@ -257,11 +257,10 @@ Retrieved directly from Phase 11B (`COMPLETE_REMAINING_ARCHITECTURE_AND_IMPLEMEN
 - Calculate real-time RMS `audioLevel` to animate frequency visualizer bars.
 - Standardize on `window.AudioContext || window['webkitAudioContext']` with 0 deprecations and 0 TypeScript warnings.
 
-### Task 14.16: Deterministic Report Object-to-Template Compiler & Outro Severance [REVERTED - AWAITING USER TELEGRAM SPECIFICATION]
-- Reverted all Telegram template compilation code per explicit user directive.
-
-### Task 14.17: Telegram Image Card Bilingual Font Rendering (Render & Vercel Fix) [REVERTED - AWAITING USER TELEGRAM SPECIFICATION]
-- Reverted all Telegram SVG image card changes per explicit user directive.
-
-### Task 14.18: Pure Whitelist Schema Extraction, ToolParts Invariant, & Zero Intro/Outro Dependency [REVERTED - AWAITING USER TELEGRAM SPECIFICATION]
-- Reverted all Telegram payload resolver code per explicit user directive.
+### Task 14.16: Decoupled Reusable Telegram Report Sharing Subsystem [PLANNING - AWAITING USER APPROVAL]
+- Goal: Provide a decoupled, reusable Telegram sharing capability for operational inspection reports directly from Report Cards and DataGrid rows.
+- Single Source of Truth (SSOT): Uses finalized `report.transcription` on the saved MongoDB Report document rather than extracting from chat streaming tokens or agent turn messages.
+- Dedicated Endpoint: `POST /api/v1/reports/:reportId/share/telegram` in `reportRoutes.js` and `reportController.js`.
+- Reusable UI Component: `MuiReportTelegramShareButton.jsx` supporting Text (HTML) vs Image Card format toggle, channel selection (Management, Maintenance, General), and error/success toast feedback.
+- Seamless Integration: Embedded in `ReportCard.jsx` (CardActions) and `reportColumns.jsx` (DataGrid actions column).
+- Zero Chat Contention: Leaves chat routes, agent message share action, and Live STT 100% untouched.
