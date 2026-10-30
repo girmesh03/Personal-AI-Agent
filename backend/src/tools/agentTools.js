@@ -455,17 +455,19 @@ export const agentToolDeclarations = [
   {
     name: 'update_report',
     description:
-      'Amend an existing operational report (work hours, new activities, new issues, comments, or transcription) inside an ACID session.',
+      'Amend an existing operational report (work hours, new activities, new issues, comments, or transcription) inside an ACID session. Can identify the report either by reportId OR by date (defaults to current day if reportId is omitted).',
     parameters: {
       type: Type.OBJECT,
       properties: {
         reportId: {
           type: Type.STRING,
-          description: '24-character hexadecimal MongoDB ObjectId of the report to amend.',
+          description:
+            '24-character hexadecimal MongoDB ObjectId of the report to amend. Optional if date is supplied or amending today\'s report.',
         },
         date: {
           type: Type.STRING,
-          description: 'Optional updated inspection date (ISO date string YYYY-MM-DD).',
+          description:
+            'Inspection date of the report to amend (YYYY-MM-DD or DD-MM-YY). Used to look up the report in MongoDB if reportId is omitted.',
         },
         clockIn: {
           type: Type.STRING,
@@ -552,7 +554,6 @@ export const agentToolDeclarations = [
           description: 'Updated formatted Amharic corporate transcription text.',
         },
       },
-      required: ['reportId'],
     },
   },
   {
@@ -1598,24 +1599,70 @@ export const toolHandlers = {
       normalizedArgs.transcription = 'ዕለታዊ የስራ እንቅስቃሴ ሪፖርት';
     }
 
-    const validatedPayload = validateReportPayload(normalizedArgs);
-    const createdReport = await createReportRecord({
-      userId,
-      payload: validatedPayload,
-      existingSession: session,
-    });
+    try {
+      const validatedPayload = validateReportPayload(normalizedArgs);
+      const createdReport = await createReportRecord({
+        userId,
+        payload: validatedPayload,
+        existingSession: session,
+      });
 
-    return {
-      reportId: createdReport._id.toString(),
-      date: createdReport.date,
-      ethiopianDate: createdReport.ethiopianDate,
-      visitsCount: createdReport.visits.length,
-      activitiesCount: createdReport.activities.length,
-      issuesCount: createdReport.issues.length,
-      commentsCount: createdReport.comments.length,
-      transcription: createdReport.transcription,
-      message: 'Operational report successfully created and persisted.',
-    };
+      return {
+        success: true,
+        reportId: createdReport._id.toString(),
+        date: createdReport.date,
+        dateString: createdReport.dateString,
+        ethiopianDate: createdReport.ethiopianDate,
+        visitsCount: createdReport.visits.length,
+        activitiesCount: createdReport.activities.length,
+        issuesCount: createdReport.issues.length,
+        commentsCount: createdReport.comments.length,
+        transcription: createdReport.transcription,
+        message: 'Operational report successfully created and persisted.',
+      };
+    } catch (err) {
+      if (err.code === 'REPORT_ALREADY_EXISTS' || err.code === 11000) {
+        const targetDate = new Date(normalizedArgs.date);
+        const targetDateString = targetDate.toISOString().split('T')[0];
+        const targetEthDate = toEthiopianDateString(targetDate);
+
+        const existing = await Report.findOne({
+          user: userId,
+          isArchived: false,
+          $or: [
+            { dateString: targetDateString },
+            { ethiopianDate: targetEthDate },
+          ],
+        })
+          .populate('visits.branch', 'name code')
+          .session(session || null);
+
+        if (existing) {
+          const visitSummary = (existing.visits || [])
+            .map((v) => `${v.branch?.name || v.branch?.code || v.branch} (${v.clockIn}-${v.clockOut})`)
+            .join(', ');
+
+          return {
+            success: false,
+            code: 'REPORT_ALREADY_EXISTS',
+            message: `A report already exists for ${targetDateString} (Ethiopian: ${existing.ethiopianDate}) with Report ID: "${existing._id}". A supervisor may only have one operational report per calendar day.`,
+            existingReport: {
+              reportId: existing._id.toString(),
+              dateString: existing.dateString,
+              ethiopianDate: existing.ethiopianDate,
+              clockIn: existing.clockIn,
+              clockOut: existing.clockOut,
+              visits: visitSummary,
+              activitiesCount: (existing.activities || []).length,
+              issuesCount: (existing.issues || []).length,
+              commentsCount: (existing.comments || []).length,
+            },
+            guidance: `If the supervisor intends to amend, add new activities, or update branch visits for this date, invoke "update_report" with reportId: "${existing._id}". If the user is asking to create a separate report or is unsure, ask the supervisor in chat how they would like to proceed.`,
+          };
+        }
+      }
+      throw err;
+    }
   },
 
   /**
@@ -1627,19 +1674,55 @@ export const toolHandlers = {
     const issuesToAppend = args.newIssues || args.appendIssues || [];
     const commentsToAppend = args.newComments || args.appendComments || [];
 
-    if (!isValidObjectId(reportId)) {
-      throw new ValidationError('Invalid report ID.');
-    }
-
     return await runInTransaction(session, async (activeSession) => {
-      const report = await Report.findOne({ _id: reportId, user: userId, isArchived: false }).session(
-        activeSession
-      );
-      if (!report) {
-        throw new NotFoundError('Report not found.');
+      let report = null;
+
+      if (reportId && isValidObjectId(reportId)) {
+        report = await Report.findOne({ _id: reportId, user: userId, isArchived: false }).session(
+          activeSession
+        );
       }
 
-      if (date !== undefined) report.date = new Date(date);
+      if (!report) {
+        // Resolve target report by date, or default to current system date
+        let queryDate = new Date();
+        if (date && typeof date === 'string') {
+          const ethMatch = date.trim().match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/);
+          if (ethMatch) {
+            const day = parseInt(ethMatch[1], 10);
+            const month = parseInt(ethMatch[2], 10);
+            let year = parseInt(ethMatch[3], 10);
+            if (year < 100) year += 2000;
+            if (year >= 2000 && year <= 2100 && month >= 1 && month <= 13 && day >= 1 && day <= 30) {
+              queryDate = toGregorianDate(year, month, day);
+            }
+          } else {
+            const parsed = new Date(date);
+            if (!isNaN(parsed.getTime())) queryDate = parsed;
+          }
+        }
+
+        const dateStr = queryDate.toISOString().split('T')[0];
+        const ethStr = toEthiopianDateString(queryDate);
+
+        report = await Report.findOne({
+          user: userId,
+          isArchived: false,
+          $or: [{ dateString: dateStr }, { ethiopianDate: ethStr }],
+        }).session(activeSession);
+
+        if (!report) {
+          throw new NotFoundError(
+            `No active operational report found for date ${dateStr} (Ethiopian: ${ethStr}). If creating a new shift report, invoke create_report.`
+          );
+        }
+      }
+
+      if (date !== undefined) {
+        report.date = new Date(date);
+        report.dateString = report.date.toISOString().split('T')[0];
+        report.ethiopianDate = toEthiopianDateString(report.date);
+      }
       if (clockIn !== undefined) report.clockIn = clockIn;
       if (clockOut !== undefined) report.clockOut = clockOut;
       if (transcription !== undefined) report.transcription = transcription;
@@ -1706,6 +1789,7 @@ export const toolHandlers = {
       await report.save({ session: activeSession });
 
       return {
+        success: true,
         reportId: report._id.toString(),
         clockIn: report.clockIn,
         clockOut: report.clockOut,

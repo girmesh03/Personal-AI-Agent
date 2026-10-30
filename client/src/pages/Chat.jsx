@@ -174,6 +174,17 @@ const CHATBOX_SX = Object.freeze({
     border: 'none !important',
     padding: '0 !important',
   },
+  '& .MuiChatScrollToBottomAffordance-root, & [class*="MuiChatScrollToBottomAffordance"]': {
+    backgroundColor: 'background.paper !important',
+    color: 'text.primary !important',
+    borderRadius: '50% !important',
+    boxShadow: 3,
+    zIndex: 10,
+    '&:hover': {
+      backgroundColor: 'background.paper !important',
+      boxShadow: 6,
+    },
+  },
 });
 
 /**

@@ -188,6 +188,23 @@ export async function assembleSystemPrompt({
   }
   reports = reports || [];
 
+  // 2b. Fetch today's active report if already created for the supervisor
+  let todayReport = null;
+  if (userId) {
+    const todayStart = new Date(now);
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const todayEnd = new Date(now);
+    todayEnd.setUTCHours(23, 59, 59, 999);
+
+    todayReport = await Report.findOne({
+      user: userId,
+      isArchived: false,
+      date: { $gte: todayStart, $lte: todayEnd },
+    })
+      .populate('visits.branch', 'name code')
+      .lean();
+  }
+
   // ==========================================
   // BLOCK 1: OPERATIONAL PERSONA, IMMUTABLE KERNEL & DUAL IDENTITY
   // ==========================================
@@ -423,6 +440,22 @@ export async function assembleSystemPrompt({
     'When drafting or synthesizing operational reports, analyze the supervisor\'s recent reports below to internalize their natural corporate Amharic voice, formality level, technical term selection, and sentence cadence. Emulate how this specific supervisor writes activities, issues, and observations while strictly honoring Priority 0 directives in Block 3.',
   ];
 
+  if (todayReport) {
+    const todayVisits = (todayReport.visits || [])
+      .map((v) => `${v.branch?.name || v.branch?.code || 'Branch'} (${v.clockIn}-${v.clockOut})`)
+      .join(', ');
+    const todayActs = (todayReport.activities || []).map((a) => a.text).join('; ') || 'None recorded yet';
+    const todayIssues = (todayReport.issues || []).map((i) => i.text).join('; ') || 'None recorded yet';
+
+    baselineLines.push('\n[ACTIVE TODAY\'S REPORT IN DATABASE]');
+    baselineLines.push(`  Report ID: "${todayReport._id}" | Date: ${gregorianDateStr} (Ethiopian: ${ethiopianDateStr})`);
+    baselineLines.push(`  Clock In: ${todayReport.clockIn} | Clock Out: ${todayReport.clockOut}`);
+    baselineLines.push(`  Visits: [${todayVisits}]`);
+    baselineLines.push(`  Activities: ${todayActs}`);
+    baselineLines.push(`  Issues: ${todayIssues}`);
+    baselineLines.push(`  CRITICAL INSTRUCTION: Today's operational report ALREADY EXISTS in MongoDB (Report ID: "${todayReport._id}"). Under the Single-Report-Per-Day Law, NEVER invoke create_report again for today. If the supervisor provides additional shift updates, afternoon inspection notes, or corrections, you MUST invoke update_report(reportId: "${todayReport._id}")!`);
+  }
+
   if (reports.length > 0) {
     baselineLines.push('\nMost recent operational inspections conducted by this supervisor:');
     reports.forEach((r, idx) => {
@@ -431,7 +464,7 @@ export async function assembleSystemPrompt({
       const visitSummary = (r.visits || [])
         .map((v) => `${v.branch?.name || v.branch?.code || 'Branch'} (${v.clockIn}-${v.clockOut})`)
         .join(', ');
-      baselineLines.push(`  Audit ${idx + 1} (${rDate} / Eth: ${rEthDate}): Visited: [${visitSummary}]`);
+      baselineLines.push(`  Audit ${idx + 1} [ID: "${r._id}"] (${rDate} / Eth: ${rEthDate}): Visited: [${visitSummary}]`);
 
       if (r.transcription && typeof r.transcription === 'string' && r.transcription.trim()) {
         const snippet = r.transcription.replace(/\s+/g, ' ').trim().slice(0, 160);
@@ -551,6 +584,16 @@ export async function assembleSystemPrompt({
     '        6. Proactive Ambiguity Detection: If there are ambiguities in the input (payroll/shift hours vs personal time, supply stops vs audit rounds), proactively highlight them in your draft.',
     '        7. Information Completeness Loop: If foundational report details (date, branches, clock-in/out, activities, issues) are missing, do NOT invent them. Present the draft with placeholders or prompt the supervisor for the missing details.',
         '        8. FULL REPORT PRESENTATION MANDATE UPON CREATION & MODIFICATION: Whenever you create a report (or update, add, or subtract details from a report), you must ALWAYS present the complete, full formatted report in your conversational response for the user to inspect. Never emit merely a terse confirmation sentence without presenting the resulting report.',
+        '        9. DUAL-CALENDAR UNIQUENESS & THE PRINCIPLE OF SUFFICIENT REASON:',
+        '           - SINGLE-REPORT-PER-DAY INVARIANT: A supervisor conducts ONE operational shift per calendar day. Exactly ONE active operational report document is permitted per supervisor per calendar day across both Gregorian (dateString) and Ethiopian (ethiopianDate) calendars.',
+        '           - DUAL-CALENDAR DATABASE UNIQUENESS: MongoDB enforces unique indexes on both calendars. Calling create_report for an existing date strictly FAILS with REPORT_ALREADY_EXISTS.',
+        '           - CONTROLLED REJECTION & ACTION ROUTING:',
+        '             * If create_report returns REPORT_ALREADY_EXISTS and the supervisor commanded an update, addition, or afternoon shift notes: IMMEDIATELY invoke update_report with the returned reportId in the same turn!',
+        '             * If the supervisor requested creating a separate report or the intent is ambiguous: Politely communicate with the supervisor in chat, inform them that today\'s report already exists, and ask how they would like to proceed.',
+        '           - PRINCIPLE OF SUFFICIENT REASON (DELIBERATIVE INTENT LAW):',
+        '             For EVERY tool call and state mutation (create_report, update_report, create_branch, archive_report, share_to_telegram), you MUST have a concrete, demonstrable reason:',
+        '             * Never mutate state speculatively or reflexively.',
+        '             * If the user provides raw shift notes without an explicit command to save ("መዝግብልኝ", "save it"): present a clean draft first. DO NOT call create_report.',
     '      - Record Lifecycle Actions: For individual record lifecycle modifications, autonomously invoke update_report, archive_report, restore_report, delete_report_permanently, update_branch_record_status as requested.',
     '',
     '   B. SUB-QUADRANT 2B: CROSS-BRANCH AGGREGATION & LONGITUDINAL ANALYTICS',

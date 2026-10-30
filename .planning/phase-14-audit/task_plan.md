@@ -265,16 +265,33 @@ Retrieved directly from Phase 11B (`COMPLETE_REMAINING_ARCHITECTURE_AND_IMPLEMEN
 - Seamless Integration: Embedded in `ReportCard.jsx` (CardActions) and `reportColumns.jsx` (DataGrid actions column).
 - Zero Chat Contention: Leaves chat routes, agent message share action, and Live STT 100% untouched.
 
-### Task 14.17: Cross-Platform Self-Healing FFmpeg & FFprobe Binary Resolution (Render Linux & Local Windows Fix) [PLANNING - AWAITING USER APPROVAL]
+### Task 14.17: Cross-Platform Self-Healing FFmpeg & FFprobe Binary Resolution (Render Linux & Local Windows Fix) [COMPLETE & VERIFIED]
 - Root Cause: `backend/src/config/env.js` hardcoded `'C:/ffmpeg/ffmpeg'` as fallback when `FFMPEG_PATH` is unset. On Render (Linux), `audioChunker.js` logical OR chain evaluated `'C:/ffmpeg/ffmpeg'` as truthy, bypassing `@ffmpeg-installer/ffmpeg` and attempting to spawn a phantom Windows path, failing with `ENOENT` on audio slicing and breaking Addis AI merged chunk transcription.
 - Clean Environment Fallback: Remove Windows path defaults in `env.js`, defaulting unset env vars to empty string `''`.
 - Dynamic Filesystem Verification: In `audioChunker.js`, implement `resolveBinaryPath(binaryName, configuredPath, installerPath)` that verifies `fs.existsSync()` before trusting any path. If configured path is non-existent, it automatically falls back to the bundled `@ffmpeg-installer` platform static binary, verifies `0755` executable permissions on Linux, and falls back to system PATH binary.
-- Verification: Create dedicated test `testFfmpegResolution.js` asserting probe and slice execution when `FFMPEG_PATH` is invalid, non-existent, or unset.
+- Verification: Created dedicated test `testFfmpegResolution.js` asserting probe and slice execution (9/9 passed). Committed in `b26391f`.
 
-### Task 14.18: 100% Guaranteed Bulletproof Viewport Height Across All Mobile Devices [PLANNING - AWAITING USER APPROVAL]
+### Task 14.18: 100% Guaranteed Bulletproof Viewport Height Across All Mobile Devices [COMPLETE & VERIFIED]
 - Root Cause: On Phone B (custom OEM browsers like Samsung Internet/Xiaomi or in-app WebViews), `100dvh` either defaults to `100lvh` because `body` has `overflow: hidden` (preventing document scroll), or fails to update when the software keyboard opens. Furthermore, `AppTheme.jsx` pinned `html`, `body`, and `#root` to `height: 100%` (ICB `100lvh`), creating an architectural contradiction with child `AppShell` (`100dvh`), resulting in bottom element clipping.
 - Tier 1 (Zero-FOUC First Paint): Inline `<script>` in `client/index.html` calculating `window.visualViewport.height || window.innerHeight` and assigning `--app-height` before first paint.
 - Tier 2 (Continuous Reactive Lifecycle): `useViewportHeight.js` hook listening to `visualViewport.resize`, `visualViewport.scroll`, and `window.orientationchange`, updating `--app-height` and tracking virtual keyboard expansion without lag.
-- Tier 3 (Cascading CSS Root & Shell Alignment): Standardize `AppTheme.jsx` (`html`, `body`, `#root`), `AppShell.jsx`, and `PublicLayout.jsx` on `height: var(--app-height, 100dvh)` with `position: fixed; inset: 0` on `html, body` to eliminate iOS rubber-banding and guarantee 0px clipping across 100% of mobile devices.
-- Verification: Headless and static analysis asserting `--app-height` binding, `AppTheme.jsx` styling, and zero lint/build regressions.
+- Tier 3 (Cascading CSS Root & Shell Alignment): Standardized `AppTheme.jsx` (`html`, `body`, `#root`), `AppShell.jsx`, and `PublicLayout.jsx` on `height: var(--app-height, 100dvh)` with `position: fixed; inset: 0` on `html, body` to eliminate iOS rubber-banding and guarantee 0px clipping across 100% of mobile devices.
+- Verification: Headless and static analysis asserting `--app-height` binding, `AppTheme.jsx` styling (`testViewportHeight.js` 6/6 passed, 0 lint errors, Vite build exit code 0). Committed in `b26391f`.
+
+### Task 14.19: Dual-Calendar Uniqueness (GC + Ethiopian), Controlled Tool Rejection & Principle of Sufficient Reason [COMPLETE & VERIFIED]
+- User Direction: Enforce uniqueness per day in both Gregorian Calendar (GC) and Ethiopian Calendar so that if the agent attempts to create a duplicate report, it fails deterministically at the database level. Upon failure, the tool provides the existing report's ID and summary, enabling the agent to either invoke `update_report` if the user's intent was to add/update, or ask the user how to proceed.
+- Pillar 1 (Database Dual-Calendar Uniqueness): In `Report.js`, store `dateString` (GC: YYYY-MM-DD) and `ethiopianDate` (Eth: DD-MM-YY) as stored, indexed fields. Enforce MongoDB partial unique compound indexes on `{ user: 1, dateString: 1 }` and `{ user: 1, ethiopianDate: 1 }` (`isArchived: false`).
+- Pillar 2 (Controlled Tool Rejection with Guidance): In `create_report` (`agentTools.js`) and `createReportRecord` (`reportController.js`), if an active report exists for that day in either calendar, reject creation with `REPORT_ALREADY_EXISTS`. Return the existing `reportId`, visit summary, and structured guidance so the agent can update or communicate with the supervisor without guessing.
+- Pillar 3 (Flexible Date Resolution in `update_report`): Allow `update_report` to resolve the target report by `date` (or default to current system date) if `reportId` is omitted.
+- Pillar 4 (Active Grounding & Sufficient Reason in `promptAssembler.js`): Query today's report during assembly and inject `<today_report id="...">` into Block 5 with explicit instructions to use `update_report`. Enforce the Principle of Sufficient Reason across ALL agent operations.
+- Verification: Created dedicated test `testPhase14CSingleReportPerDay.js` asserting dual-calendar uniqueness rejection, update fallback, and active prompt injection (7/7 tests passed).
+
+### Task 14.20: Chat Scroll-to-Bottom Affordance Solid Paper Background & Elevated FAB Styling [COMPLETE & VERIFIED]
+- Root Cause: In `inputs.js` (lines 270 & 281), `MuiIconButton` styleOverrides specifies `backgroundColor: alpha(gray[50], 0.3)` in light and `alpha(gray[800], 0.3)` in dark mode. Because `@mui/x-chat`'s `ChatScrollToBottomAffordance` is styled as `styled(IconButton)`, it inherited the 30% alpha (semi-transparent) background, appearing see-through and washed out on top of chat messages.
+- Rectification:
+  * In `AppTheme.jsx`: Added `MuiChatScrollToBottomAffordance` style overrides setting solid `background.paper !important`, circular `borderRadius: '50% !important'`, `border: '1px solid divider !important'`, elevation shadow `theme.shadows[3]`, and hover shadow `theme.shadows[6]`.
+  * In `Chat.jsx` (`CHATBOX_SX`): Added `& .MuiChatScrollToBottomAffordance-root, & [class*="MuiChatScrollToBottomAffordance"]` with solid `background.paper !important`, `borderRadius: '50% !important'`, `border: '1px solid divider !important'`, and `boxShadow: 3`.
+- Verification: Component inspection, client build (`npm --prefix client run build`: code 0), and lint (`npm --prefix client run lint`: 0 errors, 0 warnings).
+
+
 

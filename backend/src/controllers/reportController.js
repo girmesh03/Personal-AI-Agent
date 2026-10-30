@@ -18,9 +18,10 @@ import { Audio } from '../models/Audio.js';
 import { User } from '../models/User.js';
 import { dispatchToTelegram } from '../services/telegramService.js';
 import { HTTP_STATUS, REPORT_CONSTANTS, AUDIO_CONSTANTS } from '../utils/constants.js';
-import { NotFoundError, BadRequestError } from '../errors/CustomError.js';
+import { NotFoundError, BadRequestError, ConflictError } from '../errors/CustomError.js';
 import { logger } from '../config/logger.js';
 import { getBilingualSearchTerms, escapeRegex } from '../utils/transliterate.js';
+import { toEthiopianDateString } from '../utils/ethiopianCalendar.js';
 import storageService from '../services/storageService.js';
 
 
@@ -58,6 +59,31 @@ export const createReportRecord = async ({ userId, payload, existingSession = nu
     let createdReport;
 
     const executeWork = async (sess) => {
+      // 0. Dual-Calendar Uniqueness Check: Prevent duplicate active reports for the same supervisor on the same day
+      const targetDate = new Date(date);
+      const targetDateString = targetDate.toISOString().split('T')[0];
+      const targetEthDate = toEthiopianDateString(targetDate);
+
+      const existingReport = await Report.findOne({
+        user: userId,
+        isArchived: false,
+        $or: [
+          { dateString: targetDateString },
+          { ethiopianDate: targetEthDate },
+        ],
+      })
+        .populate('visits.branch', 'name code')
+        .session(sess);
+
+      if (existingReport) {
+        const conflictErr = new ConflictError(
+          `An active operational report already exists for ${targetDateString} (Ethiopian: ${existingReport.ethiopianDate}) [Report ID: ${existingReport._id}]. A supervisor may only have one operational report per calendar day.`
+        );
+        conflictErr.code = 'REPORT_ALREADY_EXISTS';
+        conflictErr.existingReport = existingReport;
+        throw conflictErr;
+      }
+
       // 1. Verify that all referenced branches exist, belong to this supervisor, and are active
       const referencedBranchIds = visits.map((v) => String(v.branch));
       const uniqueBranchIds = [...new Set(referencedBranchIds)];
@@ -97,7 +123,9 @@ export const createReportRecord = async ({ userId, payload, existingSession = nu
         [
           {
             user: userId,
-            date: new Date(date),
+            date: targetDate,
+            dateString: targetDateString,
+            ethiopianDate: targetEthDate,
             clockIn,
             clockOut,
             visits,

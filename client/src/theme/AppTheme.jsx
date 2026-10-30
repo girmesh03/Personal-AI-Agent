@@ -108,6 +108,30 @@ export const AppTheme = ({ children }) => {
               },
             },
           },
+          MuiChatScrollToBottomAffordance: {
+            styleOverrides: {
+              root: ({ theme }) => ({
+                backgroundColor: `${(theme.vars || theme).palette.background.paper} !important`,
+                color: `${(theme.vars || theme).palette.text.primary} !important`,
+                borderRadius: '50% !important',
+                border: '1px solid !important',
+                borderColor: `${(theme.vars || theme).palette.divider} !important`,
+                boxShadow: `${theme.shadows[3]} !important`,
+                width: 40,
+                height: 40,
+                zIndex: 10,
+                '&:hover': {
+                  backgroundColor: `${(theme.vars || theme).palette.action.hover || (theme.vars || theme).palette.background.paper} !important`,
+                  boxShadow: `${theme.shadows[6]} !important`,
+                },
+                ...theme.applyStyles('dark', {
+                  backgroundColor: `${(theme.vars || theme).palette.background.paper} !important`,
+                  borderColor: `${(theme.vars || theme).palette.divider} !important`,
+                  boxShadow: `${theme.shadows[4]} !important`,
+                }),
+              }),
+            },
+          },
         },
       }),
     []

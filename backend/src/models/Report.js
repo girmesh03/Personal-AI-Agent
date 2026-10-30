@@ -178,6 +178,18 @@ const reportSchema = new mongoose.Schema(
       required: [true, 'Inspection date is required.'],
       index: true,
     },
+    dateString: {
+      type: String,
+      required: [true, 'Normalized Gregorian date string (YYYY-MM-DD) is required.'],
+      trim: true,
+      index: true,
+    },
+    ethiopianDate: {
+      type: String,
+      required: [true, 'Normalized Ethiopian date string (DD-MM-YY) is required.'],
+      trim: true,
+      index: true,
+    },
     clockIn: {
       type: String,
       required: [true, 'Work clock-in time is required.'],
@@ -256,15 +268,33 @@ const reportSchema = new mongoose.Schema(
 );
 
 /**
- * Derived virtual getter: ethiopianDate
- * Dynamically computes Ethiopian calendar date (DD-MM-YY) from Gregorian date.
- * @memberof reportSchema
- * @returns {string|null} Ethiopian date formatted as DD-MM-YY.
+ * Pre-validation hook:
+ * Automatically computes and populates dateString (YYYY-MM-DD) and ethiopianDate (DD-MM-YY)
+ * from the date field if not explicitly provided, guaranteeing consistent normalization.
  */
-reportSchema.virtual('ethiopianDate').get(function () {
-  if (!this.date) return null;
-  return toEthiopianDateString(this.date);
+reportSchema.pre('validate', function () {
+  if (this.date) {
+    if (!this.dateString) {
+      const d = new Date(this.date);
+      this.dateString = d.toISOString().split('T')[0];
+    }
+    if (!this.ethiopianDate) {
+      this.ethiopianDate = toEthiopianDateString(this.date);
+    }
+  }
 });
+
+// Partial compound unique index: Exactly ONE active report per supervisor per Gregorian date
+reportSchema.index(
+  { user: 1, dateString: 1 },
+  { unique: true, partialFilterExpression: { isArchived: false, dateString: { $type: 'string' } } }
+);
+
+// Partial compound unique index: Exactly ONE active report per supervisor per Ethiopian date
+reportSchema.index(
+  { user: 1, ethiopianDate: 1 },
+  { unique: true, partialFilterExpression: { isArchived: false, ethiopianDate: { $type: 'string' } } }
+);
 
 // Partial compound index for active reports ordered by date (primary query path)
 reportSchema.index(
