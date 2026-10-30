@@ -6,17 +6,20 @@
  * - Right Cluster: MuiSendButton (and in subsequent steps: Audio Recorder)
  */
 
-import { forwardRef } from 'react';
+import { forwardRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import MuiSendButton from './MuiSendButton.jsx';
 import MuiAttachButton from './MuiAttachButton.jsx';
 import MuiAudioRecorder from './MuiAudioRecorder.jsx';
+import MuiLiveSttButton from './MuiLiveSttButton.jsx';
 import MuiModelSelector from './MuiModelSelector.jsx';
 
 /**
  * MuiComposerBottomToolbar component.
  */
 export const MuiComposerBottomToolbar = forwardRef((props, ref) => {
+  const [isLiveSttActive, setIsLiveSttActive] = useState(false);
+
   return (
     <Box
       ref={ref}
@@ -30,14 +33,20 @@ export const MuiComposerBottomToolbar = forwardRef((props, ref) => {
       }}
     >
       {/* Left Cluster: Attachments & Inference Settings */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
         <MuiAttachButton disabled={props?.disabled} />
         <MuiModelSelector disabled={props?.disabled} />
       </Box>
 
-      {/* Right Cluster: Audio Dictation & Send / Stop Actions */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-        <MuiAudioRecorder disabled={props?.disabled} />
+      {/* Right Cluster: Audio Dictation, Live STT & Send / Stop Actions */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+        <Box sx={{ display: isLiveSttActive ? 'none' : 'inline-flex' }}>
+          <MuiAudioRecorder disabled={props?.disabled} />
+        </Box>
+        <MuiLiveSttButton
+          disabled={props?.disabled}
+          onActiveChange={setIsLiveSttActive}
+        />
         <MuiSendButton disabled={props?.disabled} />
       </Box>
     </Box>

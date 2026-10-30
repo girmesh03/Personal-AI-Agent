@@ -182,5 +182,121 @@
   3. *Font Family Fallback Chain*: Update `TELEGRAM_CONSTANTS.IMAGE_CARD.FONT_FAMILY` to `'"Noto Sans Ethiopic", "Noto Sans", "Inter", "DejaVu Sans", "Segoe UI", Arial, sans-serif'`.
   4. *Installer Synchronization*: Update `installFonts.js` to deploy all `.ttf` files to user font cache.
 
+### 1.27 Missing Real-Time Streaming Speech-to-Text (STT) for Low-Resource Languages in Composer
+- **Location**: `client/src/components/chat/MuiComposerBottomToolbar.jsx`, `client/src/components/chat/MuiAudioRecorder.jsx`
+- **Root Cause**:
+  1. The existing voice dictation button in the composer operates strictly via batch audio recording: recording full audio, stopping, uploading the binary via HTTP, and awaiting a non-streaming transcription.
+  2. For low-resource languages (Amharic, Afan Oromo), browser Web Speech API (`webkitSpeechRecognition`) has no reliable support, requiring Addis AI Scribe Realtime Audio Streaming over WebSockets.
+  3. No reusable frontend STT component existed to stream microphone PCM16 chunks live to Addis AI.
+- **Resolution**:
+  1. Create a secure ticket generator endpoint `POST /api/v1/chat/scribe-session` on the backend.
+  2. Implement a reusable `useAddisLiveStt` hook that captures mic audio, downsamples to 16 kHz Mono PCM16, connects to the Addis AI WebSocket, and receives real-time `transcript.partial` and `transcript.completed` frames.
+  3. Create a decoupled, reusable `MuiLiveSttButton` component and mount it in the composer's right cluster next to the microphone.
+
+### 1.28 Telegram Message Action Button Posts Conversational AI Chatter Instead of Actual Operational Content
+- **Location**: `client/src/components/chat/MuiAgentMessageBottomBar.jsx:118-126`, `backend/src/controllers/chatController.js:2007-2067`
+- **Root Cause**:
+  1. In `MuiAgentMessage.jsx`, the "Share to Telegram" button in `MuiAgentMessageBottomBar` receives `fullText`, which includes the conversational response of the model (e.g., *"I have processed your audio and created the operational report for Bole branch..."*).
+  2. When dispatching to operational or management channels, this sends conversational AI chatter instead of the actual operational artifact (the structured report with Ethiopian date, shift times, visits, activities, issues, and comments) or the pure transcription.
+  3. Furthermore, `shareToTelegramDirect` on the backend previously ignored the user's saved `imageCardOptions` and did not accept a `reportId`.
+- **Resolution**:
+  1. Implement smart payload resolver (`resolveActualSharePayload`) in `MuiAgentMessage` to extract structured report fields (or reportId) and pure transcriptions, discarding conversational chatter.
+  2. Populate the Telegram popover with the user's configured `defaultFormat` (`text` vs `image`) while supporting dynamic on-the-fly toggling.
+  3. Upgrade `shareToTelegramDirect` on the backend to support `reportId`, render canonical reports via `formatReportForTelegram`, and inherit user profile `imageCardOptions`.
+
+### 1.29 Addis AI Scribe Live Session HTTP 422 Rejected & `fetch failed` Error Masking
+- **Location**: `backend/src/controllers/chatController.js:2043-2077`
+- **Root Cause**:
+  1. Addis AI's upstream `POST https://api.addisassistant.com/api/v1/scribe/sessions` endpoint strictly enforces `{ backend: 'turbo', chunk: '320ms', request_id: string }`.
+  2. Omitting `request_id` caused the upstream server to return HTTP 422 `{"error":{"code":"INVALID_REQUEST","message":"Provide backend, chunk and request_id."},"status":422}`.
+  3. The controller looped to a second fallback endpoint `https://api.addisai.ch/api/v1/scribe/sessions`.
+  4. The domain `api.addisai.ch` does not exist (`ENOTFOUND`), throwing a Node.js `TypeError: fetch failed` which overwrote the 422 response and caused the frontend toast to display "Addis AI Scribe connection error: fetch failed".
+- **Resolution**:
+  1. Add `request_id: crypto.randomUUID()` to the request payload to `https://api.addisassistant.com/api/v1/scribe/sessions`.
+  2. Remove the non-existent `api.addisai.ch` endpoint to eliminate false DNS error masking.
+  3. Return `data.token` as `ticket` and `token` for client WebSocket authentication.
+
+### 1.30 Greedy Report Regex Captures Trailing Divider and AI Conversational Closing Questions
+- **Location**: `client/src/utils/telegramPayloadResolver.js:80-85`, `backend/src/controllers/chatController.js:2154`
+- **Root Cause**:
+  1. The regex `/(?:ቀን|Date):[\s\S]+/` in `telegramPayloadResolver.js` matched from the report header to the end of the string, capturing horizontal dividers (`---`) and closing conversational questions like `ይህንን ሪፖርት አዘጋጅቼዋለሁ። ሌላ የሚጨምሩት ወይም የሚያስተካክሉት ነገር አለ?`.
+  2. `backend/src/controllers/chatController.js` preferred incoming `payloadText` over the database `Report` document when `payloadText` was non-empty, causing the un-sanitized turn text to be rasterized onto the image card.
+- **Resolution**:
+  1. In `telegramPayloadResolver.js`, sever text at markdown dividers (`---`, `***`) and terminate reports at the `ከስራ የወጣሁበት ሰዓት: [time]` boundary.
+  2. Add regex filters to proactively strip trailing conversational questions in Amharic and English.
+  3. In `chatController.js`, prioritize generating canonical reports from the Mongoose `Report` document whenever `reportId` is provided, and sanitize raw text dispatches.
+
+### 1.31 Live STT Recording HUD Overflows Composer Toolbar on Mobile Viewports
+- **Location**: `client/src/components/chat/MuiLiveSttButton.jsx:130-220`, `client/src/components/chat/MuiComposerBottomToolbar.jsx:20-46`
+- **Root Cause**:
+  1. `MuiLiveSttButton` renders a full-width inline HUD with padding `px: 1`, a pulsing indicator, a verbose `"Connecting..."` label, a monospace duration timer, and two action buttons.
+  2. On small screens (`xs` < 400px), the left cluster (`Attach` + `ModelSelector`) and right cluster (`Mic` + `LiveStt` + `Send`) exceed the available width of the composer, causing the HUD to overflow the composer's right border and clip the cancel button.
+- **Resolution**:
+  1. Apply responsive width constraints to `MuiLiveSttButton`: `maxWidth: { xs: 125, sm: 200 }`, `minWidth: 0`, and render a compact mobile connecting state (spinner only or abbreviated label).
+  2. In `MuiComposerBottomToolbar.jsx`, adaptively collapse the batch audio recorder button (`MuiAudioRecorder`) on `xs` while Live STT is active or connecting.
+
+### 1.32 Free-Form Text & Transcription Dependency in Telegram Report Dispatch
+- **Location**: `client/src/utils/telegramPayloadResolver.js`, `backend/src/controllers/chatController.js:2150-2195`
+- **Root Cause**:
+  1. Relying on parsing assistant conversational strings or transcriptions with regex is fragile and prone to leaking AI greetings, conversational commentary, and markdown rules.
+  2. At the core, an operational report is a structured database object with schema `[date, branch, name, clockIn, visits, activities, issues, comments, clockOut]`.
+  3. The number of branch visits (`visits.length`) determines whether a Single-Branch template or Multi-Branch itinerary template is required.
+- **Resolution**:
+  1. Create a deterministic report object-to-template compiler (`compileReportTelegramPayload`) shared across frontend and backend.
+  2. Select the template dynamically based on `visits.length`: singular `ብራንች: [Name]` when `visits.length <= 1`, and plural `ብራንቾች: [Joined]` with detailed `• ከ [In] እስከ [Out] [Branch]` breakdown when `visits.length > 1`.
+  3. Interpolate custom user templates directly from object fields.
+  4. Ensure zero conversational text or trailing commentary can ever enter the Telegram broadcast.
+
+### 1.33 In-Composer Live STT Coordination & Exact Visual Twin with Mic Preservation
+- **Location**: `client/src/components/chat/MuiComposerBottomToolbar.jsx`, `client/src/components/chat/MuiLiveSttButton.jsx`
+- **Root Cause**:
+  1. The microphone (`MuiAudioRecorder`) has dedicated recording, caching, and retry functionality that must be preserved without modification.
+  2. In idle state, BOTH the mic and Live STT button must be visible side-by-side in the bottom toolbar.
+  3. When Live STT is activated, the mic button must be hidden (`display: 'none'`) to provide ample horizontal space, and Live STT must render using the **exact same UI twin as the mic** (identical container box, timer, acoustic visualizer bars, pulsing red dot, discard button, and checkmark finish button).
+- **Resolution**:
+  1. Preserve `MuiAudioRecorder` untouched.
+  2. Manage `isLiveSttActive` in `MuiComposerBottomToolbar.jsx`: hide `MuiAudioRecorder` when Live STT is active.
+  3. Implement `MuiLiveSttButton` with an idle icon button and an active recording HUD that is the exact visual twin of `MuiAudioRecorder`.
+
+### 1.34 Missing Latin / English Characters in SVG Image Cards on Headless Linux (Render / Docker / Vercel)
+- **Location**: `backend/src/services/telegramService.js:43-85`
+- **Root Cause**:
+  1. `getEmbeddedFontDefs()` only embedded `NotoSansEthiopic-Regular.woff` and `NotoSansEthiopic-Bold.woff` in SVG `<defs><style>`.
+  2. `NotoSansEthiopic` does not contain Latin glyphs or symbols.
+  3. On Linux Docker containers (Render / Vercel), system Latin fonts (Arial, Segoe UI) do not exist.
+  4. When `sharp` (via librsvg) renders SVG to PNG, English words (e.g. `(Awash Bank)`), numbers, punctuation, and slashes fail to resolve and render as missing glyphs/tofu boxes.
+- **Resolution**:
+  1. In `getEmbeddedFontDefs()`, embed base64 font definitions for BOTH `Noto Sans Ethiopic` AND `Inter` (`Inter-Regular.ttf` and `Inter-Bold.ttf`).
+  2. Set SVG text fallback: `font-family="'Noto Sans Ethiopic', 'Inter', sans-serif"`.
+  3. Guarantees 100% self-contained bilingual rendering on Render, Vercel, and local machines.
+
+### 1.35 Web Audio API Deprecations in Live STT Pipeline (`createScriptProcessor`, `onaudioprocess`, `inputBuffer`, `webkitAudioContext`)
+- **Location**: `client/src/hooks/useAddisLiveStt.js`
+- **Root Cause**:
+  1. `createScriptProcessor`, `onaudioprocess`, and `e.inputBuffer` are deprecated in the W3C Web Audio API specification.
+  2. Main-thread processing causes UI contention and typing lag.
+  3. `webkitAudioContext` generates TypeScript interface warnings on `Window & typeof globalThis`.
+- **Resolution**:
+  1. Migrate to modern `AudioWorkletNode` using an inline `PcmCaptureProcessor` worker script.
+  2. Buffer 4,096 samples on a background audio rendering thread.
+  3. Convert Float32 to 16 kHz Mono Signed 16-bit PCM (PCM16 Little Endian) using `DataView.setInt16`.
+  4. Standardize on `window.AudioContext || window['webkitAudioContext']` (0 deprecations, 0 warnings).
+
+### 1.36 Fragile Intro/Outro Guessing & Desynchronized ToolParts in Telegram Report Resolution
+- **Location**: `client/src/components/chat/MuiAgentMessage.jsx:278`, `client/src/utils/telegramPayloadResolver.js`, `backend/src/utils/reportTemplateCompiler.js`
+- **Root Cause**:
+  1. In `MuiAgentMessage.jsx:278`, `toolParts={message?.toolParts || message?.toolCalls || []}` was passed instead of the memoized `toolParts` variable from line 57 (`parts.filter(p => p.type === 'tool' || p.type === 'dynamic-tool')`). The `@mui/x-chat-headless` `message` object has `parts`, not root `toolParts`. This resulted in `toolParts: []` 100% of the time.
+  2. In `telegramPayloadResolver.js`, tool inspection checked `p.name` instead of `p.toolInvocation?.toolName`, preventing `create_report` detection.
+  3. For unpersisted report drafts (where `create_report` hasn't run yet), relying on negative-filtering regex to strip intros ("ሰላም...") and outros ("ይገምግሙና...") is fundamentally flawed because natural language generation is arbitrary and cannot be estimated or blacklisted.
+- **Resolution**:
+  1. Connect `toolParts={toolParts}` in `MuiAgentMessage.jsx` and unpack `p?.toolInvocation || p` in `telegramPayloadResolver.js`.
+  2. Completely eliminate intro/outro guessing. Implement pure positive schema-field extraction (`extractReportFields`): parse ONLY `[date, branch, name, clockIn, visits, activities, issues, comments, clockOut]` into the typed Report object.
+  3. Feed the extracted object into `compileReportTelegramPayload`, guaranteeing that all surrounding text outside the schema is 100% ignored.
+  4. Enforce dual-tier backend compilation in `shareToTelegramDirect` (MongoDB document when `reportId` is present, `extractReportFields` fallback when report text is provided).
+
+
+
+
+
 
 

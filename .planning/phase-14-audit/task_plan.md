@@ -115,7 +115,42 @@ Retrieved directly from Phase 11B (`COMPLETE_REMAINING_ARCHITECTURE_AND_IMPLEMEN
   * Configure explicit Fontconfig fallback aliases (`Noto Sans Ethiopic` -> `Noto Sans` -> `Inter` -> `DejaVu Sans`).
   * Update `FONT_FAMILY` in `constants.js` to full bilingual chain (`"Noto Sans Ethiopic", "Noto Sans", "Inter", sans-serif`).
   * Verify rasterization of mixed Amharic + English (`Awash Bank`) + ASCII punctuation (`/`, `()`).
-- **Acceptance Criteria**: AC-1 through AC-55 addressed.
+- **Phase 14C Defect Battery - Point 17: Modular Live Speech-to-Text (STT) Powered by Addis AI Scribe Realtime Audio Streaming** [COMPLETE & VERIFIED]:
+  * Implement backend Scribe ticket generation endpoint `POST /api/v1/chat/scribe-session` with key security isolation.
+  * Create reusable `useAddisLiveStt` hook managing Web Audio API 16 kHz Mono PCM16 downsampling and WebSocket streaming.
+  * Create modular `MuiLiveSttButton` component with idle, connecting, and active pulsing wave states.
+  * Mount `MuiLiveSttButton` into `MuiComposerBottomToolbar` right cluster next to the microphone.
+- **Phase 14C Defect Battery - Point 18: Contextual Telegram Sharing of Actual Operational Artifacts (Reports & Transcriptions)** [COMPLETE & VERIFIED]:
+  * Implement smart payload resolver (`resolveActualSharePayload`) in `client/src/utils/telegramPayloadResolver.js` used by `MuiAgentMessageBottomBar` to extract pure structured report / transcription content, omitting conversational chat preamble.
+  * Align Telegram popover default format with `user.integrations.telegram.defaultFormat` and support dynamic on-the-fly override.
+  * Update `shareToTelegramDirect` endpoint to support `reportId`, format canonical Ethiopian reports, and inherit profile `imageCardOptions`.
+- **Phase 14C.2 Defect Battery - Point 19: Addis AI Scribe Live Session Request Schema & Single-Endpoint Integrity** [PLANNING - AWAITING USER APPROVAL]:
+  * Provide mandatory `request_id: crypto.randomUUID()` to `https://api.addisassistant.com/api/v1/scribe/sessions`.
+  * Eliminate non-existent fallback `api.addisai.ch` that caused spurious `ENOTFOUND fetch failed` error masking.
+  * Correctly serialize returned `data.token` to `{ ticket, token, websocketUrl, expiresIn }`.
+- **Phase 14C.2 Defect Battery - Point 20: Exhaustive Operational Report Boundary Truncation & Conversational AI Outro Severance** [PLANNING - AWAITING USER APPROVAL]:
+  * Sever all content after horizontal rules (`---`, `***`, `___`) and trailing conversational outro text (`ይህንን ሪፖርት...`, `Hope this helps...`).
+  * Terminate operational reports cleanly at the `ከስራ የወጣሁበት ሰዓት: [time]` boundary.
+  * Prioritize constructing canonical reports from Mongoose `Report` document in `chatController.js` when `reportId` is provided.
+- **Phase 14C.2 Defect Battery - Point 21: Mobile Responsive HUD Layout & Adaptive Toolbar Coordination for Live STT** [PLANNING - AWAITING USER APPROVAL]:
+  * Constrain `MuiLiveSttButton` with `maxWidth: { xs: 125, sm: 200 }`, `minWidth: 0`, and compact mobile connecting indicator.
+  * Adaptively collapse batch audio recorder icon (`MuiAudioRecorder`) on mobile (`xs`) while live STT is actively listening/connecting.
+  * Prevent container overflow across all breakpoints (`xs`, `sm`, `md`).
+- **Phase 14C.3 Defect Battery - Point 22: Deterministic Report Object-to-Template Compiler (Visits-Driven Template Synthesis)** [PLANNING - AWAITING USER APPROVAL]:
+  * Compile Telegram reports directly from the Report Object `[date, branch, name, clockIn, visits, activities, issues, comments, clockOut]` rather than depending on raw transcription or assistant chat text.
+  * Select Single-Branch vs Multi-Branch template dynamically based on `visits.length`: singular `ብራንች: [Name]` for `<= 1` visit, and plural `ብራንቾች: [List]` with exact `• ከ [In] እስከ [Out] [Branch]` itinerary for `> 1` visits.
+  * Interpolate custom user template placeholders `{{date}}`, `{{branch}}`, `{{name}}`, `{{clockIn}}`, `{{visits}}`, `{{activities}}`, `{{issues}}`, `{{comments}}`, `{{clockOut}}` directly from object fields.
+  * Eliminate any possibility of conversational bot chatter or horizontal rules leaking into Telegram cards.
+- **Phase 14C.3 Defect Battery - Point 23: In-Place Live STT Substitution for Microphone & Unified Zero-Collision Voice Controls** [PLANNING - AWAITING USER APPROVAL]:
+  * Position `MuiLiveSttButton` directly in place of the microphone button in `MuiComposerBottomToolbar`, eliminating audio button redundancy.
+  * Keep the right toolbar cluster lean: `[MuiLiveSttButton] [MuiSendButton]`.
+  * Morph in-place into the active recording HUD on click with zero horizontal overflow across all device breakpoints (`xs`, `sm`, `md`, `lg`).
+- **Phase 14C.4 Defect Battery - Point 24: Modern W3C Web Audio API Architecture (Zero Deprecations & AudioWorklet Migration)** [PLANNING - AWAITING USER APPROVAL]:
+  * Eliminate deprecated `createScriptProcessor`, `onaudioprocess`, and `inputBuffer` by migrating to a dedicated `AudioWorkletNode` (`PcmCaptureProcessor`).
+  * Process and buffer audio samples off the main thread, guaranteeing zero UI frame drops or typing lag.
+  * Eliminate TypeScript compilation warning for `webkitAudioContext` on `Window & typeof globalThis`.
+- **Acceptance Criteria**: AC-1 through AC-86 addressed (AC-1 to AC-65 complete; AC-66 to AC-86 in Phase 14C.2/14C.3/14C.4 planning).
+
 
 
 ## Implementation Roadmap (Stage C - Sequential Execution Plan)
@@ -200,3 +235,33 @@ Retrieved directly from Phase 11B (`COMPLETE_REMAINING_ARCHITECTURE_AND_IMPLEMEN
   5. Google SSO button loading and error recovery.
   6. Real-time status tracking SSE frame delivery.
   7. Plain English error notice presentation.
+
+### Task 14.13: Dedicated Addis AI Scribe STT Subsystem (`/api/v1/stt`) [COMPLETE & VERIFIED]
+- Create independent `backend/src/routes/sttRoutes.js` and `backend/src/controllers/sttController.js` mounted at `/api/v1/stt`.
+- Endpoint `POST /api/v1/stt/scribe-session`: Authenticated, validates user's Addis AI API key, generates `request_id = randomUUID()`, calls `https://api.addisassistant.com/api/v1/scribe/sessions` with `{ backend: 'turbo', chunk: '320ms', request_id: requestId, language: 'am' }`, returns single-use connection ticket and WebSocket URL.
+- Decouples STT from chat routes so any component (composer, search modals, forms) can invoke it.
+
+### Task 14.14: In-Composer Live STT Coordination & Exact Visual Twin with Mic Preservation [COMPLETE & VERIFIED]
+- Strictly preserve `MuiAudioRecorder` and its functionality: never touch or break the microphone!
+- In idle state, render BOTH `MuiAudioRecorder` and `MuiLiveSttButton` side-by-side in `MuiComposerBottomToolbar.jsx`.
+- When `MuiLiveSttButton` is clicked:
+  * Hide `MuiAudioRecorder` (`display: 'none'`).
+  * Render `MuiLiveSttButton` as the **exact visual twin of `MuiAudioRecorder`**: matching container box, monospace timer, audio visualizer bars, pulsing red dot, discard button (`DeleteOutlineIcon`), and checkmark finish button (`CheckIcon`).
+  * Live transcripts stream directly into composer input.
+  * When completed or discarded, the HUD closes, and the microphone button reappears!
+
+### Task 14.15: Modern W3C Web Audio API AudioWorklet Pipeline (Zero Deprecations) [COMPLETE & VERIFIED]
+- Eliminate deprecated `createScriptProcessor`, `onaudioprocess`, and `inputBuffer`.
+- Create `AudioWorkletProcessor` (`PcmCaptureProcessor`) via Blob URL running on background audio thread.
+- Buffer 4,096 samples and transfer to main thread. Convert Float32 to 16 kHz Mono Signed 16-bit PCM (PCM16 Little Endian) using `DataView.setInt16`.
+- Calculate real-time RMS `audioLevel` to animate frequency visualizer bars.
+- Standardize on `window.AudioContext || window['webkitAudioContext']` with 0 deprecations and 0 TypeScript warnings.
+
+### Task 14.16: Deterministic Report Object-to-Template Compiler & Outro Severance [REVERTED - AWAITING USER TELEGRAM SPECIFICATION]
+- Reverted all Telegram template compilation code per explicit user directive.
+
+### Task 14.17: Telegram Image Card Bilingual Font Rendering (Render & Vercel Fix) [REVERTED - AWAITING USER TELEGRAM SPECIFICATION]
+- Reverted all Telegram SVG image card changes per explicit user directive.
+
+### Task 14.18: Pure Whitelist Schema Extraction, ToolParts Invariant, & Zero Intro/Outro Dependency [REVERTED - AWAITING USER TELEGRAM SPECIFICATION]
+- Reverted all Telegram payload resolver code per explicit user directive.
