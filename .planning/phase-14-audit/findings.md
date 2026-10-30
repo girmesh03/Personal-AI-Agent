@@ -294,6 +294,38 @@
   3. Feed the extracted object into `compileReportTelegramPayload`, guaranteeing that all surrounding text outside the schema is 100% ignored.
   4. Enforce dual-tier backend compilation in `shareToTelegramDirect` (MongoDB document when `reportId` is present, `extractReportFields` fallback when report text is provided).
 
+### 1.37 Samsung One UI Chrome Custom Tab (CCT) Fallback & Viewport Height Contradiction
+- **Location**: `client/public/manifest.json`, `client/index.html`, `client/src/theme/AppTheme.jsx`, `client/src/layouts/AppShell.jsx`
+- **Root Cause**:
+  1. Lack of W3C Web App Manifest (`manifest.json`), service worker, and high-resolution PNG icons prevented Chromium on Samsung One UI from minting a native WebAPK.
+  2. Adding to the home screen created a bookmark web shortcut that opened inside a Chrome Custom Tab with an uncollapsible 56px white header.
+  3. Chromium evaluated `100dvh` as `100lvh` without deducting the CCT header, pushing the page down 56px and cutting off bottom elements.
+  4. Setting `position: fixed; inset: 0` in `AppTheme.jsx` exacerbated the issue by locking layout boxes into an unadjusted bounding box.
+- **Resolution**:
+  1. Provide complete W3C manifest (`display: "standalone"`), multi-resolution PNG icons (`192x192`, `512x512`, maskable `512x512`, `apple-touch-icon.png`), and Service Worker (`sw.js`).
+  2. Remove `position: fixed; inset: 0` from `AppTheme.jsx`, restoring clean CSS baseline (`html, body { height: 100%; overflow: hidden }`).
+  3. Bind `AppShell.jsx` to clean `height: '100dvh'` with `@supports not (height: 100dvh): { height: '100vh' }`.
+  4. Fully verified on Samsung Galaxy M14 (`SM-M145F/DS`) and primary device.
+
+### 1.38 Dropped `before` Parameter in `chatSlice.js` Reverse Cursor Pagination
+- **Location**: `client/src/redux/features/chatSlice.js:221-226` vs `client/src/adapters/MuiChatAdapter.js:205`
+- **Root Cause**:
+  `MuiChatAdapter.js:205` calls `chatApi.endpoints.getChatById.initiate({ chatId, limit, before: cursor })`. However, in `chatSlice.js:222-225`, `getChatById` only forwarded `params: { limit }`, dropping `before`. The server received `before === undefined` and returned the same newest 5 turns. The deduplication guard in `MuiChatAdapter.js` filtered them out, rendering zero earlier messages. Additionally, 5 short messages on mobile don't overflow the viewport (`scrollHeight <= clientHeight`), preventing `@mui/x-chat` scroll triggers.
+- **Resolution**:
+  1. Forward `before` in `getChatById` params: `params: { limit, ...(before !== undefined && before !== null ? { before } : {}) }`.
+  2. Provide a clean top affordance / check when `hasMore` is true and messages don't overflow the viewport.
+
+### 1.39 Complete Lack of Pagination and Infinite Scroll in `MuiRecentChat.jsx`
+- **Location**: `client/src/components/chat/MuiRecentChat.jsx:63-67`
+- **Root Cause**:
+  `MuiRecentChat.jsx` calls `useGetChatsQuery(undefined)` once. It lacks any `page` state, any scroll listener on the `<Box sx={{ overflowY: 'auto' }}>` container, and any mechanism to trigger `page: 2`. Scrolling down stops after the first 20 chats (or 5 chats when tested with `RECENT_CHATS_PAGE_SIZE: 5`).
+- **Resolution**:
+  1. Add `serializeQueryArgs` and `merge` in `chatSlice.js` for `getChats` to append pages into cache with `_id` deduplication.
+  2. Add `page` state in `MuiRecentChat.jsx`, attach an `onScroll` handler listening to scroll bottom threshold, and fetch next pages reactively.
+  3. Bound page limits to centralized constant `CHAT_PAGINATION.RECENT_CHATS_PAGE_SIZE`.
+
+
+
 
 
 

@@ -12,6 +12,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import { useChatStatus } from '@mui/x-chat-headless';
 import { useGetChatByIdQuery } from '../../redux/features/chatSlice.js';
+import { CHAT_PAGINATION } from '../../utils/constants.js';
 
 /**
  * Universal empty state canvas presentation.
@@ -25,7 +26,7 @@ import { useGetChatByIdQuery } from '../../redux/features/chatSlice.js';
 export const MuiChatEmptyState = () => {
   const { chatId } = useParams();
   const { isLoading: isQueryLoading, isFetching: isQueryFetching } = useGetChatByIdQuery(
-    { chatId },
+    { chatId, limit: CHAT_PAGINATION.MESSAGES_PAGE_SIZE },
     { skip: !chatId }
   );
 

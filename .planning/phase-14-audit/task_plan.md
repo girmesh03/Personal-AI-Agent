@@ -7,7 +7,14 @@ Conduct an exhaustive, evidence-based audit of chat multimodal attachment handli
 - **Stage A: Audit, research, validation, and initial plan** -> `complete`
 - **Stage B: Incorporate user feedback & produce final aligned implementation plan** -> `complete`
 - **Phase 14B: Temporary Issue Rectification & Review Protocol** -> `active` (Governing all rectification work)
+- **Active Working Branch**: `phase-14-overall-application-audit` (strictly isolated from `main`; 0 commits, 0 merges on `main`)
 - **Stage C: Implementation of approved plan under established protocols** -> `paused` (Implementation freeze active pending Phase 14B protocol approvals)
+
+## Active Session Mandate & Branch Isolation Invariants
+- **Branch Confinement**: All work is strictly confined to `phase-14-overall-application-audit`. The `main` branch is strictly untouched.
+- **Zero Commits Law**: NEVER commit any code unless explicitly requested by the user.
+- **Zero Merge Law**: NEVER merge any branch unless explicitly requested by the user.
+- **Protocol Fidelity**: Every user issue/point must undergo First Principles reasoning, surgical appending to the master planning artifact, and user approval gate before implementation.
 
 ## Phase 14B Mandatory Temporary Protocol (Active Governance)
 Retrieved directly from Phase 11B (`COMPLETE_REMAINING_ARCHITECTURE_AND_IMPLEMENTATION_PLAN.md` Section 10.5):
@@ -304,7 +311,50 @@ Retrieved directly from Phase 11B (`COMPLETE_REMAINING_ARCHITECTURE_AND_IMPLEMEN
   * Reverted `position: fixed; inset: 0` on `html` and `body` in `client/src/theme/AppTheme.jsx`.
   * Realigned `client/src/layouts/AppShell.jsx` and `client/src/layouts/PublicLayout.jsx` with clean `height: '100dvh'` and `@supports not (height: 100dvh): { height: '100vh' }`.
   * Removed unused `useViewportHeight` hook and premature `<head>` height-lock script.
-- Verification: Headless automated suite `testViewportHeight.js` (7/7 passed), client ESLint (0 errors, 0 warnings), and client Vite production build (code 0).
+- Verification: Headless automated suite `testViewportHeight.js` (7/7 passed), client ESLint (0 errors, 0 warnings), and client Vite production build (code 0). Physical device verification by user on Samsung Galaxy M14 and primary phone: 100% verified and confirmed working.
+
+### Task 14.22: Overall Application Issue Intake & Audit Workspace Initialization [ACTIVE]
+- Purpose: Establish dedicated, isolated branch `phase-14-overall-application-audit` to address all incoming user-observed issues, questions, and points across the entire application.
+- Operational Invariants:
+  1. All work strictly on branch `phase-14-overall-application-audit`; never touch `main`.
+  2. Zero Commits Law: Never commit unless explicitly instructed by the user.
+  3. Zero Merges Law: Never merge unless explicitly instructed by the user.
+  4. Protocol Fidelity: Each issue is analyzed via First Principles, appended to the master planning artifact, and approved by the user before code changes.
+- Status: Branch checked out, planning records synchronized, awaiting user issues.
+
+### Task 14.23: Four-Layer Chat Growth Architecture, Pagination Centralization & Decoupled Context Integrity [COMPLETE & VERIFIED]
+- Goal: Rigorously decouple and optimize the 4 chat growth layers (LLM context assembly, MongoDB storage, API reverse pagination, and @mui/x-chat frontend rendering) without breaking existing chat operations.
+- Key Actions Implemented & Verified:
+  1. Centralized pagination governance: Bound `chatValidation.js`, `chatController.js`, `chatSlice.js`, `Chat.jsx`, and `MuiChatAdapter.js` to single source of truth in `constants.js` (enabling 1-line changes between 30 and 5 messages for testing).
+  2. Protected Decoupled Context Invariant: Verified and guaranteed that client UI pagination limits never constrain backend model streaming context (`buildGeminiHistory` accesses full conversation transcript).
+  3. Optimized historical attachment rehydration in `compileUserTurnParts` via cached `documentTextContext` short-circuit.
+  4. Added deduplication guard in `MuiChatAdapter.listMessages` ensuring zero duplicate keys during reverse pagination merges.
+  5. Built and executed comprehensive verification suite `backend/scripts/testPhase14DChatPaginationAndGrowth.js` (7/7 tests passed 100%).
+- Verification: Regression test suites `testPhase14CSingleReportPerDay.js` (7/7 passed), `testViewportHeight.js` (7/7 passed), client ESLint (0 errors, 0 warnings), and Vite production build (Code 0).
+- Microphone Invariant: `MuiAudioRecorder.jsx` 100% untouched.
+
+### Task 14.24: Reverse Cursor Pagination Fix (`before` Param Forwarding) & Sidebar Infinite Scroll Engine [COMPLETE & VERIFIED]
+- User Observation: With `MESSAGES_PAGE_SIZE: 5`, initial 5 messages load cleanly, but upward scroll does not load earlier messages. In the sidebar, scrolling down does not load older chats.
+- Root Cause 1 (Chat Canvas): `chatSlice.js:221-226` in `getChatById` defined `params: { limit }`, dropping `before`. The server received `before === undefined`, returned newest 5 turns, and deduplication filtered them out. Furthermore, on tall mobile viewports, small batches don't overflow the viewport (`scrollHeight <= clientHeight`), preventing `@mui/x-chat` scroll triggers.
+- Root Cause 2 (Sidebar Recent Chats): `MuiRecentChat.jsx:63` called `useGetChatsQuery(undefined)` once with zero scroll detection, zero page tracking, and zero mechanism to fetch Page 2.
+- Key Actions Implemented & Verified:
+  1. Forwarded `before` in `client/src/redux/features/chatSlice.js` (`getChatById: params: { limit, before }`).
+  2. Created `client/src/components/chat/MuiChatMessageListContent.jsx` providing an accessible `[ ↑ Load earlier messages ]` affordance with loading spinner whenever `hasMoreHistory` is true, ensuring users can paginate even when initial batches do not overflow the screen.
+  3. Upgraded `getChats` in `chatSlice.js` with `serializeQueryArgs` (isolated by query search/archived/pinned) and `merge` appending pages with `_id` deduplication.
+  4. Implemented reactive infinite scroll and bottom `[ Load older conversations ]` affordance in `client/src/components/chat/MuiRecentChat.jsx`.
+  5. Strictly eliminated all hardcoded numbers: bound all parameters across backend and frontend to centralized `CHAT_PAGINATION` in `constants.js`.
+- Verification:
+  - `backend/scripts/testPhase14DChatPaginationAndGrowth.js`: **10 / 10 PASSED (100%)**.
+  - `backend/scripts/testPhase14CSingleReportPerDay.js`: **7 / 7 PASSED (100%)**.
+  - `client/scripts/testViewportHeight.js`: **7 / 7 PASSED (100%)**.
+  - `npm --prefix client run lint`: **0 errors, 0 warnings (Exit code 0)**.
+  - `npm --prefix client run build`: **Vite production build succeeded in 20.66s (Exit code 0)**.
+  - Microphone Invariant: `MuiAudioRecorder.jsx` 100% untouched.
+  - Branch Confinement: Isolated on `phase-14-overall-application-audit`; 0 commits, 0 merges on `main`.
+
+
+
+
 
 
 

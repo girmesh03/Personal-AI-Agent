@@ -32,7 +32,9 @@ import {
   MuiComposerTopToolbar,
   MuiComposerBottomToolbar,
   MuiMessageContent,
+  MuiChatMessageListContent,
 } from '../components/chat/index.js';
+import { CHAT_PAGINATION } from '../utils/constants.js';
 import { toast } from 'react-toastify';
 import { ATTACHMENT_CONSTANTS } from '../utils/constants.js';
 
@@ -110,6 +112,9 @@ const SLOT_PROPS = Object.freeze({
     placeholder: 'Message your personal AI agent...',
   },
   messageList: {
+    slots: {
+      messageListContent: MuiChatMessageListContent,
+    },
     sx: {
       width: '100%',
       flexGrow: 1,
@@ -266,7 +271,10 @@ export const Chat = () => {
     data: chatData,
     error: chatError,
     isError: isChatError,
-  } = useGetChatByIdQuery({ chatId }, { skip: !chatId });
+  } = useGetChatByIdQuery(
+    { chatId, limit: CHAT_PAGINATION.MESSAGES_PAGE_SIZE },
+    { skip: !chatId }
+  );
 
   // Handle non-existent or inaccessible chat session (404 / 400)
   useEffect(() => {

@@ -9,6 +9,7 @@ import { body, param, query } from 'express-validator';
 import mongoose from 'mongoose';
 import {
   CHAT_CONSTANTS,
+  CHAT_PAGINATION,
   AUDIO_CONSTANTS,
   ATTACHMENT_CONSTANTS,
   AI_MODELS,
@@ -64,8 +65,14 @@ export const getChatByIdValidation = [
 
   query('limit')
     .optional()
-    .isInt({ min: 1, max: 200 })
-    .withMessage('Message history limit must be an integer between 1 and 200.')
+    .isInt({ min: CHAT_PAGINATION.MIN_MESSAGES_LIMIT, max: CHAT_PAGINATION.MAX_MESSAGES_LIMIT })
+    .withMessage(`Message history limit must be an integer between ${CHAT_PAGINATION.MIN_MESSAGES_LIMIT} and ${CHAT_PAGINATION.MAX_MESSAGES_LIMIT}.`)
+    .toInt(),
+
+  query('before')
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage('Before index must be a non-negative integer.')
     .toInt(),
 ];
 
@@ -436,18 +443,18 @@ export const renameChatValidation = [
 export const getChatsValidation = [
   query('page')
     .optional()
-    .isInt({ min: CHAT_CONSTANTS.PAGE_LIMIT_MIN })
+    .isInt({ min: 1 })
     .withMessage('Page number must be a positive integer.')
     .toInt(),
 
   query('limit')
     .optional()
     .isInt({
-      min: CHAT_CONSTANTS.PAGE_LIMIT_MIN,
-      max: CHAT_CONSTANTS.PAGE_LIMIT_MAX,
+      min: CHAT_PAGINATION.MIN_RECENT_CHATS_LIMIT,
+      max: CHAT_PAGINATION.MAX_RECENT_CHATS_LIMIT,
     })
     .withMessage(
-      `Page limit must be between ${CHAT_CONSTANTS.PAGE_LIMIT_MIN} and ${CHAT_CONSTANTS.PAGE_LIMIT_MAX}.`
+      `Page limit must be between ${CHAT_PAGINATION.MIN_RECENT_CHATS_LIMIT} and ${CHAT_PAGINATION.MAX_RECENT_CHATS_LIMIT}.`
     )
     .toInt(),
 

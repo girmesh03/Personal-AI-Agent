@@ -16,7 +16,7 @@ import { GoogleGenAI } from '@google/genai';
 import logger from '../config/logger.js';
 import { Chat } from '../models/Chat.js';
 import { Audio } from '../models/Audio.js';
-import { HTTP_STATUS, CHAT_CONSTANTS, ATTACHMENT_CONSTANTS, AUDIO_CONSTANTS, AI_MODELS, UPLOADS_CONFIG } from '../utils/constants.js';
+import { HTTP_STATUS, CHAT_CONSTANTS, CHAT_PAGINATION, ATTACHMENT_CONSTANTS, AUDIO_CONSTANTS, AI_MODELS, UPLOADS_CONFIG } from '../utils/constants.js';
 import { User } from '../models/User.js';
 import { NotFoundError, BadRequestError, UnauthenticatedError } from '../errors/CustomError.js';
 import { assembleSystemPrompt } from '../utils/promptAssembler.js';
@@ -134,7 +134,10 @@ export async function compileUserTurnParts(msg, { isHistorical = false } = {}) {
   }
 
   // 2. Document Text Context & Multimodal Inline Vision/PDF/Audio Parts
-  if (Array.isArray(msg.attachments) && msg.attachments.length > 0) {
+  if (isHistorical && msg.documentTextContext && typeof msg.documentTextContext === 'string' && msg.documentTextContext.trim()) {
+    // Optimization: Historical turns reuse the persisted document text context, short-circuiting expensive re-processing
+    textSections.push(`[Attached Document]:\n${msg.documentTextContext.trim()}`);
+  } else if (Array.isArray(msg.attachments) && msg.attachments.length > 0) {
     try {
       const attResult = await processAttachments(msg.attachments);
       if (attResult.textContext) {
@@ -1493,7 +1496,7 @@ export const streamChat = asyncHandler(async (req, res) => {
  */
 export const getChats = asyncHandler(async (req, res) => {
   const page = parseInt(req.query.page, 10) || 1;
-  const limit = parseInt(req.query.limit, 10) || CHAT_CONSTANTS.PAGE_LIMIT_DEFAULT;
+  const limit = parseInt(req.query.limit, 10) || CHAT_PAGINATION.DEFAULT_RECENT_CHATS_LIMIT;
   const isArchived = req.query.archived === 'true' || req.query.archived === true;
 
   const query = {
@@ -1545,7 +1548,7 @@ export const getChats = asyncHandler(async (req, res) => {
  * @access Private
  */
 export const getChatById = asyncHandler(async (req, res) => {
-  const limit = req.query.limit ? parseInt(req.query.limit, 10) : 30;
+  const limit = req.query.limit ? parseInt(req.query.limit, 10) : CHAT_PAGINATION.DEFAULT_MESSAGES_LIMIT;
   const beforeParam = req.query.before;
 
   const rawChat = await Chat.findOne({

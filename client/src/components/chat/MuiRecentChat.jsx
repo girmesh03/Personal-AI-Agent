@@ -5,7 +5,7 @@
  * and responsive presentation (full list vs. mini icon rail) with zero parent drawer coupling.
  */
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router';
 import { useSelector, useDispatch } from 'react-redux';
 import Box from '@mui/material/Box';
@@ -15,6 +15,7 @@ import ListItemButton from '@mui/material/ListItemButton';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
 import IconButton from '@mui/material/IconButton';
+import Button from '@mui/material/Button';
 import Tooltip from '@mui/material/Tooltip';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
@@ -41,7 +42,7 @@ import {
   setActiveChatId,
 } from '../../redux/features/chatSlice.js';
 import { MuiConfirmDialog } from '../reusable/MuiConfirmDialog.jsx';
-import { ROUTES } from '../../utils/constants.js';
+import { ROUTES, CHAT_PAGINATION } from '../../utils/constants.js';
 
 /**
  * Encapsulated Recent Chats component.
@@ -59,12 +60,42 @@ export const MuiRecentChat = ({ isMini = false, onMobileClose }) => {
   const user = useSelector(selectCurrentUser);
   const reduxActiveChatId = useSelector((state) => state.chat?.activeChatId);
 
-  // RTK Query: chat list query & lifecycle mutations (instant cache retrieval, no redundant refetch on drawer open)
-  const { data: chatData, isLoading: isLoadingChats } = useGetChatsQuery(undefined, {
-    skip: !user,
-    refetchOnMountOrArgChange: false,
-  });
+  const [page, setPage] = useState(1);
+
+  // RTK Query: paginated chat list query governed by centralized constant
+  const {
+    data: chatData,
+    isLoading: isLoadingChats,
+    isFetching: isFetchingChats,
+  } = useGetChatsQuery(
+    { page, limit: CHAT_PAGINATION.RECENT_CHATS_PAGE_SIZE },
+    {
+      skip: !user,
+      refetchOnMountOrArgChange: false,
+    }
+  );
   const chats = useMemo(() => chatData?.chats || [], [chatData?.chats]);
+  const hasNextPage = Boolean(chatData?.pagination?.hasNextPage);
+
+  // Infinite scroll trigger: when scrolling near bottom of drawer list, request next page
+  const handleListScroll = useCallback(
+    (e) => {
+      const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+      if (scrollHeight - scrollTop - clientHeight < 50) {
+        if (hasNextPage && !isFetchingChats) {
+          setPage((prev) => prev + 1);
+        }
+      }
+    },
+    [hasNextPage, isFetchingChats]
+  );
+
+  // Adjust state during render if new chat session requested via route state (React recommended pattern)
+  const [prevNewChatAt, setPrevNewChatAt] = useState(location.state?.newChatAt);
+  if (location.state?.newChatAt !== prevNewChatAt) {
+    setPrevNewChatAt(location.state?.newChatAt);
+    setPage(1);
+  }
 
   const [deleteChat, { isLoading: isDeletingChat }] = useDeleteChatMutation();
   const [pinChat] = usePinChatMutation();
@@ -113,6 +144,7 @@ export const MuiRecentChat = ({ isMini = false, onMobileClose }) => {
     const targetChat = activeMenuChat;
     handleChatMenuClose();
     try {
+      setPage(1);
       await pinChat(targetChat._id).unwrap();
     } catch (err) {
       console.error('[MuiRecentChat] Failed to pin chat:', err);
@@ -172,6 +204,7 @@ export const MuiRecentChat = ({ isMini = false, onMobileClose }) => {
     if (!activeMenuChat) return;
     const targetId = String(activeMenuChat._id);
     try {
+      setPage(1);
       await deleteChat(targetId).unwrap();
       const currentBrowserPath = typeof window !== 'undefined' ? window.location.pathname : '';
       const isViewingTarget =
@@ -226,7 +259,7 @@ export const MuiRecentChat = ({ isMini = false, onMobileClose }) => {
             justifyContent: 'flex-start',
           }}
         >
-          {chats.slice(0, 5).map((chat) => {
+          {chats.slice(0, CHAT_PAGINATION.MINI_DRAWER_CHATS_LIMIT).map((chat) => {
             const chatPath = `/chat/${chat._id}`;
             const isChatSelected = location.pathname === chatPath || currentPath === chatPath;
             return (
@@ -329,6 +362,7 @@ export const MuiRecentChat = ({ isMini = false, onMobileClose }) => {
 
       {/* Scrollable chat thread items list */}
       <Box
+        onScroll={handleListScroll}
         sx={{
           flexGrow: 1,
           overflowY: 'auto',
@@ -537,6 +571,29 @@ export const MuiRecentChat = ({ isMini = false, onMobileClose }) => {
                 </ListItemButton>
               );
             })}
+            {hasNextPage && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
+                <Button
+                  size="small"
+                  variant="text"
+                  disabled={isFetchingChats}
+                  onClick={() => setPage((prev) => prev + 1)}
+                  sx={{
+                    fontSize: '0.75rem',
+                    textTransform: 'none',
+                    color: 'text.secondary',
+                    borderRadius: 2,
+                    '&:hover': { color: 'text.primary', bgcolor: 'action.hover' },
+                  }}
+                >
+                  {isFetchingChats ? (
+                    <CircularProgress size={14} color="inherit" />
+                  ) : (
+                    'Load older conversations'
+                  )}
+                </Button>
+              </Box>
+            )}
             {chats.length === 0 && (
               <Typography
                 variant="caption"

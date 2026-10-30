@@ -361,8 +361,18 @@ export class MuiChatAdapter {
         };
       });
 
+      // Safeguard against duplicate message IDs during reverse pagination merges
+      const seenIds = new Set();
+      const dedupedMessages = [];
+      for (const msg of formatted) {
+        if (msg?.id && !seenIds.has(msg.id)) {
+          seenIds.add(msg.id);
+          dedupedMessages.push(msg);
+        }
+      }
+
       return {
-        messages: formatted,
+        messages: dedupedMessages,
         hasMore: Boolean(result?.hasMore),
         cursor: result?.cursor || null,
       };

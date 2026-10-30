@@ -562,8 +562,9 @@ export const CHAT_CONSTANTS = Object.freeze({
  * @type {Readonly<{ MESSAGES_PAGE_SIZE: number, RECENT_CHATS_PAGE_SIZE: number }>}
  */
 export const CHAT_PAGINATION = Object.freeze({
-  MESSAGES_PAGE_SIZE: 30,
+  MESSAGES_PAGE_SIZE: 5,
   RECENT_CHATS_PAGE_SIZE: 20,
+  MINI_DRAWER_CHATS_LIMIT: 5,
 });
 
 /**

@@ -7,7 +7,7 @@
 
 import { createSlice } from '@reduxjs/toolkit';
 import { apiSlice } from '../app/apiSlice.js';
-import { AI_MODELS, CHAT_CONSTANTS } from '../../utils/constants.js';
+import { AI_MODELS, CHAT_CONSTANTS, CHAT_PAGINATION } from '../../utils/constants.js';
 
 /**
  * Initial UI state for conversational canvas.
@@ -201,10 +201,55 @@ export const chatApi = apiSlice.injectEndpoints({
      * Retrieves paginated chat sessions list.
      */
     getChats: builder.query({
-      query: (params) => ({
-        url: '/chat',
-        params,
-      }),
+      query: (params = {}) => {
+        const {
+          page = 1,
+          limit = CHAT_PAGINATION.RECENT_CHATS_PAGE_SIZE,
+          search = '',
+          pinned,
+          archived,
+        } = params;
+        const queryParams = { page, limit };
+        if (search && typeof search === 'string' && search.trim()) {
+          queryParams.search = search.trim();
+        }
+        if (pinned !== undefined) {
+          queryParams.pinned = pinned;
+        }
+        if (archived !== undefined) {
+          queryParams.archived = archived;
+        }
+        return {
+          url: '/chat',
+          params: queryParams,
+        };
+      },
+      serializeQueryArgs: ({ endpointName, queryArgs }) => {
+        const search = queryArgs?.search ? queryArgs.search.trim().toLowerCase() : '';
+        const archived = queryArgs?.archived ?? false;
+        const pinned = queryArgs?.pinned ?? false;
+        return `${endpointName}-${search}-${archived}-${pinned}`;
+      },
+      merge: (currentCache, newItems, { arg }) => {
+        if (!arg || !arg.page || arg.page === 1) {
+          return newItems;
+        }
+        const existingIds = new Set((currentCache?.chats || []).map((c) => String(c._id)));
+        const incomingDocs = newItems?.chats || [];
+        const uniqueDocs = incomingDocs.filter((c) => !existingIds.has(String(c._id)));
+        if (!currentCache.chats) {
+          currentCache.chats = [];
+        }
+        currentCache.chats.push(...uniqueDocs);
+        currentCache.pagination = newItems?.pagination || currentCache.pagination;
+      },
+      forceRefetch({ currentArg, previousArg }) {
+        return (
+          currentArg?.page !== previousArg?.page ||
+          currentArg?.search !== previousArg?.search ||
+          currentArg?.limit !== previousArg?.limit
+        );
+      },
       keepUnusedDataFor: 86400,
       providesTags: (result) =>
         result?.chats
@@ -219,9 +264,12 @@ export const chatApi = apiSlice.injectEndpoints({
      * Retrieves full chat session with message history.
      */
     getChatById: builder.query({
-      query: ({ chatId, limit = 30 }) => ({
+      query: ({ chatId, limit = CHAT_PAGINATION.MESSAGES_PAGE_SIZE, before }) => ({
         url: `/chat/${chatId}`,
-        params: { limit },
+        params: {
+          limit,
+          ...(before !== undefined && before !== null ? { before } : {}),
+        },
       }),
       providesTags: (_result, _error, { chatId }) => [{ type: 'Chat', id: chatId }],
     }),

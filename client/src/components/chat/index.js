@@ -27,4 +27,6 @@ export { default as MuiAgentMessage } from './MuiAgentMessage.jsx';
 export { default as MuiAgentExecutionTimeline } from './MuiAgentExecutionTimeline.jsx';
 export { default as MuiCloudDocumentCard } from './MuiCloudDocumentCard.jsx';
 export { default as MuiLiveSttButton } from './MuiLiveSttButton.jsx';
+export { default as MuiChatMessageListContent } from './MuiChatMessageListContent.jsx';
+
 
