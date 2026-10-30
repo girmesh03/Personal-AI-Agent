@@ -49,7 +49,7 @@ export const GlobalErrorFallback = ({ error, resetErrorBoundary }) => {
   return (
     <Box
       sx={{
-        minHeight: '100vh',
+        minHeight: 'var(--app-height, 100dvh)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

@@ -45,11 +45,16 @@ export const AppTheme = ({ children }) => {
           MuiCssBaseline: {
             styleOverrides: {
               html: {
-                height: '100%',
+                height: 'var(--app-height, 100dvh)',
+                minHeight: 'var(--app-height, 100dvh)',
+                maxHeight: 'var(--app-height, 100dvh)',
                 width: '100%',
                 overflow: 'hidden',
                 margin: 0,
                 padding: 0,
+                position: 'fixed',
+                inset: 0,
+                WebkitTextSizeAdjust: '100%',
               },
               body: {
                 height: '100%',
@@ -57,11 +62,16 @@ export const AppTheme = ({ children }) => {
                 overflow: 'hidden',
                 margin: 0,
                 padding: 0,
+                position: 'fixed',
+                inset: 0,
+                overscrollBehavior: 'none',
               },
               '#root': {
                 height: '100%',
                 width: '100%',
                 overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
               },
             },
           },

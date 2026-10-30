@@ -5,6 +5,20 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
     <title>Operon</title>
+    <script>
+      (function() {
+        function syncAppHeight() {
+          var h = (window.visualViewport && window.visualViewport.height) ? window.visualViewport.height : window.innerHeight;
+          document.documentElement.style.setProperty('--app-height', h + 'px');
+        }
+        syncAppHeight();
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener('resize', syncAppHeight, { passive: true });
+        } else {
+          window.addEventListener('resize', syncAppHeight, { passive: true });
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

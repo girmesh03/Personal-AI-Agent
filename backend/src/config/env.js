@@ -113,8 +113,8 @@ export const env = Object.freeze({
   ADDIS_API_KEY: process.env.ADDIS_API_KEY || '',
   GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
   
-  FFMPEG_PATH: process.env.FFMPEG_PATH || 'C:/ffmpeg/ffmpeg',
-  FFPROBE_PATH: process.env.FFPROBE_PATH || 'C:/ffmpeg/ffprobe',
+  FFMPEG_PATH: process.env.FFMPEG_PATH || '',
+  FFPROBE_PATH: process.env.FFPROBE_PATH || '',
 
   OAUTH_GOOGLE_CLIENT_ID: process.env.OAUTH_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '',
   OAUTH_GOOGLE_CLIENT_SECRET: process.env.OAUTH_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || '',

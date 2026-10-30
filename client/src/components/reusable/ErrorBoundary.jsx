@@ -50,7 +50,7 @@ export class ErrorBoundary extends Component {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            minHeight: '100vh',
+            minHeight: 'var(--app-height, 100dvh)',
             p: 3,
             backgroundColor: 'background.default',
           }}

@@ -23,7 +23,7 @@ export const PublicRoute = () => {
   const isLoading = useSelector(selectAuthLoading);
 
   if (isLoading) {
-    return <LoadingSpinner message="Checking session..." height="100vh" size="large" />;
+    return <LoadingSpinner message="Checking session..." height="var(--app-height, 100dvh)" size="large" />;
   }
 
   if (isAuthenticated) {

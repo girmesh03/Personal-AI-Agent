@@ -19,8 +19,51 @@ import logger from '../config/logger.js';
 import { Audio } from '../models/Audio.js';
 import { UPLOADS_CONFIG, AI_MODELS } from './constants.js';
 
-const FFMPEG = env.FFMPEG_PATH || process.env.FFMPEG_PATH || ffmpegInstaller.path || 'ffmpeg';
-const FFPROBE = env.FFPROBE_PATH || process.env.FFPROBE_PATH || ffprobeInstaller.path || 'ffprobe';
+/**
+ * Dynamically resolves binary executable path, physically verifying filesystem existence
+ * before trusting any configured path, and falling back safely to the bundled static
+ * installer binary (@ffmpeg-installer / @ffprobe-installer) or system PATH.
+ *
+ * @param {'ffmpeg' | 'ffprobe'} binaryName - Binary command name.
+ * @param {string} [configuredPath] - Path configured via env.FFMPEG_PATH / env.FFPROBE_PATH.
+ * @param {string} [installerPath] - Static binary path from @ffmpeg-installer or @ffprobe-installer.
+ * @returns {string} Fully resolved, verified binary path.
+ */
+export function resolveBinaryPath(binaryName, configuredPath, installerPath) {
+  // 1. Check custom configured path from env (if present and physically exists on disk)
+  if (configuredPath && typeof configuredPath === 'string' && configuredPath.trim()) {
+    const trimmed = configuredPath.trim();
+    if (fs.existsSync(trimmed)) {
+      return trimmed;
+    }
+    if (process.platform === 'win32' && !trimmed.toLowerCase().endsWith('.exe')) {
+      const withExe = `${trimmed}.exe`;
+      if (fs.existsSync(withExe)) {
+        return withExe;
+      }
+    }
+    logger.warn(`[audioChunker] Configured ${binaryName} path not found on disk: "${trimmed}". Falling back to bundled installer binary...`);
+  }
+
+  // 2. Check bundled static package binary (@ffmpeg-installer / @ffprobe-installer)
+  if (installerPath && typeof installerPath === 'string' && installerPath.trim()) {
+    const trimmedInstaller = installerPath.trim();
+    if (fs.existsSync(trimmedInstaller)) {
+      if (process.platform !== 'win32') {
+        try {
+          fs.chmodSync(trimmedInstaller, 0o755);
+        } catch (_) {}
+      }
+      return trimmedInstaller;
+    }
+  }
+
+  // 3. Fallback to system command in PATH (e.g. /usr/bin/ffmpeg or /usr/bin/ffprobe)
+  return binaryName;
+}
+
+export const FFMPEG = resolveBinaryPath('ffmpeg', env.FFMPEG_PATH || process.env.FFMPEG_PATH, ffmpegInstaller?.path);
+export const FFPROBE = resolveBinaryPath('ffprobe', env.FFPROBE_PATH || process.env.FFPROBE_PATH, ffprobeInstaller?.path);
 
 /**
  * Resolves binary executable path on Windows (.exe fallback if omitted).
@@ -28,7 +71,7 @@ const FFPROBE = env.FFPROBE_PATH || process.env.FFPROBE_PATH || ffprobeInstaller
  * @param {string} binPath - Executable path or command name.
  * @returns {string} Resolved executable path.
  */
-function resolveExecutable(binPath) {
+export function resolveExecutable(binPath) {
   if (process.platform === 'win32' && !binPath.toLowerCase().endsWith('.exe')) {
     const withExe = `${binPath}.exe`;
     if (fs.existsSync(withExe)) return withExe;

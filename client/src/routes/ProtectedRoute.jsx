@@ -33,7 +33,7 @@ export const ProtectedRoute = () => {
 
   // Display smooth verification spinner while session is being verified with the backend
   if (isLoading || (!isAuthenticated && isFetching)) {
-    return <LoadingSpinner message="Verifying session..." height="100vh" size="large" />;
+    return <LoadingSpinner message="Verifying session..." height="var(--app-height, 100dvh)" size="large" />;
   }
 
   // If user is definitively unauthenticated (or profile retrieval failed with 401), redirect to login

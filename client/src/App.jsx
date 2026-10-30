@@ -10,6 +10,7 @@ import { Outlet, useSearchParams } from 'react-router';
 import { useSelector } from 'react-redux';
 import { useGetProfileQuery } from './redux/features/userSlice.js';
 import { selectIsAuthenticated } from './redux/features/authSlice.js';
+import useViewportHeight from './hooks/useViewportHeight.js';
 
 /**
  * Root application component rendering active route outlet and managing silent session validation.
@@ -21,6 +22,7 @@ import { selectIsAuthenticated } from './redux/features/authSlice.js';
  * @returns {JSX.Element} React Router Outlet wrapper.
  */
 export const App = () => {
+  useViewportHeight();
   const [searchParams] = useSearchParams();
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const isSsoAuth = searchParams.get('auth') === 'sso';

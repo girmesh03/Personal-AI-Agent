@@ -18,7 +18,7 @@ const __dirname = path.dirname(__filename);
 
 const FONTS_SRC = path.resolve(__dirname, '../src/assets/fonts');
 
-function installFonts() {
+async function installFonts() {
   console.log('[installFonts] Checking font installation environment...');
 
   if (process.platform !== 'linux') {
@@ -71,6 +71,22 @@ function installFonts() {
       console.log('[installFonts] Fontconfig cache refreshed successfully via fc-cache.');
     } catch (cacheErr) {
       console.log('[installFonts] Note: fc-cache returned non-zero or not found; relying on runtime FONTCONFIG_PATH.');
+    }
+
+    // Verify and ensure execution permissions on ffmpeg/ffprobe binaries if bundled
+    try {
+      const ffmpegInstaller = await import('@ffmpeg-installer/ffmpeg').then((m) => m.default || m).catch(() => null);
+      if (ffmpegInstaller?.path && fs.existsSync(ffmpegInstaller.path)) {
+        fs.chmodSync(ffmpegInstaller.path, 0o755);
+        console.log(`[installFonts] Set 0755 execution permissions on bundled ffmpeg: ${ffmpegInstaller.path}`);
+      }
+      const ffprobeInstaller = await import('@ffprobe-installer/ffprobe').then((m) => m.default || m).catch(() => null);
+      if (ffprobeInstaller?.path && fs.existsSync(ffprobeInstaller.path)) {
+        fs.chmodSync(ffprobeInstaller.path, 0o755);
+        console.log(`[installFonts] Set 0755 execution permissions on bundled ffprobe: ${ffprobeInstaller.path}`);
+      }
+    } catch (binPermErr) {
+      console.log('[installFonts] Note: ffmpeg/ffprobe binary permission check skipped:', binPermErr.message);
     }
 
     console.log('[installFonts] Linux font installation complete.');

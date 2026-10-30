@@ -754,7 +754,7 @@ export const MuiModelSelector = React.memo(
                 sx: {
                   width: composerWidth ? `${composerWidth}px` : '100%',
                   maxWidth: 760,
-                  maxHeight: 'calc(100vh - 120px)',
+                  maxHeight: 'calc(var(--app-height, 100dvh) - 120px)',
                   overflowY: 'auto',
                   p: 2,
                   borderRadius: '16px 16px 0 0', // No bottom border radius

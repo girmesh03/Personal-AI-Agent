@@ -100,7 +100,12 @@ export const PublicLayout = ({ children }) => {
   return (
     <Box
       sx={{
-        height: '100vh',
+        height: 'var(--app-height, 100dvh)',
+        minHeight: 'var(--app-height, 100dvh)',
+        maxHeight: 'var(--app-height, 100dvh)',
+        '@supports not (height: 100dvh)': {
+          height: 'var(--app-height, 100vh)',
+        },
         width: '100vw',
         maxWidth: '100%',
         overflow: 'hidden',

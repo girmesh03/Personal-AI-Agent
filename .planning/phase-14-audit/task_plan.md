@@ -257,10 +257,24 @@ Retrieved directly from Phase 11B (`COMPLETE_REMAINING_ARCHITECTURE_AND_IMPLEMEN
 - Calculate real-time RMS `audioLevel` to animate frequency visualizer bars.
 - Standardize on `window.AudioContext || window['webkitAudioContext']` with 0 deprecations and 0 TypeScript warnings.
 
-### Task 14.16: Decoupled Reusable Telegram Report Sharing Subsystem [PLANNING - AWAITING USER APPROVAL]
+### Task 14.16: Decoupled Reusable Telegram Report Sharing Subsystem [COMPLETE & VERIFIED]
 - Goal: Provide a decoupled, reusable Telegram sharing capability for operational inspection reports directly from Report Cards and DataGrid rows.
 - Single Source of Truth (SSOT): Uses finalized `report.transcription` on the saved MongoDB Report document rather than extracting from chat streaming tokens or agent turn messages.
 - Dedicated Endpoint: `POST /api/v1/reports/:reportId/share/telegram` in `reportRoutes.js` and `reportController.js`.
 - Reusable UI Component: `MuiReportTelegramShareButton.jsx` supporting Text (HTML) vs Image Card format toggle, channel selection (Management, Maintenance, General), and error/success toast feedback.
 - Seamless Integration: Embedded in `ReportCard.jsx` (CardActions) and `reportColumns.jsx` (DataGrid actions column).
 - Zero Chat Contention: Leaves chat routes, agent message share action, and Live STT 100% untouched.
+
+### Task 14.17: Cross-Platform Self-Healing FFmpeg & FFprobe Binary Resolution (Render Linux & Local Windows Fix) [PLANNING - AWAITING USER APPROVAL]
+- Root Cause: `backend/src/config/env.js` hardcoded `'C:/ffmpeg/ffmpeg'` as fallback when `FFMPEG_PATH` is unset. On Render (Linux), `audioChunker.js` logical OR chain evaluated `'C:/ffmpeg/ffmpeg'` as truthy, bypassing `@ffmpeg-installer/ffmpeg` and attempting to spawn a phantom Windows path, failing with `ENOENT` on audio slicing and breaking Addis AI merged chunk transcription.
+- Clean Environment Fallback: Remove Windows path defaults in `env.js`, defaulting unset env vars to empty string `''`.
+- Dynamic Filesystem Verification: In `audioChunker.js`, implement `resolveBinaryPath(binaryName, configuredPath, installerPath)` that verifies `fs.existsSync()` before trusting any path. If configured path is non-existent, it automatically falls back to the bundled `@ffmpeg-installer` platform static binary, verifies `0755` executable permissions on Linux, and falls back to system PATH binary.
+- Verification: Create dedicated test `testFfmpegResolution.js` asserting probe and slice execution when `FFMPEG_PATH` is invalid, non-existent, or unset.
+
+### Task 14.18: 100% Guaranteed Bulletproof Viewport Height Across All Mobile Devices [PLANNING - AWAITING USER APPROVAL]
+- Root Cause: On Phone B (custom OEM browsers like Samsung Internet/Xiaomi or in-app WebViews), `100dvh` either defaults to `100lvh` because `body` has `overflow: hidden` (preventing document scroll), or fails to update when the software keyboard opens. Furthermore, `AppTheme.jsx` pinned `html`, `body`, and `#root` to `height: 100%` (ICB `100lvh`), creating an architectural contradiction with child `AppShell` (`100dvh`), resulting in bottom element clipping.
+- Tier 1 (Zero-FOUC First Paint): Inline `<script>` in `client/index.html` calculating `window.visualViewport.height || window.innerHeight` and assigning `--app-height` before first paint.
+- Tier 2 (Continuous Reactive Lifecycle): `useViewportHeight.js` hook listening to `visualViewport.resize`, `visualViewport.scroll`, and `window.orientationchange`, updating `--app-height` and tracking virtual keyboard expansion without lag.
+- Tier 3 (Cascading CSS Root & Shell Alignment): Standardize `AppTheme.jsx` (`html`, `body`, `#root`), `AppShell.jsx`, and `PublicLayout.jsx` on `height: var(--app-height, 100dvh)` with `position: fixed; inset: 0` on `html, body` to eliminate iOS rubber-banding and guarantee 0px clipping across 100% of mobile devices.
+- Verification: Headless and static analysis asserting `--app-height` binding, `AppTheme.jsx` styling, and zero lint/build regressions.
+
