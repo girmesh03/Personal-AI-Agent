@@ -12,7 +12,7 @@ import LoadingSpinner from '../reusable/LoadingSpinner.jsx';
  * @returns {JSX.Element} Full-screen loading indicator.
  */
 export const RootHydrateFallback = () => (
-  <LoadingSpinner message="Initializing application..." height="var(--app-height, 100dvh)" size="large" />
+  <LoadingSpinner message="Initializing application..." height="100dvh" size="large" />
 );
 
 export default RootHydrateFallback;

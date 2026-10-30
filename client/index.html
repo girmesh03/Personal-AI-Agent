@@ -3,22 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover" />
+    <meta name="theme-color" content="#090d16" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Operon" />
+    <meta name="application-name" content="Operon" />
     <title>Operon</title>
-    <script>
-      (function() {
-        function syncAppHeight() {
-          var h = (window.visualViewport && window.visualViewport.height) ? window.visualViewport.height : window.innerHeight;
-          document.documentElement.style.setProperty('--app-height', h + 'px');
-        }
-        syncAppHeight();
-        if (window.visualViewport) {
-          window.visualViewport.addEventListener('resize', syncAppHeight, { passive: true });
-        } else {
-          window.addEventListener('resize', syncAppHeight, { passive: true });
-        }
-      })();
-    </script>
   </head>
   <body>
     <div id="root"></div>

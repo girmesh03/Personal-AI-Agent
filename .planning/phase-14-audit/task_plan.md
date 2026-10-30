@@ -293,5 +293,19 @@ Retrieved directly from Phase 11B (`COMPLETE_REMAINING_ARCHITECTURE_AND_IMPLEMEN
   * In `Chat.jsx` (`CHATBOX_SX`): Added `& .MuiChatScrollToBottomAffordance-root, & [class*="MuiChatScrollToBottomAffordance"]` with solid `background.paper !important`, `borderRadius: '50% !important'`, `border: '1px solid divider !important'`, and `boxShadow: 3`.
 - Verification: Component inspection, client build (`npm --prefix client run build`: code 0), and lint (`npm --prefix client run lint`: 0 errors, 0 warnings).
 
+### Task 14.21: Multi-Device PWA WebAPK Standalone Installation Engine & 100dvh Viewport Parity [COMPLETE & VERIFIED]
+- Root Cause: Missing W3C Web App Manifest (`manifest.json`), `<link rel="manifest">`, mobile capability meta tags, and high-res PNG icons prevented Chrome on Android (specifically Samsung One UI on Galaxy M14) from minting a native WebAPK. Instead, Chrome opened the app in a Chrome Custom Tab (CCT) with an unwanted 56px white header bar ("Operon personal-ai-agent-sigma.vercel.app ⋮"), shrinking the available vertical area and causing the bottom of the viewport to be clipped.
+- Pillar 1 (W3C Web App Manifest & WebAPK Engine):
+  * Created `client/public/manifest.json` configured with `display: "standalone"`, `start_url: "/"`, `theme_color: "#090d16"`, `background_color: "#090d16"`.
+  * Generated multi-resolution PWA icons (`pwa-192x192.png`, `pwa-512x512.png`, `pwa-maskable-512x512.png`, `apple-touch-icon.png`) from `favicon.svg`.
+  * Created and registered lightweight PWA Service Worker (`client/public/sw.js`) in `client/src/main.jsx`.
+  * Added PWA tags (`<link rel="manifest">`, `<meta name="theme-color">`, `<meta name="mobile-web-app-capable">`, `viewport-fit=cover`) to `client/index.html`.
+- Pillar 2 (Clean 100dvh Viewport Alignment):
+  * Reverted `position: fixed; inset: 0` on `html` and `body` in `client/src/theme/AppTheme.jsx`.
+  * Realigned `client/src/layouts/AppShell.jsx` and `client/src/layouts/PublicLayout.jsx` with clean `height: '100dvh'` and `@supports not (height: 100dvh): { height: '100vh' }`.
+  * Removed unused `useViewportHeight` hook and premature `<head>` height-lock script.
+- Verification: Headless automated suite `testViewportHeight.js` (7/7 passed), client ESLint (0 errors, 0 warnings), and client Vite production build (code 0).
+
+
 
 

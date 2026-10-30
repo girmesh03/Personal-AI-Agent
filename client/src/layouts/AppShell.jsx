@@ -69,11 +69,9 @@ export const AppShell = () => {
     <Box
       sx={{
         display: 'flex',
-        height: 'var(--app-height, 100dvh)',
-        minHeight: 'var(--app-height, 100dvh)',
-        maxHeight: 'var(--app-height, 100dvh)',
+        height: '100dvh',
         '@supports not (height: 100dvh)': {
-          height: 'var(--app-height, 100vh)',
+          height: '100vh',
         },
         width: '100vw',
         maxWidth: '100%',

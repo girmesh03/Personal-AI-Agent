@@ -31,6 +31,15 @@ import { router } from './router.jsx';
 const container = document.getElementById('root');
 const root = createRoot(container);
 
+// Register PWA Service Worker for standalone WebAPK installability
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('PWA service worker registration failed:', err);
+    });
+  });
+}
+
 root.render(
   <StrictMode>
     <Provider store={store}>
