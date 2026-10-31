@@ -30,6 +30,7 @@ import RestoreOutlinedIcon from '@mui/icons-material/RestoreOutlined';
 import MuiButton from '../reusable/MuiButton.jsx';
 import MuiReportTelegramShareButton from './MuiReportTelegramShareButton.jsx';
 import { toEthiopianDateString, computeShiftDuration } from '../../utils/ethiopianCalendar.js';
+import { getAvatarUrl } from '../../utils/avatarUtils.js';
 
 export const ReportHero = memo(({
   report,
@@ -94,7 +95,7 @@ export const ReportHero = memo(({
         {/* Left: Supervisor Avatar, Dossier Title & Vertical Linear Attribute Stack */}
         <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: { xs: 1.5, sm: 2 }, minWidth: 0, flex: 1 }}>
           <Avatar
-            src={authorAvatar}
+            src={getAvatarUrl(authorAvatar) || undefined}
             alt={authorName}
             sx={{
               width: { xs: 46, sm: 54 },

@@ -324,6 +324,20 @@
   2. Add `page` state in `MuiRecentChat.jsx`, attach an `onScroll` handler listening to scroll bottom threshold, and fetch next pages reactively.
   3. Bound page limits to centralized constant `CHAT_PAGINATION.RECENT_CHATS_PAGE_SIZE`.
 
+### 1.40 User Avatar UI Propagation Void & Backend Storage Bypass [RESOLVED & VERIFIED]
+- **Location**: `client/src/layouts/AvatarMenu.jsx:59`, `client/src/layouts/MuiSidebar.jsx:257,293`, `backend/src/controllers/userController.js:146`, `client/src/utils/avatarUtils.js`
+- **Root Cause**:
+  1. `AvatarMenu.jsx` (top AppBar) and `MuiSidebar.jsx` (drawer rail and expanded) instantiated `<Avatar>{initials}</Avatar>` with zero `src` prop, completely ignoring `user.avatar`.
+  2. In `userController.js:146`, `updateAvatar` directly assigned `user.avatar = avatar;` saving the raw Base64 string directly into MongoDB without writing to `backend/uploads/avatars/` or uploading to Cloudinary.
+  3. In `storageService.js:cleanupAvatarAsset`, `safeUnlinkDiskFile` previously attempted to unlink raw Base64 data strings instead of valid file paths or Cloudinary publicIds.
+- **Resolution**:
+  1. Created `client/src/utils/avatarUtils.js` exporting `getAvatarUrl` normalizing Cloudinary URLs (`https://`), relative static paths (`/uploads/avatars/...` prepended with `serverOrigin`), Base64 strings (`data:...` for backwards compatibility), and blob URLs (`blob:...`).
+  2. Passed `src={getAvatarUrl(user?.avatar) || undefined}` and `alt` across `AvatarMenu.jsx`, `MuiSidebar.jsx` (mini and expanded), `ProfileHeaderHero.jsx`, and `ReportHero.jsx`.
+  3. In `userController.js:updateAvatar`, decoded Base64 data into binary buffer, wrote physical file to `backend/uploads/avatars/avatar-<userId>-<timestamp>.<ext>`, uploaded to Cloudinary folder `personal-agent/avatars`, purged old avatar via `cleanupAvatarAsset`, and persisted CDN URL / clean relative path to MongoDB.
+  4. In `userController.js:removeAvatar`, purged both Cloudinary and disk assets, setting `user.avatar = null` and `user.avatarPublicId = null`.
+  5. Verified via dedicated suite `backend/scripts/testPhase14EUserAvatarPipeline.js` (17/17 passed), ESLint (0 errors, 0 warnings), and Vite build (exit code 0).
+
+
 
 
 

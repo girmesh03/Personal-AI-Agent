@@ -17,6 +17,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import { selectAuthUser } from '../redux/features/authSlice.js';
 import useLogout from '../hooks/useLogout.js';
 import { ROUTES } from '../utils/constants.js';
+import { getAvatarUrl } from '../utils/avatarUtils.js';
 
 /**
  * Supervisor avatar menu displaying user initials, profile navigation, and logout options.
@@ -57,6 +58,8 @@ export const AvatarMenu = () => {
           sx={{ p: 0 }}
         >
           <Avatar
+            src={getAvatarUrl(user?.avatar) || undefined}
+            alt={user?.fullName || 'User menu'}
             sx={{
               width: 32,
               height: 32,

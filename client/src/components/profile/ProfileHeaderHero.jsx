@@ -32,6 +32,7 @@ import {
   useRemoveAvatarMutation,
 } from '../../redux/features/userSlice.js';
 import { optimizeAvatarImage } from '../../utils/imageOptimizer.js';
+import { getAvatarUrl } from '../../utils/avatarUtils.js';
 
 const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 
@@ -232,7 +233,7 @@ export const ProfileHeaderHero = ({ user }) => {
             >
               <Box sx={{ position: 'relative' }}>
                 <Avatar
-                  src={user?.avatar || undefined}
+                  src={getAvatarUrl(user?.avatar) || undefined}
                   alt={fullName}
                   sx={{
                     width: { xs: 52, sm: 64 },

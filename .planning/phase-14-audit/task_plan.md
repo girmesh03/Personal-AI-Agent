@@ -352,6 +352,35 @@ Retrieved directly from Phase 11B (`COMPLETE_REMAINING_ARCHITECTURE_AND_IMPLEMEN
   - Microphone Invariant: `MuiAudioRecorder.jsx` 100% untouched.
   - Branch Confinement: Isolated on `phase-14-overall-application-audit`; 0 commits, 0 merges on `main`.
 
+### Task 14.25: Full-Lifecycle User Avatar Pipeline, Cloudinary & Disk Storage Engine, and Universal UI Propagation [COMPLETE & VERIFIED]
+- User Observation: Changing the user avatar from the profile page does not reflect everywhere. In addition, Cloudinary and `backend/uploads/` dual-tier storage must be handled cleanly.
+- Root Cause 1 (UI Propagation Void): `AvatarMenu.jsx` and `MuiSidebar.jsx` (mini & expanded) instantiate `<Avatar sx={{ ... }}>{initials}</Avatar>` with ZERO `src` prop, completely ignoring `user.avatar`.
+- Root Cause 2 (Backend Storage Bypass): `userController.js:146` directly assigned `user.avatar = avatar;` saving the raw Base64 string directly into MongoDB without writing to `backend/uploads/avatars/` or uploading to Cloudinary, bloating MongoDB user documents.
+- Root Cause 3 (Cleanup Remnants): `cleanupAvatarAsset` previously tried to unlink raw Base64 data strings instead of valid file paths or Cloudinary publicIds.
+- Key Actions Implemented & Verified:
+  1. Backend Storage Dual-Tier Parity (`userController.js`):
+     - Intercepts incoming Base64 data URLs in `updateAvatar`.
+     - Decodes binary Buffer and writes physical file to `backend/uploads/avatars/avatar-${userId}-${timestamp}.${ext}`.
+     - Uploads buffer/file to Cloudinary under folder `personal-agent/avatars` using `storageService.uploadFile`.
+     - Sets `user.avatar` to permanent Cloudinary CDN `secure_url` and `avatarPublicId` if Cloudinary is configured; falls back to `/uploads/avatars/${fileName}` if local/offline.
+     - Purges previous avatar physical assets via `storageService.cleanupAvatarAsset` on both update and delete (`removeAvatar`), preventing orphaned files on disk and on Cloudinary.
+     - Zero Base64 strings saved to MongoDB (`user.avatar.length < 255`), eliminating database bloat.
+  2. Centralized Avatar URL Resolver (`client/src/utils/avatarUtils.js`):
+     - Created `getAvatarUrl` normalizing Cloudinary URLs (`https://`), relative static paths (`/uploads/avatars/...` prepended with `serverOrigin`), Base64 strings (`data:...` for backwards compatibility), and blob URLs (`blob:...`).
+  3. Universal Frontend UI Propagation:
+     - `client/src/layouts/AvatarMenu.jsx`: Wired `src={getAvatarUrl(user?.avatar) || undefined}` and `alt={user?.fullName || 'User menu'}` with fallback initials.
+     - `client/src/layouts/MuiSidebar.jsx`: Wired `src={getAvatarUrl(user?.avatar) || undefined}` and `alt={displayName}` to both mini rail and expanded drawer avatars.
+     - `client/src/components/profile/ProfileHeaderHero.jsx`: Wired `src={getAvatarUrl(user?.avatar) || undefined}`.
+     - `client/src/components/reports/ReportHero.jsx`: Wired `src={getAvatarUrl(authorAvatar) || undefined}` for author profile avatar.
+- Verification:
+  - `backend/scripts/testPhase14EUserAvatarPipeline.js`: **17 / 17 PASSED (100%)**.
+  - `backend/scripts/testPhase14DChatPaginationAndGrowth.js`: **10 / 10 PASSED (100%)**.
+  - `npm --prefix client run lint`: **0 errors, 0 warnings (Exit code 0)**.
+  - `npm --prefix client run build`: **Vite production build succeeded in 51.09s (Exit code 0)**.
+  - Microphone Invariant: `client/src/components/chat/MuiAudioRecorder.jsx` 100% untouched.
+  - Branch Confinement: Isolated on `phase-14-overall-application-audit`; 0 commits, 0 merges on `main`.
+
+
 
 
 

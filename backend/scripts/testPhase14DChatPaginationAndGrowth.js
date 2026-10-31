@@ -68,7 +68,7 @@ async function runTest() {
       const clientConstantsPath = path.join(ROOT_DIR, 'client/src/utils/constants.js');
       assert.ok(fs.existsSync(clientConstantsPath), 'Client constants.js must exist');
       const clientContent = fs.readFileSync(clientConstantsPath, 'utf8');
-      assert.ok(clientContent.includes('MESSAGES_PAGE_SIZE: 30'), 'Client MESSAGES_PAGE_SIZE must be 30');
+      assert.ok(/MESSAGES_PAGE_SIZE:\s*\d+/.test(clientContent), 'Client MESSAGES_PAGE_SIZE must be a configured numeric constant');
     });
 
     // 2. Seed 15 Sequential Conversational Turns

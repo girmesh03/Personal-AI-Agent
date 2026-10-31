@@ -40,6 +40,7 @@ import {
   SIDEBAR_FULL_WIDTH,
   SIDEBAR_MINI_WIDTH,
 } from "../utils/constants.js";
+import { getAvatarUrl } from "../utils/avatarUtils.js";
 
 /**
  * Navigation route item definitions.
@@ -255,6 +256,8 @@ const MuiSidebar = ({ mode, onToggleMode, mobileOpen, onMobileClose }) => {
                 sx={{ p: 0 }}
               >
                 <Avatar
+                  src={getAvatarUrl(user?.avatar) || undefined}
+                  alt={displayName}
                   sx={{
                     width: 32,
                     height: 32,
@@ -291,6 +294,8 @@ const MuiSidebar = ({ mode, onToggleMode, mobileOpen, onMobileClose }) => {
             }}
           >
             <Avatar
+              src={getAvatarUrl(user?.avatar) || undefined}
+              alt={displayName}
               sx={{
                 width: 28,
                 height: 28,

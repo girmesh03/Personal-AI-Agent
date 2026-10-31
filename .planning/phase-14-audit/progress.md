@@ -362,6 +362,43 @@
   - Confinement strictly to branch `phase-14-overall-application-audit`.
   - Split Testing Law: Agent verified 100% of automated backend test suites; browser testing reserved exclusively for the user.
 
+## Session 21: 2026-10-31 (Phase 14E Point 33: Full-Lifecycle User Avatar Pipeline, Cloudinary & Disk Storage Engine, and Universal UI Propagation)
+- **User Directives**:
+  - "When I change the user avatar from the profile page it doesn't reflected everywhere. Don't forget the cloudinary and the backend/uploads/. So you must go through every single detail of it. You must always remember who you are, why you are here, the first principles and the protocol."
+  - "Proceed with the plan. Don't break what already functional or un-related things. You must always remember who you are, why you are here, the first principles and the protocol."
+- **Root Causes Discovered & Fixed**:
+  1. *UI Propagation Void*: `client/src/layouts/AvatarMenu.jsx` and `client/src/layouts/MuiSidebar.jsx` (mini mode line 257 and expanded mode line 293) had `<Avatar sx={{ ... }}>{initials}</Avatar>` with **ZERO `src` prop**, permanently locking the UI to user initials regardless of profile updates.
+  2. *Backend Storage Bypass*: `backend/src/controllers/userController.js:146` previously directly assigned `user.avatar = avatar;` saving 300KB Base64 data URLs directly into MongoDB without writing to disk or Cloudinary.
+  3. *Incomplete Cleanup*: `storageService.cleanupAvatarAsset` previously attempted to unlink raw Base64 data strings.
+  4. *Unresolved Relative Paths*: Components lacked a centralized resolver to translate `/uploads/avatars/...` to fully-qualified URLs when running across diverse client/server origins.
+- **Implemented Rectifications**:
+  1. *Dual-Tier Storage Engine (`backend/src/controllers/userController.js`)*:
+     - Intercepts incoming Base64 data URLs.
+     - Decodes binary Buffer and writes physical file to `backend/uploads/avatars/avatar-${userId}-${timestamp}.${ext}`.
+     - Uploads buffer/file to Cloudinary under folder `personal-agent/avatars` using `storageService.uploadFile`.
+     - Sets `user.avatar` to permanent Cloudinary CDN `secure_url` and `avatarPublicId` if Cloudinary is configured; falls back to `/uploads/avatars/${fileName}` if local/offline.
+     - Purges previous avatar physical assets via `storageService.cleanupAvatarAsset` on both update and delete (`removeAvatar`), preventing orphaned files on disk and on Cloudinary.
+     - Zero Base64 strings saved to MongoDB (`user.avatar.length < 255`), eliminating database bloat.
+  2. *Centralized Avatar URL Resolver (`client/src/utils/avatarUtils.js`)*:
+     - Created `getAvatarUrl` normalizing Cloudinary URLs (`https://`), relative static paths (`/uploads/avatars/...` prepended with `serverOrigin`), Base64 strings (`data:...` for backwards compatibility), and blob URLs (`blob:...`).
+  3. *Universal UI Propagation*:
+     - `client/src/layouts/AvatarMenu.jsx`: Wired `src={getAvatarUrl(user?.avatar) || undefined}` and `alt={user?.fullName || 'User menu'}` with fallback initials.
+     - `client/src/layouts/MuiSidebar.jsx`: Wired `src={getAvatarUrl(user?.avatar) || undefined}` and `alt={displayName}` to both mini rail and expanded drawer avatars.
+     - `client/src/components/profile/ProfileHeaderHero.jsx`: Wired `src={getAvatarUrl(user?.avatar) || undefined}`.
+     - `client/src/components/reports/ReportHero.jsx`: Wired `src={getAvatarUrl(authorAvatar) || undefined}` for author profile avatar.
+- **Comprehensive Verification Results**:
+  - `backend/scripts/testPhase14EUserAvatarPipeline.js`: **17 / 17 PASSED (100% green)**.
+  - `backend/scripts/testPhase14DChatPaginationAndGrowth.js`: **10 / 10 PASSED (100% green)**.
+  - `npm --prefix client run lint`: **0 errors, 0 warnings (Exit code 0)**.
+  - `npm --prefix client run build`: **Vite production build succeeded in 51.09s (Exit code 0)**.
+- **Protocol Adherence**:
+  - Microphone Invariant: `client/src/components/chat/MuiAudioRecorder.jsx` 100% untouched.
+  - Zero git commits created (strictly awaiting explicit user instruction).
+  - Zero merges performed.
+  - Confinement strictly to branch `phase-14-overall-application-audit`.
+  - Split Testing Law: Agent ran all backend tests; browser testing reserved exclusively for the user.
+
+
 
 
 

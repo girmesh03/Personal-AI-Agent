@@ -4,10 +4,12 @@
  * dedicated avatar updates, and password management.
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
 import mongoose from 'mongoose';
 import asyncHandler from 'express-async-handler';
 import { User } from '../models/User.js';
-import { HTTP_STATUS } from '../utils/constants.js';
+import { HTTP_STATUS, UPLOADS_CONFIG } from '../utils/constants.js';
 import { ConflictError, UnauthenticatedError, BadRequestError } from '../errors/CustomError.js';
 import storageService from '../services/storageService.js';
 
@@ -127,6 +129,49 @@ export const updateAvatar = asyncHandler(async (req, res) => {
   const validatedBody = req.validated?.body || req.body || {};
   const { avatar, avatarPublicId } = validatedBody;
 
+  if (!avatar || typeof avatar !== 'string') {
+    throw new BadRequestError('Avatar data or URL is required.');
+  }
+
+  let savedAvatar = avatar;
+  let savedPublicId = avatarPublicId || null;
+
+  // If incoming avatar is a Base64 data URL, decode and store to both disk and Cloud CDN
+  const base64Match = avatar.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+  if (base64Match) {
+    const mimeType = base64Match[1].toLowerCase();
+    const base64Data = base64Match[2];
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    const ext = mimeType === 'image/png' ? '.png' : (mimeType === 'image/webp' ? '.webp' : '.jpg');
+    const fileName = `avatar-${req.user._id}-${Date.now()}${ext}`;
+
+    // 1. Dual-tier local disk persistence in backend/uploads/avatars/
+    if (!fs.existsSync(UPLOADS_CONFIG.AVATARS_DIR)) {
+      fs.mkdirSync(UPLOADS_CONFIG.AVATARS_DIR, { recursive: true });
+    }
+    const diskPath = path.join(UPLOADS_CONFIG.AVATARS_DIR, fileName);
+    await fs.promises.writeFile(diskPath, buffer);
+
+    // 2. Upload to Cloud CDN (Cloudinary) or fallback
+    const uploadRes = await storageService.uploadFile({
+      filePath: diskPath,
+      buffer,
+      fileName,
+      mimeType,
+      folder: 'personal-agent/avatars',
+      resourceType: 'image',
+    });
+
+    if (uploadRes.isCloud && uploadRes.secure_url) {
+      savedAvatar = uploadRes.secure_url;
+      savedPublicId = uploadRes.publicId;
+    } else {
+      savedAvatar = `/uploads/avatars/${fileName}`;
+      savedPublicId = null;
+    }
+  }
+
   const session = await mongoose.startSession();
   try {
     let userObj;
@@ -139,14 +184,13 @@ export const updateAvatar = asyncHandler(async (req, res) => {
         throw new UnauthenticatedError('User account could not be found. Please log in again.', 'USER_NOT_FOUND');
       }
 
-      if (user.avatarPublicId && user.avatarPublicId !== avatarPublicId) {
+      // Purge previous avatar from Cloudinary and disk
+      if (user.avatarPublicId || user.avatar) {
         void storageService.cleanupAvatarAsset(user.avatarPublicId, user.avatar);
       }
 
-      user.avatar = avatar;
-      if (avatarPublicId !== undefined) {
-        user.avatarPublicId = avatarPublicId;
-      }
+      user.avatar = savedAvatar;
+      user.avatarPublicId = savedPublicId;
       await user.save({ session });
       userObj = user.toJSON();
     });
