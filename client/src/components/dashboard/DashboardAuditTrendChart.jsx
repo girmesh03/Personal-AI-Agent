@@ -21,7 +21,7 @@ import MuiEmptyState from '../reusable/MuiEmptyState.jsx';
 /**
  * Frozen chart layout constants.
  */
-const CHART_MARGIN = Object.freeze({ top: 20, bottom: 45, left: 45, right: 20 });
+const CHART_MARGIN = Object.freeze({ top: 15, bottom: 35, left: 35, right: 15 });
 const AXIS_TICK_STYLE = Object.freeze({ fontSize: 10, angle: 0 });
 const MIN_CHART_WIDTH = 120;
 
@@ -116,21 +116,22 @@ export const DashboardAuditTrendChart = memo(({ data = [], isLoading = false }) 
   ], []);
 
   const hasData = chartData.length > 0;
+  const chartHeight = containerWidth < 450 ? 250 : (containerWidth > 750 ? 300 : 280);
 
   return (
     <Paper
       variant="outlined"
       sx={{
-        p: { xs: 2, sm: 2.5 },
+        p: { xs: 1.5, sm: 2, md: 2.5 },
         borderRadius: '10px',
         bgcolor: 'background.paper',
         borderColor: 'divider',
-        height: '100%',
+        height: { xs: 'auto', md: '100%' },
         display: 'flex',
         flexDirection: 'column',
       }}
     >
-      <Box sx={{ mb: 2 }}>
+      <Box sx={{ mb: 1.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
           <TimelineOutlinedIcon fontSize="small" sx={{ color: '#059669' }} />
           <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
@@ -145,16 +146,15 @@ export const DashboardAuditTrendChart = memo(({ data = [], isLoading = false }) 
       <Box
         ref={containerRef}
         sx={{
-          flexGrow: 1,
           width: '100%',
-          minHeight: 280,
+          height: chartHeight,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
         {isLoading ? (
-          <Skeleton variant="rounded" width="100%" height={280} sx={{ borderRadius: '8px' }} />
+          <Skeleton variant="rounded" width="100%" height={chartHeight} sx={{ borderRadius: '8px' }} />
         ) : !hasData ? (
           <MuiEmptyState
             title="No Activity Logged"
@@ -168,13 +168,13 @@ export const DashboardAuditTrendChart = memo(({ data = [], isLoading = false }) 
             yAxis={DEFAULT_Y_AXIS}
             series={TREND_SERIES}
             width={containerWidth}
-            height={280}
+            height={chartHeight}
             margin={CHART_MARGIN}
             slotProps={CHART_SLOT_PROPS}
             axisHighlight={CHART_AXIS_HIGHLIGHT}
           />
         ) : (
-          <Skeleton variant="rounded" width="100%" height={280} sx={{ borderRadius: '8px' }} />
+          <Skeleton variant="rounded" width="100%" height={chartHeight} sx={{ borderRadius: '8px' }} />
         )}
       </Box>
     </Paper>

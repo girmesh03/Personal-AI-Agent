@@ -62,7 +62,7 @@ export const DashboardKpiDeck = memo(({ kpis = {}, isLoading = false }) => {
     return (
       <Grid container spacing={{ xs: 1.5, sm: 2 }}>
         {[0, 1, 2, 3].map((idx) => (
-          <Grid key={idx} size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid key={idx} size={{ xs: 12, sm: 6, md: 6, lg: 3, xl: 3 }}>
             <KpiCardSkeleton />
           </Grid>
         ))}
@@ -79,7 +79,7 @@ export const DashboardKpiDeck = memo(({ kpis = {}, isLoading = false }) => {
   return (
     <Grid container spacing={{ xs: 1.5, sm: 2 }}>
       {/* 1. Active Branches */}
-      <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+      <Grid size={{ xs: 12, sm: 6, md: 6, lg: 3, xl: 3 }}>
         <MuiStatCard
           title="Active Branches"
           value={activeBranches}
@@ -92,7 +92,7 @@ export const DashboardKpiDeck = memo(({ kpis = {}, isLoading = false }) => {
       </Grid>
 
       {/* 2. Total Inspections */}
-      <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+      <Grid size={{ xs: 12, sm: 6, md: 6, lg: 3, xl: 3 }}>
         <MuiStatCard
           title="Total Inspections"
           value={totalReports}
@@ -105,7 +105,7 @@ export const DashboardKpiDeck = memo(({ kpis = {}, isLoading = false }) => {
       </Grid>
 
       {/* 3. Audits This Week */}
-      <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+      <Grid size={{ xs: 12, sm: 6, md: 6, lg: 3, xl: 3 }}>
         <MuiStatCard
           title="Audits This Week"
           value={auditsThisWeek}
@@ -118,11 +118,11 @@ export const DashboardKpiDeck = memo(({ kpis = {}, isLoading = false }) => {
       </Grid>
 
       {/* 4. Open Issues */}
-      <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+      <Grid size={{ xs: 12, sm: 6, md: 6, lg: 3, xl: 3 }}>
         <MuiStatCard
           title="Open Issues"
           value={openIssues}
-          subtitle={openIssues > 0 ? 'Requires Supervisory Action' : 'All Systems Nominal'}
+          subtitle={openIssues > 0 ? 'Requires Action' : 'All Clear'}
           icon={<WarningAmberIcon fontSize="small" />}
           accentColor={openIssues > 0 ? '#ed6c02' : '#757575'}
           onClick={() => navigate('/reports')}

@@ -10,7 +10,7 @@
  * - Row 4: Recent operational inspections ledger (desktop high-density table and mobile card stack).
  */
 
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Grid from '@mui/material/Grid';
@@ -23,6 +23,7 @@ import DashboardKpiDeck from '../components/dashboard/DashboardKpiDeck.jsx';
 import DashboardBranchVisitChart from '../components/dashboard/DashboardBranchVisitChart.jsx';
 import DashboardAuditTrendChart from '../components/dashboard/DashboardAuditTrendChart.jsx';
 import DashboardRecentAuditsLedger from '../components/dashboard/DashboardRecentAuditsLedger.jsx';
+import MuiBranchDialog from '../components/branches/MuiBranchDialog.jsx';
 import { useGetDashboardMetricsQuery } from '../redux/features/dashboardSlice.js';
 
 /**
@@ -32,6 +33,8 @@ import { useGetDashboardMetricsQuery } from '../redux/features/dashboardSlice.js
  * @returns {JSX.Element} Rendered executive dashboard canvas.
  */
 export const Dashboard = memo(() => {
+  const [isBranchDialogOpen, setIsBranchDialogOpen] = useState(false);
+
   const {
     data: metrics,
     isLoading,
@@ -44,15 +47,15 @@ export const Dashboard = memo(() => {
     <Box
       sx={{
         width: '100%',
-        maxWidth: 1400,
+        maxWidth: { xs: '100%', xl: 1600 },
         mx: 'auto',
-        p: { xs: 2, sm: 3 },
+        p: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 },
       }}
     >
       {/* =========================================================================
           ROW 1: HEADER & ACTIONS
           Left: Executive Title & Subtitle
-          Right: Quick Action Shortcuts with xs: 375px Iconification
+          Right: Quick Action Shortcuts with In-Place Branch Add & Chat Inspection
           ========================================================================= */}
       <Box
         sx={{
@@ -61,17 +64,17 @@ export const Dashboard = memo(() => {
           justifyContent: 'space-between',
           flexDirection: { xs: 'column', sm: 'row' },
           gap: { xs: 1.5, sm: 2 },
-          mb: { xs: 2.5, sm: 3 },
+          mb: { xs: 2, sm: 2.5, md: 3 },
         }}
       >
-        <Box>
+        <Box sx={{ minWidth: 0, flex: { sm: 1 }, mr: { sm: 2 } }}>
           <Typography
             variant="h5"
             component="h1"
             sx={{
               fontWeight: 800,
               letterSpacing: '-0.02em',
-              fontSize: { xs: '1.25rem', sm: '1.5rem' },
+              fontSize: { xs: '1.2rem', sm: '1.35rem', md: '1.5rem', lg: '1.65rem' },
               color: 'text.primary',
             }}
           >
@@ -81,7 +84,7 @@ export const Dashboard = memo(() => {
             variant="body2"
             sx={{
               color: 'text.secondary',
-              fontSize: { xs: '0.8rem', sm: '0.875rem' },
+              fontSize: { xs: '0.78rem', sm: '0.82rem', md: '0.875rem' },
               mt: 0.25,
             }}
           >
@@ -89,7 +92,7 @@ export const Dashboard = memo(() => {
           </Typography>
         </Box>
 
-        <DashboardQuickActions />
+        <DashboardQuickActions onAddBranch={() => setIsBranchDialogOpen(true)} />
       </Box>
 
       {/* Error Banner with Retry Interaction */}
@@ -116,19 +119,19 @@ export const Dashboard = memo(() => {
       {/* =========================================================================
           MAIN EXECUTIVE CANVAS CONTENT
           ========================================================================= */}
-      <Stack spacing={{ xs: 2.5, sm: 3 }}>
-        {/* ROW 2: KPI DECK (4 Cards) */}
+      <Stack spacing={{ xs: 2, sm: 2.5, md: 3 }}>
+        {/* ROW 2: KPI DECK (4 Cards, 100% fullwidth on xs, 2x2 on sm, 1x4 on md+) */}
         <DashboardKpiDeck kpis={metrics?.kpis} isLoading={isLoading} />
 
-        {/* ROW 3: ANALYTICS CHARTS (Side-by-Side on md+, Stacked on xs/sm) */}
+        {/* ROW 3: ANALYTICS CHARTS (Side-by-Side on lg+, Stacked on xs/sm/md) */}
         <Grid container spacing={{ xs: 2, sm: 2.5 }}>
-          <Grid size={{ xs: 12, md: 6 }}>
+          <Grid size={{ xs: 12, sm: 12, md: 12, lg: 6, xl: 6 }}>
             <DashboardBranchVisitChart
               data={metrics?.branchVisitFrequency}
               isLoading={isLoading}
             />
           </Grid>
-          <Grid size={{ xs: 12, md: 6 }}>
+          <Grid size={{ xs: 12, sm: 12, md: 12, lg: 6, xl: 6 }}>
             <DashboardAuditTrendChart
               data={metrics?.auditVolumeTrend}
               isLoading={isLoading}
@@ -136,12 +139,21 @@ export const Dashboard = memo(() => {
           </Grid>
         </Grid>
 
-        {/* ROW 4: RECENT INSPECTIONS LEDGER */}
+        {/* ROW 4: RECENT INSPECTIONS LEDGER (Mobile Card Deck & sm+ Table with Telegram Share) */}
         <DashboardRecentAuditsLedger
           reports={metrics?.recentReports}
           isLoading={isLoading}
         />
       </Stack>
+
+      {/* Repurposed Modal Feature: In-Place Branch Creation */}
+      <MuiBranchDialog
+        open={isBranchDialogOpen}
+        onClose={() => setIsBranchDialogOpen(false)}
+        onSuccess={() => {
+          refetch();
+        }}
+      />
     </Box>
   );
 });

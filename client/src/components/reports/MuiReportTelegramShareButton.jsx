@@ -45,6 +45,9 @@ export const MuiReportTelegramShareButton = memo(({
   report,
   size = 'small',
   disabled = false,
+  variant = 'icon',
+  label = 'Share',
+  buttonVariant = 'outlined',
   sx = {},
 }) => {
   const navigate = useNavigate();
@@ -115,27 +118,49 @@ export const MuiReportTelegramShareButton = memo(({
 
   return (
     <>
-      <Tooltip title="Share to Telegram" arrow>
-        <span>
-          <IconButton
-            size={size}
-            onClick={handleOpen}
-            disabled={disabled || !reportId}
-            aria-label="share report to telegram"
-            sx={{
-              color: isPopoverOpen ? '#2AABEE' : 'text.secondary',
-              transition: 'color 0.2s ease, transform 0.15s ease',
-              '&:hover': {
-                color: '#2AABEE',
-                transform: 'scale(1.08)',
-              },
-              ...sx,
-            }}
-          >
-            <TelegramIcon fontSize={size === 'small' ? 'small' : 'medium'} />
-          </IconButton>
-        </span>
-      </Tooltip>
+      {variant === 'button' ? (
+        <Button
+          variant={buttonVariant}
+          size={size}
+          onClick={handleOpen}
+          disabled={disabled || !reportId}
+          startIcon={<TelegramIcon fontSize="small" sx={{ color: '#2AABEE' }} />}
+          aria-label="share report to telegram"
+          sx={{
+            textTransform: 'none',
+            fontWeight: 700,
+            fontSize: '0.8rem',
+            borderRadius: '8px',
+            color: '#2AABEE',
+            borderColor: 'divider',
+            ...sx,
+          }}
+        >
+          {label}
+        </Button>
+      ) : (
+        <Tooltip title="Share to Telegram" arrow>
+          <span>
+            <IconButton
+              size={size}
+              onClick={handleOpen}
+              disabled={disabled || !reportId}
+              aria-label="share report to telegram"
+              sx={{
+                color: isPopoverOpen ? '#2AABEE' : 'text.secondary',
+                transition: 'color 0.2s ease, transform 0.15s ease',
+                '&:hover': {
+                  color: '#2AABEE',
+                  transform: 'scale(1.08)',
+                },
+                ...sx,
+              }}
+            >
+              <TelegramIcon fontSize={size === 'small' ? 'small' : 'medium'} />
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
 
       <Popover
         open={isPopoverOpen}
@@ -266,6 +291,9 @@ MuiReportTelegramShareButton.propTypes = {
   report: PropTypes.oneOfType([PropTypes.object, PropTypes.string]).isRequired,
   size: PropTypes.oneOf(['small', 'medium', 'large']),
   disabled: PropTypes.bool,
+  variant: PropTypes.oneOf(['icon', 'button']),
+  label: PropTypes.string,
+  buttonVariant: PropTypes.oneOf(['outlined', 'contained', 'text']),
   sx: PropTypes.object,
 };
 

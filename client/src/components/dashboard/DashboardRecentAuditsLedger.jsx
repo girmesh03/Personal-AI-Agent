@@ -32,6 +32,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import MuiButton from '../reusable/MuiButton.jsx';
 import MuiEmptyState from '../reusable/MuiEmptyState.jsx';
+import MuiReportTelegramShareButton from '../reports/MuiReportTelegramShareButton.jsx';
 import { toEthiopianDateString, computeShiftDuration } from '../../utils/ethiopianCalendar.js';
 
 /**
@@ -41,11 +42,11 @@ const TableSkeleton = () => (
   <TableBody>
     {[0, 1, 2].map((idx) => (
       <TableRow key={idx}>
-        <TableCell sx={{ width: '18%', minWidth: 140 }}><Skeleton variant="text" width={110} height={24} /></TableCell>
-        <TableCell sx={{ width: '32%', minWidth: 220 }}><Skeleton variant="rounded" width={140} height={28} /></TableCell>
-        <TableCell sx={{ width: '20%', minWidth: 160 }}><Skeleton variant="text" width={90} height={24} /></TableCell>
-        <TableCell sx={{ width: '15%', minWidth: 130 }}><Skeleton variant="rounded" width={80} height={24} /></TableCell>
-        <TableCell align="right" sx={{ width: '15%', minWidth: 150 }}><Skeleton variant="rounded" width={100} height={32} sx={{ ml: 'auto' }} /></TableCell>
+        <TableCell sx={{ width: '18%', minWidth: { sm: 110, md: 110, lg: 130 } }}><Skeleton variant="text" width={100} height={24} /></TableCell>
+        <TableCell sx={{ width: '32%', minWidth: { sm: 150, md: 160, lg: 200 } }}><Skeleton variant="rounded" width={130} height={28} /></TableCell>
+        <TableCell sx={{ width: '20%', minWidth: { sm: 120, md: 120, lg: 140 } }}><Skeleton variant="text" width={90} height={24} /></TableCell>
+        <TableCell sx={{ width: '15%', minWidth: { sm: 100, md: 110, lg: 120 } }}><Skeleton variant="rounded" width={80} height={24} /></TableCell>
+        <TableCell align="right" sx={{ width: '15%', minWidth: { sm: 120, md: 130, lg: 150 } }}><Skeleton variant="rounded" width={90} height={32} sx={{ ml: 'auto' }} /></TableCell>
       </TableRow>
     ))}
   </TableBody>
@@ -110,7 +111,7 @@ export const DashboardRecentAuditsLedger = memo(({ reports = [], isLoading = fal
     <Paper
       variant="outlined"
       sx={{
-        p: { xs: 2, sm: 2.5 },
+        p: { xs: 1.5, sm: 2, md: 2.5 },
         borderRadius: '10px',
         bgcolor: 'background.paper',
         borderColor: 'divider',
@@ -120,17 +121,17 @@ export const DashboardRecentAuditsLedger = memo(({ reports = [], isLoading = fal
       <Box
         sx={{
           display: 'flex',
-          alignItems: 'center',
+          alignItems: { xs: 'flex-start', sm: 'center' },
           justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 1.5,
-          mb: 2.5,
+          flexDirection: { xs: 'column', sm: 'row' },
+          gap: { xs: 1, sm: 1.5 },
+          mb: { xs: 2, sm: 2.5 },
         }}
       >
         <Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
             <AssignmentOutlinedIcon fontSize="small" sx={{ color: 'primary.main' }} />
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: '1rem' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: { xs: '0.95rem', sm: '1rem' } }}>
               Recent Operational Inspections
             </Typography>
           </Box>
@@ -145,7 +146,12 @@ export const DashboardRecentAuditsLedger = memo(({ reports = [], isLoading = fal
           component={Link}
           to="/reports"
           endIcon={<ArrowForwardIcon fontSize="small" />}
-          sx={{ fontWeight: 700, fontSize: '0.82rem' }}
+          sx={{
+            fontWeight: 700,
+            fontSize: '0.82rem',
+            alignSelf: { xs: 'flex-start', sm: 'center' },
+            px: { xs: 0, sm: 1 },
+          }}
         >
           View All Reports
         </MuiButton>
@@ -156,7 +162,7 @@ export const DashboardRecentAuditsLedger = memo(({ reports = [], isLoading = fal
         <>
           <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
             <TableContainer sx={{ overflowX: 'auto', width: '100%' }}>
-              <Table sx={{ minWidth: 800, width: '100%' }} size="medium">
+              <Table sx={{ minWidth: { sm: 600, md: 630, lg: 750 }, width: '100%' }} size="medium">
                 <TableSkeleton />
               </Table>
             </TableContainer>
@@ -187,14 +193,14 @@ export const DashboardRecentAuditsLedger = memo(({ reports = [], isLoading = fal
           {/* Desktop & Tablet Table (sm+) */}
           <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
             <TableContainer sx={{ overflowX: 'auto', width: '100%' }}>
-              <Table sx={{ minWidth: 800, width: '100%' }} size="medium">
+              <Table sx={{ minWidth: { sm: 600, md: 630, lg: 750 }, width: '100%' }} size="medium">
                 <TableHead>
                   <TableRow sx={{ '& th': { fontWeight: 700, fontSize: '0.78rem', color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' } }}>
-                    <TableCell sx={{ width: '18%', minWidth: 140 }}>Date</TableCell>
-                    <TableCell sx={{ width: '32%', minWidth: 220 }}>Visited Branches</TableCell>
-                    <TableCell sx={{ width: '20%', minWidth: 160 }}>Shift Schedule</TableCell>
-                    <TableCell sx={{ width: '15%', minWidth: 130 }}>Issues Status</TableCell>
-                    <TableCell align="right" sx={{ width: '15%', minWidth: 150 }}>Actions</TableCell>
+                    <TableCell sx={{ width: '18%', minWidth: { sm: 110, md: 110, lg: 130 } }}>Date</TableCell>
+                    <TableCell sx={{ width: '32%', minWidth: { sm: 150, md: 160, lg: 200 } }}>Visited Branches</TableCell>
+                    <TableCell sx={{ width: '20%', minWidth: { sm: 120, md: 120, lg: 140 } }}>Shift Schedule</TableCell>
+                    <TableCell sx={{ width: '15%', minWidth: { sm: 100, md: 110, lg: 120 } }}>Issues Status</TableCell>
+                    <TableCell align="right" sx={{ width: '15%', minWidth: { sm: 120, md: 130, lg: 150 } }}>Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -302,16 +308,19 @@ export const DashboardRecentAuditsLedger = memo(({ reports = [], isLoading = fal
 
                         {/* 5. Actions */}
                         <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                          <MuiButton
-                            variant="outlined"
-                            size="small"
-                            component={Link}
-                            to={`/reports/${report._id}/details`}
-                            endIcon={<OpenInNewIcon fontSize="small" />}
-                            sx={{ fontSize: '0.78rem', py: 0.5, px: 1.5, whiteSpace: 'nowrap', minWidth: 130 }}
-                          >
-                            View Dossier
-                          </MuiButton>
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
+                            <MuiReportTelegramShareButton report={report} size="small" />
+                            <MuiButton
+                              variant="outlined"
+                              size="small"
+                              component={Link}
+                              to={`/reports/${report._id}/details`}
+                              endIcon={<OpenInNewIcon fontSize="small" />}
+                              sx={{ fontSize: '0.78rem', py: 0.5, px: { sm: 1, md: 1.25 }, whiteSpace: 'nowrap', minWidth: { sm: 'auto', lg: 120 } }}
+                            >
+                              View Dossier
+                            </MuiButton>
+                          </Box>
                         </TableCell>
                       </TableRow>
                     );
@@ -339,7 +348,7 @@ export const DashboardRecentAuditsLedger = memo(({ reports = [], isLoading = fal
                     bgcolor: 'background.paper',
                   }}
                 >
-                  <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                  <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
                     {/* Date and Status Badge */}
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1 }}>
                       <Box>
@@ -398,18 +407,46 @@ export const DashboardRecentAuditsLedger = memo(({ reports = [], isLoading = fal
                       </Typography>
                     )}
 
-                    {/* Fullwidth Action CTA */}
-                    <MuiButton
-                      variant="contained"
-                      fullWidth
-                      size="small"
-                      component={Link}
-                      to={`/reports/${report._id}`}
-                      endIcon={<OpenInNewIcon fontSize="small" />}
-                      sx={{ fontSize: '0.82rem', py: 0.75 }}
-                    >
-                      View Dossier
-                    </MuiButton>
+                    {/* Balanced Dual Action Deck: Share & View Dossier (50/50 Equal Width) */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                      <MuiReportTelegramShareButton
+                        report={report}
+                        variant="button"
+                        label="Share"
+                        size="small"
+                        sx={{
+                          flex: 1,
+                          height: 36,
+                          borderRadius: '8px',
+                          fontSize: '0.8rem',
+                          fontWeight: 700,
+                          borderColor: 'divider',
+                          color: '#2AABEE',
+                          bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(42, 171, 238, 0.08)' : 'rgba(42, 171, 238, 0.06)',
+                          '&:hover': {
+                            borderColor: '#2AABEE',
+                            bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(42, 171, 238, 0.16)' : 'rgba(42, 171, 238, 0.12)',
+                          },
+                        }}
+                      />
+                      <MuiButton
+                        variant="contained"
+                        size="small"
+                        component={Link}
+                        to={`/reports/${report._id}/details`}
+                        endIcon={<OpenInNewIcon fontSize="small" />}
+                        sx={{
+                          flex: 1,
+                          height: 36,
+                          fontSize: '0.8rem',
+                          fontWeight: 700,
+                          borderRadius: '8px',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        View Dossier
+                      </MuiButton>
+                    </Box>
                   </CardContent>
                 </Card>
               );

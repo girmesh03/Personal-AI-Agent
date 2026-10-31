@@ -380,6 +380,48 @@ Retrieved directly from Phase 11B (`COMPLETE_REMAINING_ARCHITECTURE_AND_IMPLEMEN
   - Microphone Invariant: `client/src/components/chat/MuiAudioRecorder.jsx` 100% untouched.
   - Branch Confinement: Isolated on `phase-14-overall-application-audit`; 0 commits, 0 merges on `main`.
 
+### Task 14.26: Executive Dashboard UI Structuring, Multi-Breakpoint Responsiveness (xs, sm, md, lg, xl) & Component Repurposing [COMPLETE & VERIFIED]
+- **Core Directive**: Page-by-page UI structuring and responsiveness overhaul across `xs`, `sm`, `md`, `lg`, and `xl` breakpoints, repurposing existing components as features where required, while strictly preserving 100% of existing functionality. Starting with the Dashboard.
+- **Forensic Diagnosis of Mobile Screenshot Defects & Rectifications**:
+  1. *KPI Deck 100% Mobile Stack & 2x2 Matrix*: Restored fullwidth on `xs` (`size={{ xs: 12, sm: 6, md: 6, lg: 3, xl: 3 }}`). Removed `noWrap` on `MuiStatCard.jsx` title and subtitle, allowing clean natural typography without any ellipsis truncation.
+  2. *Quick Action Full Labels*: Restored clear full text labels `Start Inspection` and `Add Branch` in `DashboardQuickActions.jsx` across all breakpoints.
+  3. *Chart Empty Void Eradication & Full Axis Labels*: Set Paper `height: { xs: 'auto', md: '100%' }`, Box `height: chartHeight`, removing `flexGrow: 1` and `minHeight` stretch. In `DashboardBranchVisitChart`, set `tickLabelInterval: () => true` and `angle: -28`, `bottom: 48` so all branch codes fit without collision and without being skipped.
+  4. *Mobile Telegram Action Deck Harmonization*: Styled `MuiReportTelegramShareButton` with `border: 1, borderColor: 'divider', borderRadius: '8px', height: 36, width: 36, color: '#2AABEE'` and matching `height: 36` on View Dossier button.
+  5. *Zero 404 Route Invariant*: Synchronized mobile link in `DashboardRecentAuditsLedger.jsx` to `/reports/${report._id}/details` matching desktop and `router.jsx` SSOT.
+  6. *In-Place Branch Creation Feature*: Mounted existing `MuiBranchDialog` directly on Dashboard, triggered by QuickActions "Add Branch", auto-refetching `useGetDashboardMetricsQuery` on save.
+  7. *Executive Telegram Dossier Dispatch*: Embedded `MuiReportTelegramShareButton` into both the desktop table rows and mobile card deck.
+  8. *Breakpoint md Architecture Realignment (Sidebar Math & Text Collision)*: Accounted for 240px permanent sidebar. Configured KPI deck as 2x2 grid (`md: 6`) preventing text-icon collision, stacked charts 12-col (`md: 12`) preventing branch label clipping, and scaled table `minWidth: { sm: 600, md: 630, lg: 750 }` preventing off-screen action clipping.
+- **Verification Outcomes**:
+  - `backend/scripts/testPhase14FDashboardUI.js`: **14 / 14 PASSED (100% green)**.
+  - `backend/scripts/testPhase14EUserAvatarPipeline.js`: **17 / 17 PASSED (100% green)**.
+  - `backend/scripts/testPhase14DChatPaginationAndGrowth.js`: **10 / 10 PASSED (100% green)**.
+  - `npm --prefix client run lint`: **0 errors, 0 warnings (Exit code 0)**.
+  - `npm --prefix client run build`: **Built cleanly in 11.83s (Exit code 0)**.
+  - Microphone Invariant: `client/src/components/chat/MuiAudioRecorder.jsx` 100% untouched.
+  - Verified on mobile and md via user screenshots (`media_1793409620782_0a816a85.png` and `media_1793409675748_7a0fc683.png`).
+
+### Task 14.27: Master Operational Reports Archive UI Structuring, Multi-Breakpoint Architecture (xs, sm, md, lg, xl) & Component Repurposing [PLANNING / PENDING USER APPROVAL]
+- **Core Directive**: Single-page flow continuation: apply structural optimization, full responsiveness for `xs`, `sm`, `md`, `lg`, and `xl` breakpoints, and component repurposing to the Operational Reports Archive (`client/src/pages/Reports.jsx`), preserving 100% of existing functionality.
+- **Forensic Diagnosis of Reports Defects**:
+  1. *Breakpoint md Sidebar Canvas Squeeze in Control Strip*:
+     In `MuiDataGridToolbar.jsx:98`, `flexWrap: { xs: 'wrap', md: 'nowrap' }` forces search input (minWidth 240), branch selector (190), date picker (180), and view switcher (75) into a single row on `md`. But with a 240px permanent sidebar on `md` (900px–1199px), the available canvas is only 660px–959px! Squeezing 721px into 660px compresses the search input or overflows horizontally.
+     *Resolution*: Set `flexWrap: { xs: 'wrap', sm: 'wrap', md: 'wrap', lg: 'nowrap' }`. On `sm` and `md`, render a clean 2-row layout (Row 1: 100% full-width search input; Row 2: 50/50 Branch Selector + Date Picker + View Switcher). Transition to single row on `lg+` (≥1200px).
+  2. *Breakpoint md Card Grid Collision in `ReportCardGrid.jsx`*:
+     Setting `size={{ xs: 12, sm: 6, md: 4 }}` forces 3 cards per row on `md`, allocating only ~198px per card. Fitting dates, chips, and 5 action buttons (`View Dossier`, `Telegram Share`, `Edit`, `Archive`, `Delete`) in 198px causes button collision and wrapping.
+     *Resolution*: Configure `size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}` providing ~330px per card on `md`.
+  3. *In-Place Branch Creation Feature Repurposing*:
+     Mount existing `MuiBranchDialog` in `Reports.jsx` to allow supervisors to add missing branches in-place while reviewing reports, updating the branch selector on save.
+  4. *Telegram Share Button Styling Parity*:
+     Harmonize `MuiReportTelegramShareButton` in `ReportCard.jsx` with the 36px rounded, tinted cyan design established on the Dashboard.
+  5. *Fluid Proportional Canvas Scaling*:
+     Update `Reports.jsx` to `maxWidth: { xs: '100%', xl: 1600 }` with progressive padding `p: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 }`.
+- **Strict Invariants**:
+  - 100% functionality preserved: `useGetReportsQuery`, `useGetBranchesQuery`, pagination models, search filters, delete/archive/restore mutations with immediate confirmation dismissal.
+  - Microphone Invariant: `client/src/components/chat/MuiAudioRecorder.jsx` remains 100% untouched.
+  - Confinement strictly to branch `phase-14-overall-application-audit`.
+  - Zero commits / zero merges without explicit user authorization.
+  - Implementation freeze: NO application code edits until explicit user review and approval.
+
 
 
 

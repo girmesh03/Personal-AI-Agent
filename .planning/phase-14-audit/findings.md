@@ -337,6 +337,44 @@
   4. In `userController.js:removeAvatar`, purged both Cloudinary and disk assets, setting `user.avatar = null` and `user.avatarPublicId = null`.
   5. Verified via dedicated suite `backend/scripts/testPhase14EUserAvatarPipeline.js` (17/17 passed), ESLint (0 errors, 0 warnings), and Vite build (exit code 0).
 
+### 1.41 Dashboard Mobile Route 404 Discrepancy, Multi-Breakpoint Structuring & Visual Defect Eradication
+- **Location**: `client/src/components/dashboard/DashboardRecentAuditsLedger.jsx`, `client/src/pages/Dashboard.jsx`, `client/src/components/dashboard/DashboardQuickActions.jsx`, `client/src/components/dashboard/DashboardKpiDeck.jsx`, `client/src/components/reusable/MuiStatCard.jsx`, `client/src/components/dashboard/DashboardBranchVisitChart.jsx`, `client/src/components/dashboard/DashboardAuditTrendChart.jsx`
+- **Root Cause & Forensic Screenshot Audit**:
+  1. *Mobile Route 404 Bug*: `DashboardRecentAuditsLedger.jsx:407` rendered `to={'/reports/${report._id}'}` on mobile cards, whereas desktop table rendered `to={'/reports/${report._id}/details'}` (line 309). `router.jsx:57` only mounts `/reports/:reportId/details`, causing mobile users to hit `NotFound.jsx`. Resolved by synchronizing to `/reports/${report._id}/details`.
+  2. *Unrepurposed Components on Dashboard*:
+     - `MuiBranchDialog` was only mounted inside `/branches`. Clicking "Add Branch" on Dashboard forced navigation to the branch list rather than providing instant creation in-place.
+     - `MuiReportTelegramShareButton` was absent from recent inspections on Dashboard, forcing users to navigate to full reports to dispatch inspection dossiers.
+  3. *KPI Deck Truncation (Screenshot 1)*:
+     - Forcing `size={{ xs: 6 }}` (2x2 grid on ~375px mobile) COMBINED with `noWrap` on `Typography` in `MuiStatCard.jsx` squeezed cards into ~160px width. An uppercase 16-character title with 30px icon truncated to `ACTIVE B...`, `TOTAL INS...`, `AUDITS T...`, `OPEN ISS...` and subtitles to `Operational Store ...`.
+  4. *Quick Action Chopped Labels (Screenshot 1)*:
+     - Buttons displayed awkward chopped labels `[ 💬 Inspect ]` and `[ 🏪 Branch ]` on mobile.
+  5. *Charts Massive Dark Void & Missing Axis Labels (Screenshots 2 & 3)*:
+     - `Paper sx={{ height: '100%' }}` combined with `Box sx={{ flexGrow: 1, minHeight: 280, display: 'flex', alignItems: 'center' }}` inside stacked grid items caused the Box to vertically center a 240px chart in a ~370px container, while `CHART_MARGIN.bottom: 45` added internal SVG space, resulting in over 70px of completely empty dark void below the charts.
+     - In `DashboardBranchVisitChart`, `angle: 0` horizontal labels collided on narrow mobile screens, causing MUI X-Charts to automatically skip 2 out of 5 branch bars (`ERPO-01`, `GOLA-01`, `TULU-01` shown; 2 skipped).
+  6. *Unbalanced Mobile Telegram Action (Screenshot 4)*:
+     - Mobile card deck rendered a small borderless dark square Telegram button next to a giant full-width solid blue "View Dossier" button.
+- **Resolution**:
+  1. Fix mobile link to `to={'/reports/${report._id}/details'}` using `ROUTES.REPORT_DETAIL.replace(':reportId', report._id)`.
+  2. Embed `MuiBranchDialog` in Dashboard to enable in-place branch creation with automatic `refetch()` on metrics query.
+  3. Embed `MuiReportTelegramShareButton` in `DashboardRecentAuditsLedger.jsx` on both desktop table and mobile cards.
+  4. Restore 100% fullwidth cards on mobile `xs` (`size={{ xs: 12, sm: 6, md: 3, lg: 3, xl: 3 }}`). Remove `noWrap` from `MuiStatCard.jsx` title and subtitle, allowing clean natural typography without any ellipsis truncation.
+  5. Restore clear, full text labels `Start Inspection` and `Add Branch` in `DashboardQuickActions.jsx`.
+  6. Eradicate chart bottom void: set Paper `height: { xs: 'auto', md: '100%' }`, Box `height: chartHeight`, removing `flexGrow: 1` and `minHeight` stretch. In `DashboardBranchVisitChart`, set `tickLabelInterval: () => true` and `angle: -28` so all branch codes fit without being skipped.
+  7. Harmonize mobile card actions: style `MuiReportTelegramShareButton` with `border: 1, borderColor: 'divider', borderRadius: '8px', height: 36, width: 36, color: '#2AABEE'` and matching `height: 36` on View Dossier button. Align "View All Reports →" with `alignSelf: { xs: 'flex-start', sm: 'center' }`.
+  8. Realignment of `md` (900px-1199px) Architecture: Account for 240px permanent sidebar. Configure KPI deck as 2x2 grid (`md: 6`) preventing text-icon collision, stack charts 12-col (`md: 12`) preventing branch label clipping, and scale table `minWidth` to `{ sm: 600, md: 630, lg: 750 }` preventing off-screen action clipping.
+
+### 1.42 Reports Archive Control Strip Squeeze, Card Grid Collision & Multi-Breakpoint Defect Prevention
+- **Location**: `client/src/components/reusable/MuiDataGridToolbar.jsx`, `client/src/components/reports/ReportCardGrid.jsx`, `client/src/components/reports/ReportCard.jsx`, `client/src/pages/Reports.jsx`
+- **Root Cause & Forensic Audit**:
+  1. *Control Strip Squeeze at `md`*: `MuiDataGridToolbar.jsx:98` enforces `flexWrap: { xs: 'wrap', md: 'nowrap' }`. On `md` (900px–1199px), the sidebar consumes 240px, leaving only 660px–959px canvas. The combined width of search (240px), branch selector (190px), date picker (180px), view switcher (75px), and gaps (36px) is 721px. Forcing `nowrap` on a 660px canvas compresses the search input or overflows horizontally.
+  2. *Card Grid Action Wrap at `md`*: `ReportCardGrid.jsx:61, 90` hardcoded `size={{ xs: 12, sm: 6, md: 4 }}`. On a 660px canvas, 3 cards per row (`md: 4`) allocates only ~198px per card. In 198px, fitting dates, duration, branch chips, findings, and 5 action buttons (`View Dossier`, `Telegram`, `Edit`, `Archive`, `Delete`) forces action buttons to wrap awkwardly or collide.
+  3. *In-Place Feature Void*: Supervisors reviewing reports who notice missing branches must navigate away to `/branches` instead of adding branches in-place.
+- **Resolution**:
+  1. Configure `flexWrap: { xs: 'wrap', sm: 'wrap', md: 'wrap', lg: 'nowrap' }` in `MuiDataGridToolbar.jsx`. On `sm` and `md`, render a clean 2-row layout (Row 1: fullwidth search; Row 2: 50/50 Branch + Date filters + View switcher). Transition to single row on `lg+`.
+  2. Configure `size={{ xs: 12, sm: 6, md: 6, lg: 4, xl: 3 }}` in `ReportCardGrid.jsx`, providing ~330px per card on `md`.
+  3. Mount `MuiBranchDialog` in `Reports.jsx` to allow immediate in-place branch creation.
+  4. Harmonize `MuiReportTelegramShareButton` styling in `ReportCard.jsx` with the 36px rounded, tinted cyan design.
+  5. Scale `Reports.jsx` to `maxWidth: { xs: '100%', xl: 1600 }` and fluid progressive padding `p: { xs: 1.5, sm: 2, md: 2.5, lg: 3, xl: 3.5 }`.
 
 
 
@@ -346,3 +384,14 @@
 
 
 
+
+
+
+### 1.43 Sidebar Avatar Menu Dismissal Void & Appbar Responsive Search Field Trigger
+- **Location**: `client/src/layouts/MuiSidebar.jsx:106-116`, `client/src/components/reusable/MuiAppbar.jsx:35-96`
+- **Root Cause & Forensic Audit**:
+  1. *Sidebar Avatar Menu Dismissal Void*: In `MuiSidebar.jsx`, `handleProfileClick` and `handleLogoutClick` called `handleMenuClose()` which dismissed the popover anchor menu, but failed to invoke `onMobileClose()`. On mobile viewports (`< md`), the temporary drawer remained open over the entire screen after navigating to Profile or triggering Logout.
+  2. *Appbar Search Icon vs Search Field*: In `MuiAppbar.jsx`, a responsive breakpoint switch rendered `<IconButton><SearchIcon /></IconButton>` on `< md` viewports (`xs` and `sm`), hiding the search field bar trigger and presenting only an icon button.
+- **Resolution**:
+  1. In `MuiSidebar.jsx`, added `if (onMobileClose) onMobileClose();` to both `handleProfileClick` and `handleLogoutClick`.
+  2. In `MuiAppbar.jsx`, eliminated the mobile iconified button and unified the search trigger into a responsive search field across all viewports (`xs` through `xl`). Configured fluid dimensions (`width: { xs: '100%', md: 260, lg: 280 }`, `flex: { xs: 1, md: 'none' }`), set `<Box sx={{ flexGrow: { xs: 0, md: 1 } }} />` in Toolbar to eliminate the empty void between hamburger and search on mobile, restored full label `Search workspace...` across all viewports, and enabled `Ctrl K` badge across all viewports. Functionality (`onOpenSearch`, `Ctrl+K`, dialog integration) remains 100% intact.

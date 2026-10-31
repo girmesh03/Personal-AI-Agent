@@ -19,7 +19,6 @@ import IconButton from "@mui/material/IconButton";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Typography from "@mui/material/Typography";
-import MenuIcon from "@mui/icons-material/Menu";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
@@ -106,11 +105,13 @@ const MuiSidebar = ({ mode, onToggleMode, mobileOpen, onMobileClose }) => {
 
   const handleProfileClick = () => {
     handleMenuClose();
+    if (onMobileClose) onMobileClose();
     navigate(ROUTES.PROFILE);
   };
 
   const handleLogoutClick = () => {
     handleMenuClose();
+    if (onMobileClose) onMobileClose();
     void logout();
   };
 
@@ -135,11 +136,7 @@ const MuiSidebar = ({ mode, onToggleMode, mobileOpen, onMobileClose }) => {
         onClick={isMobile ? onMobileClose : onToggleMode}
         sx={{ color: "text.secondary", flexShrink: 0 }}
       >
-        {isMobile ? (
-          <MenuIcon fontSize="small" />
-        ) : (
-          <ChevronLeftIcon fontSize="small" />
-        )}
+        <ChevronLeftIcon fontSize="small" />
       </IconButton>
     </>
   );

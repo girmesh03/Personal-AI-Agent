@@ -1,16 +1,14 @@
 /**
  * @module components/reusable/MuiAppbar
  * @description Top application bar supporting public and protected shell geometry variants.
- * Integrates global search trigger with Ctrl+K shortcut and xs: 375px iconification.
+ * Integrates global search trigger field with Ctrl+K shortcut across all responsive breakpoints.
  */
 
 import AppBar from '@mui/material/AppBar';
 import Toolbar from '@mui/material/Toolbar';
 import Box from '@mui/material/Box';
-import IconButton from '@mui/material/IconButton';
 import ButtonBase from '@mui/material/ButtonBase';
 import Typography from '@mui/material/Typography';
-import Tooltip from '@mui/material/Tooltip';
 import Chip from '@mui/material/Chip';
 import SearchIcon from '@mui/icons-material/Search';
 import PropTypes from 'prop-types';
@@ -18,7 +16,7 @@ import { APPBAR_MIN_HEIGHT } from '../../utils/constants.js';
 
 /**
  * Standard application bar shell rendering leading branding/toggles, flexible spacer,
- * global search trigger, and right-aligned actions slot.
+ * global search trigger field, and right-aligned actions slot.
  *
  * @component MuiAppbar
  * @param {object} props - Component properties.
@@ -33,24 +31,28 @@ export const MuiAppbar = ({ variant = 'public', leading, actions, onOpenSearch, 
   const isPublic = variant === 'public';
 
   const searchAction = !isPublic && onOpenSearch ? (
-    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-      {/* Desktop Search Trigger Bar (md+) */}
+    <Box sx={{ display: 'flex', alignItems: 'center', flex: { xs: 1, md: 'none' }, minWidth: 0 }}>
+      {/* Responsive Global Search Trigger Field (xs through xl) */}
       <ButtonBase
         onClick={onOpenSearch}
         aria-label="Search workspace (Ctrl+K)"
         sx={{
-          display: { xs: 'none', md: 'flex' },
+          display: 'flex',
           alignItems: 'center',
           gap: 1,
-          px: 1.5,
+          px: { xs: 1.25, sm: 1.5 },
           py: 0.6,
+          height: 36,
           bgcolor: 'action.hover',
           border: 1,
           borderColor: 'divider',
           borderRadius: '8px',
           color: 'text.secondary',
-          minWidth: 220,
+          width: { xs: '100%', md: 260, lg: 280 },
+          maxWidth: { xs: '100%', md: 280 },
+          minWidth: 0,
           textAlign: 'left',
+          transition: 'all 0.2s ease',
           '&:hover': {
             bgcolor: 'action.selected',
             borderColor: 'primary.main',
@@ -58,8 +60,17 @@ export const MuiAppbar = ({ variant = 'public', leading, actions, onOpenSearch, 
           },
         }}
       >
-        <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-        <Typography variant="body2" sx={{ fontSize: '0.85rem', flexGrow: 1 }}>
+        <SearchIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
+        <Typography
+          variant="body2"
+          noWrap
+          sx={{
+            fontSize: '0.85rem',
+            flexGrow: 1,
+            color: 'text.secondary',
+            minWidth: 0,
+          }}
+        >
           Search workspace...
         </Typography>
         <Chip
@@ -72,21 +83,10 @@ export const MuiAppbar = ({ variant = 'public', leading, actions, onOpenSearch, 
             bgcolor: 'background.paper',
             border: 1,
             borderColor: 'divider',
+            flexShrink: 0,
           }}
         />
       </ButtonBase>
-
-      {/* Mobile Iconified Search Trigger (< md) */}
-      <Tooltip title="Search workspace (Ctrl+K)">
-        <IconButton
-          size="small"
-          aria-label="Search workspace"
-          onClick={onOpenSearch}
-          sx={{ display: { xs: 'flex', md: 'none' } }}
-        >
-          <SearchIcon fontSize="small" />
-        </IconButton>
-      </Tooltip>
     </Box>
   ) : null;
 
@@ -108,11 +108,11 @@ export const MuiAppbar = ({ variant = 'public', leading, actions, onOpenSearch, 
         sx={{
           px: { xs: 1.5, sm: 3 },
           minHeight: APPBAR_MIN_HEIGHT,
-          gap: 1.5,
+          gap: { xs: 1, sm: 1.5 },
         }}
       >
         {leading}
-        <Box sx={{ flexGrow: 1 }} />
+        <Box sx={{ flexGrow: { xs: 0, md: 1 } }} />
         {searchAction}
         {actions}
       </Toolbar>

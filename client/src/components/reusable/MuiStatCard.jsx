@@ -57,16 +57,19 @@ export const MuiStatCard = memo(({
         ...sx,
       }}
     >
-      <CardContent sx={{ p: { xs: 2, sm: 2.5 }, '&:last-child': { pb: { xs: 2, sm: 2.5 } } }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+      <CardContent sx={{ p: { xs: 1.75, sm: 2, md: 2.5 }, '&:last-child': { pb: { xs: 1.75, sm: 2, md: 2.5 } } }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: { xs: 1, sm: 1.5 }, minWidth: 0, gap: 1 }}>
           <Typography
             variant="caption"
             sx={{
               color: 'text.secondary',
               fontWeight: 700,
               textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              fontSize: '0.72rem',
+              letterSpacing: '0.04em',
+              fontSize: { xs: '0.72rem', sm: '0.75rem' },
+              lineHeight: 1.25,
+              flexGrow: 1,
+              minWidth: 0,
             }}
           >
             {title}
@@ -77,11 +80,12 @@ export const MuiStatCard = memo(({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: 36,
-              height: 36,
+              width: { xs: 32, sm: 36 },
+              height: { xs: 32, sm: 36 },
               borderRadius: '8px',
               bgcolor: (theme) => `${theme.palette.primary.main}15`,
               color: accentColor,
+              flexShrink: 0,
             }}
           >
             {icon}
@@ -93,19 +97,19 @@ export const MuiStatCard = memo(({
           component="div"
           sx={{
             fontWeight: 800,
-            fontSize: { xs: '1.35rem', sm: '1.6rem' },
+            fontSize: { xs: '1.35rem', sm: '1.45rem', md: '1.6rem', lg: '1.75rem' },
             letterSpacing: '-0.02em',
             lineHeight: 1.2,
-            mb: subtitle ? 0.75 : 0,
+            mb: subtitle ? { xs: 0.5, sm: 0.75 } : 0,
           }}
         >
           {value}
         </Typography>
 
         {subtitle && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
             {typeof subtitle === 'string' ? (
-              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: { xs: '0.72rem', sm: '0.75rem' }, lineHeight: 1.25, flexGrow: 1 }}>
                 {subtitle}
               </Typography>
             ) : (
