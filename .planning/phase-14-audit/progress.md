@@ -422,7 +422,7 @@
   2. *`client/src/components/reusable/MuiAppbar.jsx`*:
      - Replaced the iconified button with a responsive search field trigger across all viewports (`xs` through `xl`).
      - Responsive geometry: `width: { xs: '100%', md: 260, lg: 280 }`, `flex: { xs: 1, md: 'none' }`, `height: 36`.
-     - In `Toolbar`, set `<Box sx={{ flexGrow: { xs: 0, md: 1 } }} />`, eliminating the empty void between hamburger and search on mobile while preserving right-alignment on desktop.
+     - In `Toolbar`, set `<Box sx={{ flexGrow: isPublic ? 1 : { xs: 0, md: 1 } }} />`, ensuring public page actions remain right-aligned across all breakpoints (`flexGrow: 1`) while eliminating the empty void between hamburger and search on mobile protected pages.
      - Text renders full `Search workspace...` without truncation across all breakpoints (even at 375px).
      - `Ctrl K` chip visible across all breakpoints.
      - Functionality 100% preserved: clicking or keyboard triggering (`Enter`, `Space`, `Ctrl+K`) opens `GlobalSearchModal`.

@@ -112,7 +112,7 @@ export const MuiAppbar = ({ variant = 'public', leading, actions, onOpenSearch, 
         }}
       >
         {leading}
-        <Box sx={{ flexGrow: { xs: 0, md: 1 } }} />
+        <Box sx={{ flexGrow: isPublic ? 1 : { xs: 0, md: 1 } }} />
         {searchAction}
         {actions}
       </Toolbar>
